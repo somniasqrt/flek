@@ -72,6 +72,21 @@ enum Command {
         #[arg(long, value_name = "TS")]
         thread: Option<String>,
     },
+    /// Search the local archive (works offline, includes messages Slack hides).
+    ///
+    /// Filters: from:<person> in:<channel> has:link has:file before:YYYY-MM-DD after:YYYY-MM-DD.
+    /// Words: word, prefix*, "exact phrase", -excluded.
+    Search {
+        /// Query, e.g. `grades sheet in:#general after:2024-01-01`.
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+        /// Maximum number of results.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Newest first instead of best match first.
+        #[arg(long)]
+        recent: bool,
+    },
     /// Import an existing archive (simple JSON or Slack export / slackdump).
     Import {
         /// Archive file or directory.
@@ -131,6 +146,11 @@ async fn main() -> Result<()> {
             limit,
             thread,
         } => history(&store, g, &channel, limit, thread.as_deref()),
+        Command::Search {
+            query,
+            limit,
+            recent,
+        } => search(&store, g, &query.join(" "), limit, recent),
         Command::Import { path, channel } => import_archive(&store, g, &path, channel.as_deref()),
         Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
@@ -280,6 +300,62 @@ async fn sync(
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("done: {total} new messages in {n} conversations, {failed} failed");
+    }
+    Ok(())
+}
+
+fn search(
+    creds: &CredentialStore,
+    g: &Global,
+    query: &str,
+    limit: usize,
+    recent: bool,
+) -> Result<()> {
+    use flek_core::store::search::{self, Sort};
+    use std::io::IsTerminal;
+
+    let team = default_team(creds, g)?;
+    let db = open_db(g)?;
+    let q = search::parse(query)?;
+    let sort = if recent {
+        Sort::Recent
+    } else {
+        Sort::Relevance
+    };
+    let markers = if g.json {
+        ("**", "**")
+    } else if std::io::stdout().is_terminal() {
+        ("\x1b[1;33m", "\x1b[0m")
+    } else {
+        ("", "")
+    };
+    let hits = db.with_conn(|c| search::search(c, &team, &q, sort, limit, markers))?;
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&hits)?);
+        return Ok(());
+    }
+    if hits.is_empty() {
+        println!("nothing found");
+    }
+    for h in hits {
+        let (day, time) = format_ts(&h.ts);
+        let author = h.author.unwrap_or_else(|| "?".into());
+        let hidden = if h.hidden_by_limit {
+            " [hidden in Slack]"
+        } else {
+            ""
+        };
+        let snippet = h.snippet.replace('\n', " ");
+        println!(
+            "{} {day} {time}  {author}: {snippet}{hidden}",
+            h.conversation
+        );
+        if let Some(t) = h.thread_ts.filter(|t| *t != h.ts) {
+            println!(
+                "    in thread: flek history {} --thread {t}",
+                h.conversation_id
+            );
+        }
     }
     Ok(())
 }

@@ -4,6 +4,7 @@ pub mod directory;
 pub mod files;
 pub mod messages;
 pub mod migrations;
+pub mod search;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -45,9 +46,21 @@ impl Store {
     }
 
     fn init(mut conn: Connection, path: Option<PathBuf>) -> Result<Self> {
-        conn.pragma_update(None, "foreign_keys", true)?;
         conn.busy_timeout(Duration::from_secs(5))?;
+        // Table rebuilds in migrations must not cascade, so foreign keys are
+        // checked once afterwards instead of during.
+        conn.pragma_update(None, "foreign_keys", false)?;
         migrations::migrate(&mut conn)?;
+        let broken: i64 =
+            conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| {
+                r.get(0)
+            })?;
+        if broken > 0 {
+            return Err(Error::Store(format!(
+                "{broken} foreign key violations after migration"
+            )));
+        }
+        conn.pragma_update(None, "foreign_keys", true)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             path,

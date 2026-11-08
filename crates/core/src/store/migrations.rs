@@ -11,6 +11,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (2, include_str!("migrations/0002_conversation_label.sql")),
     (3, include_str!("migrations/0003_threads.sql")),
     (4, include_str!("migrations/0004_author_name.sql")),
+    (5, include_str!("migrations/0005_search.sql")),
 ];
 
 /// Latest schema version this build knows.
@@ -36,6 +37,11 @@ pub fn current_version(conn: &Connection) -> Result<u32> {
 /// Applies every pending migration, each in its own transaction.
 /// Returns the versions that were applied.
 pub fn migrate(conn: &mut Connection) -> Result<Vec<u32>> {
+    migrate_to(conn, latest_version())
+}
+
+/// Applies pending migrations up to `target` (tests use it to build old schemas).
+pub fn migrate_to(conn: &mut Connection, target: u32) -> Result<Vec<u32>> {
     let current = current_version(conn)?;
     if current > latest_version() {
         return Err(crate::Error::Store(format!(
@@ -45,7 +51,10 @@ pub fn migrate(conn: &mut Connection) -> Result<Vec<u32>> {
     }
 
     let mut applied = Vec::new();
-    for &(version, sql) in MIGRATIONS.iter().filter(|(v, _)| *v > current) {
+    for &(version, sql) in MIGRATIONS
+        .iter()
+        .filter(|(v, _)| *v > current && *v <= target)
+    {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         tx.execute(
