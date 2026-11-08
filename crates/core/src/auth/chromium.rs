@@ -65,13 +65,11 @@ pub fn find_local_storage_value(db_dir: &Path, origin: &str, key: &str) -> Resul
 pub fn decode_storage_string(raw: &[u8]) -> Result<String> {
     match raw.split_first() {
         Some((0, rest)) => {
-            if rest.len() % 2 != 0 {
+            let (pairs, tail) = rest.as_chunks::<2>();
+            if !tail.is_empty() {
                 return Err(Error::DesktopData("odd-length UTF-16 value".into()));
             }
-            let units: Vec<u16> = rest
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
+            let units: Vec<u16> = pairs.iter().map(|&c| u16::from_le_bytes(c)).collect();
             String::from_utf16(&units)
                 .map_err(|_| Error::DesktopData("invalid UTF-16 value".into()))
         }
