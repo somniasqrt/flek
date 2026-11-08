@@ -1,11 +1,14 @@
 //! users.list + users.conversations → database, against a mock server.
 
+mod support;
+use support::field;
+
 use flek_core::api::{AuthTest, Client};
 use flek_core::store::{directory, Store};
 use flek_core::sync::directory::sync_directory;
 use flek_core::Secret;
 use serde_json::json;
-use wiremock::matchers::{body_string_contains, path};
+use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn me() -> AuthTest {
@@ -22,7 +25,7 @@ fn me() -> AuthTest {
 async fn mock(server: &MockServer) {
     // users.list in two pages
     Mock::given(path("/users.list"))
-        .and(body_string_contains("cursor=page2"))
+        .and(field("cursor", "page2"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
             "members": [
@@ -48,7 +51,7 @@ async fn mock(server: &MockServer) {
         .mount(server)
         .await;
     Mock::given(path("/users.conversations"))
-        .and(body_string_contains("types=public_channel%2Cprivate_channel%2Cmpim%2Cim"))
+        .and(field("types", "public_channel,private_channel,mpim,im"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
             "channels": [

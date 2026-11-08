@@ -1,5 +1,8 @@
 //! Refresh window, active threads, full resync.
 
+mod support;
+use support::field;
+
 use std::time::Duration;
 
 use flek_core::api::Client;
@@ -10,7 +13,7 @@ use flek_core::sync::threads::sync_threads;
 use flek_core::sync::SyncOptions;
 use flek_core::Secret;
 use serde_json::{json, Value};
-use wiremock::matchers::{body_string_contains, path};
+use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn store() -> Store {
@@ -83,7 +86,7 @@ async fn refresh_window_picks_up_edits_reactions_and_deletions() {
     // Offline: "b" edited and got a reaction, "c" deleted, "a" (outside the window) deleted too.
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=15.000000"))
+        .and(field("oldest", "15.000000"))
         .respond_with(page(vec![
             json!({"ts": "20.000000", "user": "U1", "text": "b (fixed)", "edited": {"ts": "25.000000"},
                    "reactions": [{"name": "eyes", "users": ["U2"], "count": 1}]}),
@@ -184,7 +187,7 @@ async fn full_resync_walks_everything_again_without_loss() {
     // Slack now hides "a"; a full pass must not erase it.
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=20.000000"))
+        .and(field("oldest", "20.000000"))
         .respond_with(page(vec![]))
         .mount(&server)
         .await;

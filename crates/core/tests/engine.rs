@@ -1,12 +1,15 @@
 //! Sync engine: fast pass first, priority, deep backfill after.
 
+mod support;
+use support::{field, has_field};
+
 use flek_core::api::{AuthTest, Client};
 use flek_core::store::{messages, Store};
 use flek_core::sync::engine::{Engine, EngineOptions, Priority};
 use flek_core::sync::live::{bus, Change, Progress};
 use flek_core::Secret;
 use serde_json::json;
-use wiremock::matchers::{body_string_contains, path};
+use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn ok(v: serde_json::Value) -> ResponseTemplate {
@@ -34,7 +37,7 @@ async fn slack() -> MockServer {
         .await;
     // Catch-up above the newest stored message: nothing new.
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest="))
+        .and(has_field("oldest"))
         .respond_with(ok(json!({"has_more": false, "messages": []})))
         .with_priority(1)
         .mount(&s)
@@ -42,15 +45,15 @@ async fn slack() -> MockServer {
     for ch in ["C1", "C2"] {
         // Older page (deep pass)…
         Mock::given(path("/conversations.history"))
-            .and(body_string_contains(format!("channel={ch}")))
-            .and(body_string_contains("latest="))
+            .and(field("channel", ch.to_string()))
+            .and(has_field("latest"))
             .respond_with(ok(json!({"has_more": false, "messages": [{"ts": "1.000000", "user": "U1", "text": format!("{ch} old")}]})))
             .with_priority(1)
             .mount(&s)
             .await;
         // …and the newest page (fast pass).
         Mock::given(path("/conversations.history"))
-            .and(body_string_contains(format!("channel={ch}")))
+            .and(field("channel", ch.to_string()))
             .respond_with(ok(json!({"has_more": true, "messages": [{"ts": "2.000000", "user": "U1", "text": format!("{ch} new")}]})))
             .with_priority(2)
             .mount(&s)

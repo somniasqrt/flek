@@ -22,7 +22,7 @@ indicatif = "0.18"
 keyring = { version = "3", features = ["apple-native"] }
 plist = "1"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 rusty-leveldb = "3"
 security-framework = "3"

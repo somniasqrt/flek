@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, COOKIE, RETRY_AFTER, USER_AGENT};
+use reqwest::header::{
+    HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, COOKIE, RETRY_AFTER, USER_AGENT,
+};
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -54,7 +56,7 @@ impl Client {
         profile: ClientProfile,
     ) -> Result<Self> {
         let http = reqwest::Client::builder()
-            .default_headers(auth_headers(&token, &cookie, &profile)?)
+            .default_headers(session_headers(&cookie, &profile)?)
             .timeout(Duration::from_secs(30))
             .build()?;
         Ok(Self {
@@ -89,19 +91,25 @@ impl Client {
 
     /// Calls `method` with form params and deserializes the successful body.
     /// Retries on HTTP 429 (honouring `Retry-After`) and on `ratelimited`.
+    ///
+    /// Shaped like Slack desktop's calls (docs/api-notes.md): multipart body
+    /// with the token in it, no `Authorization` header.
     pub async fn call<T: DeserializeOwned>(
         &self,
         method: &str,
         params: &[(&str, &str)],
     ) -> Result<T> {
         let url = format!("{}/{}", self.base_url, method);
-        let mut form: Vec<(&str, &str)> = Vec::with_capacity(params.len() + 1);
-        form.push(("token", self.token.expose()));
-        form.extend_from_slice(params);
+        let form = || {
+            params.iter().fold(
+                reqwest::multipart::Form::new().text("token", self.token.expose().to_owned()),
+                |f, (k, v)| f.text(k.to_string(), v.to_string()),
+            )
+        };
 
         let mut attempt = 0;
         loop {
-            let mut req = self.http.post(&url).form(&form);
+            let mut req = self.http.post(&url).multipart(form());
             for (name, value) in self.profile.api_headers() {
                 req = req.header(name, value);
             }
@@ -187,6 +195,7 @@ impl Client {
             let resp = self
                 .http
                 .get(parsed.clone())
+                .header(AUTHORIZATION, bearer(&self.token)?)
                 .timeout(Duration::from_secs(600))
                 .send()
                 .await?;
@@ -234,22 +243,30 @@ impl Client {
     }
 }
 
-fn auth_headers(token: &Secret, cookie: &Secret, profile: &ClientProfile) -> Result<HeaderMap> {
-    let invalid = |what: &str| {
-        Error::DesktopData(format!(
-            "{what} contains characters not allowed in a header"
-        ))
-    };
-    let mut bearer = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+fn invalid(what: &str) -> Error {
+    Error::DesktopData(format!(
+        "{what} contains characters not allowed in a header"
+    ))
+}
+
+/// `Authorization: Bearer` for file downloads only. Slack desktop sends none
+/// at all; whether files load with the cookie alone is not verified yet.
+fn bearer(token: &Secret) -> Result<HeaderValue> {
+    let mut v = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
         .map_err(|_| invalid("token"))?;
-    bearer.set_sensitive(true);
+    v.set_sensitive(true);
+    Ok(v)
+}
+
+/// Headers on every request: the session cookie and the issuer's identity.
+fn session_headers(cookie: &Secret, profile: &ClientProfile) -> Result<HeaderMap> {
     let mut cookie =
         HeaderValue::from_str(&format!("d={}", cookie.expose())).map_err(|_| invalid("cookie"))?;
     cookie.set_sensitive(true);
 
     let mut headers = HeaderMap::new();
-    headers.insert(AUTHORIZATION, bearer);
     headers.insert(COOKIE, cookie);
+    headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
     headers.insert(
         USER_AGENT,
         HeaderValue::from_str(&profile.user_agent).map_err(|_| invalid("user agent"))?,

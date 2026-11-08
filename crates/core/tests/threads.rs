@@ -1,5 +1,8 @@
 //! Thread replies sync.
 
+mod support;
+use support::field;
+
 use std::time::Duration;
 
 use flek_core::api::Client;
@@ -10,7 +13,7 @@ use flek_core::sync::threads::sync_threads;
 use flek_core::sync::SyncOptions;
 use flek_core::Secret;
 use serde_json::json;
-use wiremock::matchers::{body_string_contains, path};
+use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn store() -> Store {
@@ -59,7 +62,7 @@ async fn fetches_threads_once_and_dedupes_broadcasts() {
         .await;
     // Two pages of replies.
     Mock::given(path("/conversations.replies"))
-        .and(body_string_contains("cursor=page2"))
+        .and(field("cursor", "page2"))
         .respond_with(ok(json!({"messages": [
             root.clone(),
             {"ts": "103.000000", "thread_ts": "100.000000", "user": "U1", "text": "reply 3"}
@@ -68,7 +71,7 @@ async fn fetches_threads_once_and_dedupes_broadcasts() {
         .mount(&server)
         .await;
     Mock::given(path("/conversations.replies"))
-        .and(body_string_contains("ts=100.000000"))
+        .and(field("ts", "100.000000"))
         .respond_with(ok(json!({"messages": [
             root.clone(),
             {"ts": "101.000000", "thread_ts": "100.000000", "user": "U2", "text": "reply 1"},

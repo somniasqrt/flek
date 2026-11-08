@@ -1,5 +1,8 @@
 //! History backfill and the hidden-by-limit rule.
 
+mod support;
+use support::field;
+
 use std::time::Duration;
 
 use flek_core::api::Client;
@@ -9,7 +12,7 @@ use flek_core::sync::backfill::{backfill_conversation, RateLimiter};
 use flek_core::sync::SyncOptions;
 use flek_core::Secret;
 use serde_json::{json, Value};
-use wiremock::matchers::{body_string_contains, path};
+use wiremock::matchers::path;
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn store() -> Store {
@@ -106,7 +109,7 @@ async fn resumes_after_interruption_and_catches_up() {
 
     // Run 1: first page ok, second page fails (network drop).
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("latest=104.000000"))
+        .and(field("latest", "104.000000"))
         .respond_with(ResponseTemplate::new(500))
         .with_priority(1)
         .mount(&server)
@@ -135,13 +138,13 @@ async fn resumes_after_interruption_and_catches_up() {
     // Run 2: a new message arrived; the older page now loads.
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=105.000000"))
+        .and(field("oldest", "105.000000"))
         .respond_with(page(&[msg("106.000000")], false))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("latest=104.000000"))
+        .and(field("latest", "104.000000"))
         .respond_with(page(&[msg("103.000000"), msg("102.000000")], false))
         .expect(1)
         .mount(&server)
@@ -165,7 +168,7 @@ async fn resumes_after_interruption_and_catches_up() {
     // Run 3: nothing new → only the catch-up request, no backfill.
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=106.000000"))
+        .and(field("oldest", "106.000000"))
         .respond_with(page(&[], false))
         .expect(1)
         .mount(&server)
@@ -299,7 +302,7 @@ async fn live_message_before_catch_up_does_not_skip_offline_ones() {
 
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=10.000000"))
+        .and(field("oldest", "10.000000"))
         .respond_with(page(&[msg("30.000000"), msg("20.000000")], false))
         .expect(1)
         .mount(&server)

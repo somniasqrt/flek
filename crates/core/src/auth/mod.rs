@@ -22,7 +22,7 @@ pub struct Session {
 impl Session {
     /// A client presenting the identity of the session's issuer.
     pub fn client(&self) -> Result<Client> {
-        client_for(&self.credentials)
+        client_for(&self.credentials, &team_api_base(&self.identity.url))
     }
 }
 
@@ -173,7 +173,9 @@ pub async fn validate(
         cookie,
         origin,
     };
-    let identity = client_for(&credentials)?.auth_test().await?;
+    let identity = client_for(&credentials, DEFAULT_BASE_URL)?
+        .auth_test()
+        .await?;
     credentials.team_id = identity.team_id.clone();
     credentials.user_id = identity.user_id.clone();
     Ok(Session {
@@ -182,17 +184,27 @@ pub async fn validate(
     })
 }
 
-fn client_for(creds: &Credentials) -> Result<Client> {
+/// The team's own API root (`https://<team>.slack.com/api`), where Slack
+/// desktop sends its calls. Anything that is not a Slack host falls back to
+/// `slack.com`, so the session never goes elsewhere.
+pub fn team_api_base(team_url: &str) -> String {
+    reqwest::Url::parse(team_url)
+        .ok()
+        .filter(|u| u.scheme() == "https")
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .filter(|h| h.ends_with(".slack.com"))
+        .map_or_else(
+            || DEFAULT_BASE_URL.to_owned(),
+            |h| format!("https://{h}/api"),
+        )
+}
+
+fn client_for(creds: &Credentials, base_url: &str) -> Result<Client> {
     let profile = creds
         .origin
         .as_ref()
         .map_or_else(ClientProfile::detect, SessionOrigin::profile);
-    Client::with_profile(
-        creds.token.clone(),
-        creds.cookie.clone(),
-        DEFAULT_BASE_URL,
-        profile,
-    )
+    Client::with_profile(creds.token.clone(), creds.cookie.clone(), base_url, profile)
 }
 
 /// The installed Slack desktop's identity as a session origin. Blocking
@@ -250,5 +262,26 @@ pub async fn refresh_origin(creds: &mut Credentials) -> bool {
             true
         }
         None => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::team_api_base;
+
+    #[test]
+    fn team_api_base_stays_on_slack() {
+        assert_eq!(
+            team_api_base("https://w1-rx2.slack.com/"),
+            "https://w1-rx2.slack.com/api"
+        );
+        for bad in [
+            "",
+            "http://t.slack.com/",
+            "https://evil.com/",
+            "https://slack.com.evil.com/",
+        ] {
+            assert_eq!(team_api_base(bad), crate::api::DEFAULT_BASE_URL, "{bad}");
+        }
     }
 }

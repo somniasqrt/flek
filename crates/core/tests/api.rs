@@ -1,8 +1,11 @@
 //! API client against a local mock server. Never hits real Slack.
 
+mod support;
+use support::field;
+
 use flek_core::api::Client;
 use flek_core::{Error, Secret};
-use wiremock::matchers::{body_string_contains, header, method, path};
+use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TOKEN: &str = "xoxc-fake-token";
@@ -28,10 +31,17 @@ async fn auth_test_sends_session_and_parses() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/auth.test"))
-        .and(header("authorization", "Bearer xoxc-fake-token"))
+        // Like Slack desktop: token only in the body, no Authorization header.
+        .and(|req: &wiremock::Request| !req.headers.contains_key("authorization"))
+        .and(header("accept", "*/*"))
         .and(header("cookie", "d=xoxd-fake%2Fcookie"))
-        .and(header("content-type", "application/x-www-form-urlencoded"))
-        .and(body_string_contains("token=xoxc-fake-token"))
+        .and(|req: &wiremock::Request| {
+            req.headers
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| v.starts_with("multipart/form-data; boundary="))
+        })
+        .and(field("token", "xoxc-fake-token"))
         .respond_with(auth_ok())
         .expect(1)
         .mount(&server)

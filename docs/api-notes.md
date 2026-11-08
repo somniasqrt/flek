@@ -72,28 +72,53 @@ fake ones before writing anything down.
 
 ### Client identity (ADR 0001)
 
-- **Status:** UA verified from Slack desktop's own logs; client hints and fetch
-  metadata derived, **not yet compared with a DevTools capture** (M2.6.8).
-- **Source:** `auth/desktop_profile.rs`, `api/profile.rs`.
+- **Status:** verified 2026-11-08 against Slack desktop 4.51.180 (Electron
+  43.1.1, Chrome 150) over the Chromium debugging protocol
+  (`Slack --remote-debugging-port=9222`; `SLACK_DEVELOPER_MENU=true` shows a
+  Developer menu but no DevTools in this build). Secrets redacted at capture.
+- **Source:** `auth/desktop_profile.rs`, `api/profile.rs`, `api/client.rs`.
 
 Slack desktop logs its user agent in `<profile>/logs/default/browser*.log`
 (`"userAgent": "… Slack/4.51.180 Chrome/150.0.7871.114 Electron/43.1.1
-Safari/537.36 AppleSilicon Sonic Slack_SSB/4.51.180"`). The newest log may not
-contain it (rotation), older ones do. Note the real macOS version (`27_0_1`):
-Electron does not freeze it the way Chrome does.
+Safari/537.36 AppleSilicon Sonic Slack_SSB/4.51.180"`); the debugging
+endpoint reports the same string. The newest log may not contain it
+(rotation). Note the real macOS version (`27_0_1`): Electron does not freeze
+it the way Chrome does.
 
-What Flek sends, all derived from the issuer's user agent:
+**API calls** (`client.counts`, `conversations.view`, `users.prefs.get`, …):
 
-| Header | API calls | file downloads | websocket |
-|---|---|---|---|
-| `user-agent` | issuer's | issuer's | issuer's |
-| `sec-ch-ua`, `-mobile`, `-platform` | Chromium issuers only | same | not sent |
-| `origin: https://app.slack.com` | yes | no | yes |
-| `sec-fetch-site: same-site`, `-mode: cors`, `-dest: empty` | yes | no | no |
+```
+POST https://<team domain>.slack.com/api/<method>?_x_id=…&_x_version_ts=…&_x_gantry=true&_x_desktop_ia=4&_x_frontend_build_type=current&fp=…&_x_num_retries=0[&_x_csid=…&slack_route=…]
+accept: */*
+accept-language: en-US
+content-type: multipart/form-data; boundary=----WebKitFormBoundary…
+cookie: d=…; (and others)
+origin: https://app.slack.com
+priority: u=0, i
+sec-ch-ua: "Not;A=Brand";v="8", "Chromium";v="150"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "macOS"
+sec-fetch-dest: empty / sec-fetch-mode: cors / sec-fetch-site: same-site
+user-agent: <the logged UA>
+body fields: token, _x_app_name, _x_sonic, _x_reason, _x_mode, + method params
+```
 
-`sec-ch-ua` follows Chromium's GREASE algorithm; Electron has no product
-brand, so Chrome 150 inside Slack gives `"Not;A=Brand";v="8", "Chromium";v="150"`.
-To check in M2.6.8: these values, whether the desktop calls
-`<team>.slack.com/api/…` rather than `slack.com/api/…` (then `sec-fetch-site`
-stays `same-site`), extra query parameters (`_x_id`, `slack_route`, …), and
-which headers the websocket handshake carries.
+- **No `Authorization` header**: the token travels only in the body.
+- Host is the team URL from `auth.test`, not `slack.com`
+  (only a GET `slack.com/api/api.test` connectivity check goes there).
+- History is not fetched with `conversations.history` in this capture:
+  `conversations.view` on open and `ublockworkaround.history` (history under a
+  name ad blockers do not match).
+
+**Websocket**: `wss://wss-primary.slack.com/?token=…&sync_desync=1&slack_client=desktop&start_args=…&no_query_on_subscribe=1&flannel=3&lazy_channels=1&gateway_server=<team>-3&batch_presence_aware=1`,
+headers `origin: https://app.slack.com`, the UA, `accept-language`,
+`cache-control/pragma: no-cache`, permessage-deflate. No client hints, no
+`sec-fetch-*`.
+
+**What Flek sends now:** the same UA, client hints, `origin`, `sec-fetch-*`
+and `accept`; multipart body with the token, no `Authorization`, on
+`https://<team>.slack.com/api` once `auth.test` told the team URL. File
+downloads still add `Authorization: Bearer` (cookie-only not verified).
+Not reproduced: `_x_*` / `fp` / `slack_route` parameters (internal client
+telemetry with values Flek cannot honestly produce), `accept-language`,
+`priority`, the flannel websocket (Flek uses documented `rtm.connect`).
