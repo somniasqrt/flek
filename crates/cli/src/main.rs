@@ -54,6 +54,12 @@ enum Command {
         /// Largest file to download, in MB (0 = no limit).
         #[arg(long, default_value_t = 100, value_name = "MB")]
         max_file_size: u64,
+        /// Re-read the last N days for edits, reactions, deletions and thread replies (0 = off).
+        #[arg(long, default_value_t = 7, value_name = "DAYS")]
+        refresh_days: u32,
+        /// Re-read the whole history and every thread, merging without loss.
+        #[arg(long)]
+        full: bool,
     },
     /// Show recent messages of a conversation from the local database.
     History {
@@ -102,9 +108,15 @@ async fn main() -> Result<()> {
             channel,
             no_files,
             max_file_size,
+            refresh_days,
+            full,
         } => {
             let max = (!no_files).then_some(max_file_size);
-            sync(&store, g, channel.as_deref(), max).await
+            let opts = flek_core::sync::SyncOptions {
+                full,
+                ..flek_core::sync::SyncOptions::refresh_days(refresh_days)
+            };
+            sync(&store, g, channel.as_deref(), max, &opts).await
         }
         Command::History {
             channel,
@@ -178,6 +190,7 @@ async fn sync(
     g: &Global,
     only: Option<&str>,
     files: Option<u64>,
+    opts: &flek_core::sync::SyncOptions,
 ) -> Result<()> {
     use flek_core::store::directory;
     use flek_core::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
@@ -208,8 +221,8 @@ async fn sync(
     let n = convs.len();
     for (i, conv) in convs.iter().enumerate() {
         let result = async {
-            let b = backfill_conversation(&client, &db, &mut limiter, &conv.id).await?;
-            let t = sync_threads(&client, &db, &mut limiter, &conv.id).await?;
+            let b = backfill_conversation(&client, &db, &mut limiter, &conv.id, opts).await?;
+            let t = sync_threads(&client, &db, &mut limiter, &conv.id, opts).await?;
             Ok::<_, flek_core::Error>((b, t))
         }
         .await;

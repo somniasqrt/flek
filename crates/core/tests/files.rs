@@ -6,6 +6,7 @@ use flek_core::api::Client;
 use flek_core::store::Store;
 use flek_core::sync::backfill::{backfill_conversation, RateLimiter};
 use flek_core::sync::files::download_files;
+use flek_core::sync::SyncOptions;
 use flek_core::{files, Secret};
 use serde_json::json;
 use wiremock::matchers::{header, path};
@@ -75,9 +76,15 @@ async fn stores_metadata_and_downloads_files() {
         .mount(&server)
         .await;
 
-    backfill_conversation(&client, &store, &mut RateLimiter::new(Duration::ZERO), "C1")
-        .await
-        .unwrap();
+    backfill_conversation(
+        &client,
+        &store,
+        &mut RateLimiter::new(Duration::ZERO),
+        "C1",
+        &SyncOptions::default(),
+    )
+    .await
+    .unwrap();
 
     let (files_n, links, hidden): (i64, i64, bool) = store
         .with_conn(|c| {

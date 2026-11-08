@@ -6,6 +6,7 @@ use flek_core::api::Client;
 use flek_core::store::messages::{self, MessageRow, SyncState};
 use flek_core::store::Store;
 use flek_core::sync::backfill::{backfill_conversation, RateLimiter};
+use flek_core::sync::SyncOptions;
 use flek_core::Secret;
 use serde_json::{json, Value};
 use wiremock::matchers::{body_string_contains, path};
@@ -116,9 +117,11 @@ async fn resumes_after_interruption_and_catches_up() {
         .mount(&server)
         .await;
 
-    assert!(backfill_conversation(&client, &store, &mut limiter, "C1")
-        .await
-        .is_err());
+    assert!(
+        backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
+            .await
+            .is_err()
+    );
     assert_eq!(
         state(&store),
         SyncState {
@@ -144,7 +147,7 @@ async fn resumes_after_interruption_and_catches_up() {
         .mount(&server)
         .await;
 
-    let stats = backfill_conversation(&client, &store, &mut limiter, "C1")
+    let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
         .await
         .unwrap();
     assert_eq!(stats.messages, 3);
@@ -167,7 +170,7 @@ async fn resumes_after_interruption_and_catches_up() {
         .expect(1)
         .mount(&server)
         .await;
-    let stats = backfill_conversation(&client, &store, &mut limiter, "C1")
+    let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
         .await
         .unwrap();
     assert_eq!((stats.pages, stats.messages), (1, 0));
@@ -201,9 +204,15 @@ async fn hidden_messages_from_api_are_flagged_and_do_not_clobber() {
         .mount(&server)
         .await;
 
-    backfill_conversation(&client, &store, &mut RateLimiter::new(Duration::ZERO), "C1")
-        .await
-        .unwrap();
+    backfill_conversation(
+        &client,
+        &store,
+        &mut RateLimiter::new(Duration::ZERO),
+        "C1",
+        &SyncOptions::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         text_of(&store, "100.000000"),
         ("kept from archive".into(), false)

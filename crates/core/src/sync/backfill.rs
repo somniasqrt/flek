@@ -6,7 +6,12 @@
 //!    moves only when the pass finishes, so a gap is never marked done;
 //! 2. backfill: pages below `oldest_ts` via `latest`, until Slack says
 //!    there is nothing more, then `complete = 1`.
+//!
+//! With a refresh window the catch-up starts at `refresh_since` instead, so
+//! edits and reactions in that window are re-read, and stored top-level
+//! messages Slack no longer returns there are marked deleted.
 
+use std::collections::HashSet;
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -15,6 +20,7 @@ use crate::api::{Client, HistoryQuery, Message};
 use crate::store::files::FileRow;
 use crate::store::messages::{self, MessageRow, SyncState};
 use crate::store::Store;
+use crate::sync::SyncOptions;
 use crate::Result;
 
 /// ~1 history request per second, as AGENTS.md asks.
@@ -47,6 +53,8 @@ impl RateLimiter {
 pub struct BackfillStats {
     pub pages: usize,
     pub messages: usize,
+    /// Stored messages found deleted in the refresh window.
+    pub deleted: usize,
     pub complete: bool,
 }
 
@@ -56,13 +64,19 @@ pub async fn backfill_conversation(
     store: &Store,
     limiter: &mut RateLimiter,
     conversation_id: &str,
+    opts: &SyncOptions,
 ) -> Result<BackfillStats> {
     let id = conversation_id.to_owned();
     let mut state = store.call(move |c| messages::sync_state(c, &id)).await?;
     let mut stats = BackfillStats::default();
 
-    // 1. Catch-up above newest_ts.
+    // 1. Catch-up above newest_ts (or above the refresh window).
     if let Some(newest) = state.newest_ts.clone() {
+        let lower = match &opts.refresh_since {
+            Some(since) if *since < newest => since.clone(),
+            _ => newest.clone(),
+        };
+        let mut seen = HashSet::new();
         let mut cursor: Option<String> = None;
         let mut top = newest.clone();
         loop {
@@ -71,7 +85,7 @@ pub async fn backfill_conversation(
                 .conversations_history(
                     conversation_id,
                     HistoryQuery {
-                        oldest: Some(&newest),
+                        oldest: Some(&lower),
                         cursor: cursor.as_deref(),
                         ..Default::default()
                     },
@@ -80,6 +94,7 @@ pub async fn backfill_conversation(
             if let Some(max) = page.messages.iter().map(|m| m.ts.as_str()).max() {
                 top = top.max(max.to_owned());
             }
+            seen.extend(page.messages.iter().map(|m| m.ts.clone()));
             save_page(store, conversation_id, &page.messages, None).await?;
             stats.pages += 1;
             stats.messages += page.messages.len();
@@ -88,8 +103,25 @@ pub async fn backfill_conversation(
                 _ => break,
             }
         }
+        if lower < newest {
+            let (id, lo, hi) = (conversation_id.to_owned(), lower.clone(), newest.clone());
+            stats.deleted = store
+                .call(move |c| {
+                    let gone: Vec<String> = messages::top_level_between(c, &id, &lo, &hi)?
+                        .into_iter()
+                        .filter(|ts| !seen.contains(ts))
+                        .collect();
+                    messages::mark_deleted(c, &id, &gone)
+                })
+                .await?;
+        }
         state.newest_ts = Some(top);
         save_state(store, conversation_id, &state).await?;
+    }
+
+    if opts.full {
+        state.oldest_ts = None;
+        state.complete = false;
     }
 
     // 2. Backfill below oldest_ts.

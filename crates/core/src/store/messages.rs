@@ -154,6 +154,65 @@ pub fn stale_threads(conn: &Connection, conversation_id: &str) -> Result<Vec<Str
     Ok(rows)
 }
 
+/// Threads to fetch: stale ones (see [`stale_threads`]), plus roots active
+/// since `active_since` (by root ts or stored `latest_reply`), or every
+/// root when `all`.
+pub fn threads_to_fetch(
+    conn: &Connection,
+    conversation_id: &str,
+    active_since: Option<&str>,
+    all: bool,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT m.ts FROM messages m
+         LEFT JOIN thread_sync t ON t.conversation_id = m.conversation_id AND t.thread_ts = m.ts
+         WHERE m.conversation_id = ?1 AND m.reply_count > 0 AND m.hidden_by_limit = 0
+           AND (?3
+                OR t.latest_reply IS NULL OR t.latest_reply < COALESCE(m.latest_reply, '')
+                OR (?2 IS NOT NULL AND (m.ts > ?2 OR COALESCE(m.latest_reply, '') > ?2
+                                        OR t.latest_reply > ?2)))
+         ORDER BY m.ts DESC",
+    )?;
+    let rows = stmt
+        .query_map(params![conversation_id, active_since, all], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Stored, visible top-level messages (and broadcasts) with `lower < ts <= upper`.
+pub fn top_level_between(
+    conn: &Connection,
+    conversation_id: &str,
+    lower: &str,
+    upper: &str,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT ts FROM messages
+         WHERE conversation_id = ?1 AND ts > ?2 AND ts <= ?3 AND deleted = 0 AND hidden_by_limit = 0
+           AND (thread_ts IS NULL OR thread_ts = ts OR subtype = 'thread_broadcast')",
+    )?;
+    let rows = stmt
+        .query_map(params![conversation_id, lower, upper], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Stored, visible replies of a thread (root excluded).
+pub fn thread_replies(
+    conn: &Connection,
+    conversation_id: &str,
+    thread_ts: &str,
+) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT ts FROM messages
+         WHERE conversation_id = ?1 AND thread_ts = ?2 AND ts != ?2 AND deleted = 0 AND hidden_by_limit = 0",
+    )?;
+    let rows = stmt
+        .query_map(params![conversation_id, thread_ts], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// Records that a thread was fetched up to `latest_reply`.
 pub fn mark_thread_synced(
     conn: &Connection,

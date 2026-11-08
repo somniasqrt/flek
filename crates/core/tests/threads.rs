@@ -7,6 +7,7 @@ use flek_core::store::messages::{self, MessageRow};
 use flek_core::store::Store;
 use flek_core::sync::backfill::{backfill_conversation, RateLimiter};
 use flek_core::sync::threads::sync_threads;
+use flek_core::sync::SyncOptions;
 use flek_core::Secret;
 use serde_json::json;
 use wiremock::matchers::{body_string_contains, path};
@@ -77,10 +78,10 @@ async fn fetches_threads_once_and_dedupes_broadcasts() {
         .mount(&server)
         .await;
 
-    backfill_conversation(&client, &store, &mut limiter, "C1")
+    backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
         .await
         .unwrap();
-    let stats = sync_threads(&client, &store, &mut limiter, "C1")
+    let stats = sync_threads(&client, &store, &mut limiter, "C1", &SyncOptions::default())
         .await
         .unwrap();
     assert_eq!((stats.threads, stats.replies), (1, 3));
@@ -103,7 +104,7 @@ async fn fetches_threads_once_and_dedupes_broadcasts() {
 
     // Nothing changed → no replies requests.
     let before = server.received_requests().await.unwrap().len();
-    let stats = sync_threads(&client, &store, &mut limiter, "C1")
+    let stats = sync_threads(&client, &store, &mut limiter, "C1", &SyncOptions::default())
         .await
         .unwrap();
     assert_eq!(stats.threads, 0);
