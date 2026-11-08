@@ -6,7 +6,7 @@ mod conversations;
 mod history;
 mod internal;
 mod pagination;
-mod profile;
+pub mod profile;
 mod rtm;
 mod users;
 

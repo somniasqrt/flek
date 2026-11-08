@@ -12,6 +12,7 @@ fastrand.workspace = true
 futures-util.workspace = true
 keyring.workspace = true
 pbkdf2.workspace = true
+plist.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true
 rusty-leveldb.workspace = true

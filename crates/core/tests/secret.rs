@@ -16,6 +16,7 @@ fn debug_and_display_are_redacted() {
         user_id: "U0FAKE".into(),
         token: Secret::new(TOKEN),
         cookie: Secret::new(COOKIE),
+        origin: None,
     };
     for out in [
         format!("{creds:?}"),

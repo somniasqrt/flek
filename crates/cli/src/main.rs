@@ -184,13 +184,33 @@ fn init_tracing(verbose: u8) {
 }
 
 async fn whoami(store: &CredentialStore, g: &Global) -> Result<()> {
-    let Session { identity, .. } = auth::resolve_session(store, g.team.as_deref()).await?;
+    let session = auth::resolve_session(store, g.team.as_deref()).await?;
+    let Session {
+        identity,
+        credentials,
+    } = &session;
+    let profile = session.client()?.profile().clone();
+    let issuer = credentials
+        .origin
+        .as_ref()
+        .map_or_else(|| "unknown (generic Chrome)".to_owned(), |o| o.describe());
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&identity)?);
+        let mut v = serde_json::to_value(identity)?;
+        v["client"] = json!({
+            "issuer": issuer,
+            "user_agent": profile.user_agent,
+            "client_hints": profile.hint_headers().into_iter().collect::<std::collections::BTreeMap<_, _>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&v)?);
     } else {
-        println!("team  {} ({})", identity.team, identity.team_id);
-        println!("user  {} ({})", identity.user, identity.user_id);
-        println!("url   {}", identity.url);
+        println!("team    {} ({})", identity.team, identity.team_id);
+        println!("user    {} ({})", identity.user, identity.user_id);
+        println!("url     {}", identity.url);
+        println!("client  {issuer}");
+        println!("ua      {}", profile.user_agent);
+        for (name, value) in profile.hint_headers() {
+            println!("        {name}: {value}");
+        }
     }
     Ok(())
 }

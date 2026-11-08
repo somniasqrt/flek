@@ -69,3 +69,31 @@ fake ones before writing anything down.
 - `users.conversations` lists an `im` whose `user` is `USLACK` (Slack's own
   notifications, distinct from Slackbot `USLACKBOT`). `users.list` does not
   return that id, so Flek labels the DM "Slack".
+
+### Client identity (ADR 0001)
+
+- **Status:** UA verified from Slack desktop's own logs; client hints and fetch
+  metadata derived, **not yet compared with a DevTools capture** (M2.6.8).
+- **Source:** `auth/desktop_profile.rs`, `api/profile.rs`.
+
+Slack desktop logs its user agent in `<profile>/logs/default/browser*.log`
+(`"userAgent": "… Slack/4.51.180 Chrome/150.0.7871.114 Electron/43.1.1
+Safari/537.36 AppleSilicon Sonic Slack_SSB/4.51.180"`). The newest log may not
+contain it (rotation), older ones do. Note the real macOS version (`27_0_1`):
+Electron does not freeze it the way Chrome does.
+
+What Flek sends, all derived from the issuer's user agent:
+
+| Header | API calls | file downloads | websocket |
+|---|---|---|---|
+| `user-agent` | issuer's | issuer's | issuer's |
+| `sec-ch-ua`, `-mobile`, `-platform` | Chromium issuers only | same | not sent |
+| `origin: https://app.slack.com` | yes | no | yes |
+| `sec-fetch-site: same-site`, `-mode: cors`, `-dest: empty` | yes | no | no |
+
+`sec-ch-ua` follows Chromium's GREASE algorithm; Electron has no product
+brand, so Chrome 150 inside Slack gives `"Not;A=Brand";v="8", "Chromium";v="150"`.
+To check in M2.6.8: these values, whether the desktop calls
+`<team>.slack.com/api/…` rather than `slack.com/api/…` (then `sec-fetch-site`
+stays `same-site`), extra query parameters (`_x_id`, `slack_route`, …), and
+which headers the websocket handshake carries.

@@ -152,3 +152,37 @@ async fn rtm_connect_returns_url() {
         "wss://wss-primary.slack.com/websocket/fake"
     );
 }
+
+#[tokio::test]
+async fn requests_present_the_session_issuer() {
+    use flek_core::api::ClientProfile;
+    use wiremock::Request;
+
+    const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 27_0_1) AppleWebKit/537.36 (KHTML, like Gecko) Slack/4.51.180 Chrome/150.0.7871.114 Electron/43.1.1 Safari/537.36 AppleSilicon Sonic Slack_SSB/4.51.180";
+    let server = MockServer::start().await;
+    Mock::given(path("/auth.test"))
+        .and(|req: &Request| {
+            req.headers.get("user-agent").and_then(|v| v.to_str().ok()) == Some(UA)
+        })
+        .and(header("origin", "https://app.slack.com"))
+        .and(header("sec-fetch-site", "same-site"))
+        .and(header("sec-fetch-mode", "cors"))
+        .and(header("sec-ch-ua-platform", "\"macOS\""))
+        .and(|req: &Request| {
+            req.headers.get("sec-ch-ua").and_then(|v| v.to_str().ok())
+                == Some(r#""Not;A=Brand";v="8", "Chromium";v="150""#)
+        })
+        .respond_with(auth_ok())
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = Client::with_profile(
+        Secret::new(TOKEN),
+        Secret::new(COOKIE),
+        &server.uri(),
+        ClientProfile::from_user_agent(UA),
+    )
+    .unwrap();
+    client.auth_test().await.unwrap();
+}

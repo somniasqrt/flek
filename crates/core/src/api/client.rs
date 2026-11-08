@@ -43,7 +43,16 @@ impl Client {
 
     /// Same as [`Client::new`] with another API root (tests point it at a mock server).
     pub fn with_base_url(token: Secret, cookie: Secret, base_url: &str) -> Result<Self> {
-        let profile = ClientProfile::detect();
+        Self::with_profile(token, cookie, base_url, ClientProfile::detect())
+    }
+
+    /// A client presenting `profile` (the session issuer's identity).
+    pub fn with_profile(
+        token: Secret,
+        cookie: Secret,
+        base_url: &str,
+        profile: ClientProfile,
+    ) -> Result<Self> {
         let http = reqwest::Client::builder()
             .default_headers(auth_headers(&token, &cookie, &profile)?)
             .timeout(Duration::from_secs(30))
@@ -68,6 +77,10 @@ impl Client {
         ]
     }
 
+    pub fn profile(&self) -> &ClientProfile {
+        &self.profile
+    }
+
     /// No waiting between pages (tests against a mock server).
     pub fn without_pacing(mut self) -> Self {
         self.pacing = false;
@@ -88,7 +101,11 @@ impl Client {
 
         let mut attempt = 0;
         loop {
-            let resp = self.http.post(&url).form(&form).send().await?;
+            let mut req = self.http.post(&url).form(&form);
+            for (name, value) in self.profile.api_headers() {
+                req = req.header(name, value);
+            }
+            let resp = req.send().await?;
             let status = resp.status();
 
             if status == StatusCode::TOO_MANY_REQUESTS {
@@ -237,6 +254,13 @@ fn auth_headers(token: &Secret, cookie: &Secret, profile: &ClientProfile) -> Res
         USER_AGENT,
         HeaderValue::from_str(&profile.user_agent).map_err(|_| invalid("user agent"))?,
     );
+    // Chromium sends its client hints on every request, file downloads too.
+    for (name, value) in profile.hint_headers() {
+        headers.insert(
+            name,
+            HeaderValue::from_str(&value).map_err(|_| invalid("client hint"))?,
+        );
+    }
     Ok(headers)
 }
 

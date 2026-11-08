@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+use super::SessionOrigin;
 use crate::{Error, Result, Secret};
 
 const SERVICE: &str = "flek";
@@ -21,6 +22,9 @@ pub struct Credentials {
     pub user_id: String,
     pub token: Secret,
     pub cookie: Secret,
+    /// The client that issued the session (ADR 0001); `None` for sessions
+    /// stored before origins were recorded.
+    pub origin: Option<SessionOrigin>,
 }
 
 /// Minimal key/value secret storage, so tests can run without a keychain.
@@ -105,6 +109,8 @@ struct Stored {
     user_id: String,
     token: String,
     cookie: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<SessionOrigin>,
 }
 
 /// save / load / delete / list of [`Credentials`].
@@ -130,6 +136,7 @@ impl CredentialStore {
             user_id: creds.user_id.clone(),
             token: creds.token.expose().to_owned(),
             cookie: creds.cookie.expose().to_owned(),
+            origin: creds.origin.clone(),
         };
         let json = Secret::new(serde_json::to_string(&stored)?);
         stored.token.zeroize();
@@ -156,6 +163,7 @@ impl CredentialStore {
             user_id: stored.user_id,
             token: Secret::new(stored.token),
             cookie: Secret::new(stored.cookie),
+            origin: stored.origin,
         }))
     }
 
