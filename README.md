@@ -18,8 +18,8 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 
 | Status | Feature |
 |---|---|
-| planned | Zero-click login: import session from the installed Slack desktop app (macOS Keychain prompt once) |
-| planned | Credentials stored only in macOS Keychain |
+| done (M0) | Zero-click login: import session from the installed Slack desktop app (macOS Keychain prompt once) |
+| done (M0) | Credentials stored only in macOS Keychain |
 | planned | Backfill of all available history into SQLite |
 | planned | Live updates over websocket |
 | planned | Channels, DMs, threads, reactions, images, files |
@@ -56,6 +56,8 @@ Prerequisites: Rust stable, Node 20+, Slack desktop app logged in.
 
 ```bash
 cargo run -p flek-cli -- whoami                 # import session, show team/user
+cargo run -p flek-cli -- auth list              # teams stored in Keychain
+cargo run -p flek-cli -- auth logout            # remove stored session
 cargo run -p flek-cli -- sync                   # backfill + catch up into local DB
 cargo run -p flek-cli -- search "grades sheet"  # local full-text search
 cargo run -p flek-cli -- import <path>          # import an existing JSON archive
