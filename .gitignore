@@ -1,0 +1,15 @@
+# Owner's local working docs
+AGENTS.md
+ROADMAP.md
+
+# Build
+target/
+node_modules/
+
+# Local data and secrets
+*.db
+*.db-*
+.env*
+
+# OS
+.DS_Store
