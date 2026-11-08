@@ -145,3 +145,32 @@ fn cache_paths_are_sanitized() {
     assert_eq!(files::cache_path(root, "F1", Some("")), root.join("F1/F1"));
     assert_eq!(files::cache_path(root, "F1", None), root.join("F1/F1"));
 }
+
+#[tokio::test]
+async fn download_retries_after_429() {
+    let server = MockServer::start().await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    Mock::given(path("/f/a.txt"))
+        .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "0"))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/f/a.txt"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw("ok", "text/plain"))
+        .with_priority(2)
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("a.txt");
+    client
+        .download(&format!("{}/f/a.txt", server.uri()), &dest, false)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(dest).unwrap(), "ok");
+}

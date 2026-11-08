@@ -23,8 +23,9 @@ use crate::store::Store;
 use crate::sync::SyncOptions;
 use crate::Result;
 
-/// ~1 history request per second, as AGENTS.md asks.
-pub const HISTORY_INTERVAL: Duration = Duration::from_secs(1);
+/// `conversations.history` / `.replies` are Tier 3 (~50 requests/minute):
+/// one request every 1.2 s never goes above it, bursts included.
+pub const HISTORY_INTERVAL: Duration = Duration::from_millis(1200);
 
 /// Spaces out requests: [`RateLimiter::wait`] returns no sooner than
 /// `interval` after the previous call returned.

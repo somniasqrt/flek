@@ -1,5 +1,7 @@
 //! Cursor pagination shared by list methods.
 
+use std::time::Duration;
+
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -12,6 +14,15 @@ const PAGE_SIZE: &str = "200";
 struct Meta {
     #[serde(default)]
     next_cursor: String,
+}
+
+/// Spacing between pages so a long listing stays inside the method's tier:
+/// Tier 2 (`users.list`, ~20/min) → 3 s, Tier 3 (~50/min) → 1.2 s.
+fn page_interval(method: &str) -> Duration {
+    match method {
+        "users.list" => Duration::from_secs(3),
+        _ => Duration::from_millis(1200),
+    }
 }
 
 impl Client {
@@ -45,6 +56,9 @@ impl Client {
                 return Ok(items);
             }
             tracing::debug!(method, fetched = items.len(), "next page");
+            if self.pacing {
+                tokio::time::sleep(page_interval(method)).await;
+            }
             cursor = next;
         }
     }

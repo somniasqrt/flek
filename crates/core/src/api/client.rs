@@ -22,6 +22,8 @@ pub struct Client {
     base_url: String,
     token: Secret,
     cookie: Secret,
+    /// Wait between pages of list methods to stay inside their tier.
+    pub(crate) pacing: bool,
 }
 
 impl std::fmt::Debug for Client {
@@ -50,7 +52,14 @@ impl Client {
             base_url: base_url.trim_end_matches('/').to_owned(),
             token,
             cookie,
+            pacing: true,
         })
+    }
+
+    /// No waiting between pages (tests against a mock server).
+    pub fn without_pacing(mut self) -> Self {
+        self.pacing = false;
+        self
     }
 
     /// Calls `method` with form params and deserializes the successful body.
@@ -144,12 +153,26 @@ impl Client {
             )));
         }
 
-        let mut resp = self
-            .http
-            .get(parsed)
-            .timeout(Duration::from_secs(600))
-            .send()
-            .await?;
+        let mut attempt = 0;
+        let mut resp = loop {
+            let resp = self
+                .http
+                .get(parsed.clone())
+                .timeout(Duration::from_secs(600))
+                .send()
+                .await?;
+            if resp.status() != StatusCode::TOO_MANY_REQUESTS || attempt >= MAX_RETRIES {
+                break resp;
+            }
+            attempt += 1;
+            let wait = retry_after(resp.headers());
+            tracing::warn!(
+                wait_secs = wait.as_secs(),
+                attempt,
+                "file download rate limited, retrying"
+            );
+            tokio::time::sleep(wait).await;
+        };
         if !resp.status().is_success() {
             return Err(Error::HttpStatus(resp.status().as_u16()));
         }
