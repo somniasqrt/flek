@@ -177,19 +177,16 @@ pub struct ConversationRow {
     /// Top-level messages from others after Slack's read marker; `None`
     /// when the marker is unknown.
     pub unread: Option<i64>,
+    /// Newest stored message, for ordering by activity.
+    pub latest_ts: Option<String>,
 }
 
 /// Conversations of a team: channels first, then group DMs and DMs, by label.
+/// Counts come from stored counters (migration 0007), never from `COUNT(*)`.
 pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
-                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = conversations.id AND m.deleted = 0),
-                CASE WHEN last_read IS NULL THEN NULL ELSE (
-                    SELECT COUNT(*) FROM messages m
-                    WHERE m.conversation_id = conversations.id AND m.deleted = 0 AND m.ts > last_read
-                      AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
-                      AND m.user_id IS NOT (SELECT self_user_id FROM teams WHERE teams.id = conversations.team_id)
-                ) END
+                message_count, unread_count, latest_ts
          FROM conversations
          WHERE team_id = ?1
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
@@ -205,6 +202,7 @@ pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<Conver
                 topic: r.get(4)?,
                 messages: r.get(5)?,
                 unread: r.get(6)?,
+                latest_ts: r.get(7)?,
             })
         })?
         .collect::<Result<_, _>>()?;

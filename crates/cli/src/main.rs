@@ -348,7 +348,7 @@ async fn sync(
                     conversation_id,
                     ts,
                 } => {
-                    if let Ok(Some(line)) = db.with_conn(|c| live_line(c, &conversation_id, &ts)) {
+                    if let Ok(Some(line)) = db.with_read(|c| live_line(c, &conversation_id, &ts)) {
                         say(&bar, line);
                     }
                 }
@@ -449,7 +449,7 @@ fn search(
     } else {
         ("", "")
     };
-    let hits = db.with_conn(|c| search::search(c, &team, &q, sort, limit, markers))?;
+    let hits = db.with_read(|c| search::search(c, &team, &q, sort, limit, markers))?;
     if g.json {
         println!("{}", serde_json::to_string_pretty(&hits)?);
         return Ok(());
@@ -531,11 +531,11 @@ fn history(
     let team = default_team(creds, g)?;
     let db = open_db(g)?;
     let conv = db
-        .with_conn(|c| directory::find_conversation(c, &team, query))?
+        .with_read(|c| directory::find_conversation(c, &team, query))?
         .with_context(|| format!("no conversation matches {query:?}; try `flek channels`"))?;
     let rows = match thread {
-        Some(ts) => db.with_conn(|c| messages::thread(c, &conv.id, ts))?,
-        None => db.with_conn(|c| messages::recent(c, &conv.id, limit))?,
+        Some(ts) => db.with_read(|c| messages::thread(c, &conv.id, ts))?,
+        None => db.with_read(|c| messages::recent(c, &conv.id, limit))?,
     };
     if g.json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
@@ -599,7 +599,7 @@ fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
     };
     let db = open_db(g)?;
     let rows: Vec<_> = db
-        .with_conn(|c| flek_core::store::directory::list_conversations(c, &team))?
+        .with_read(|c| flek_core::store::directory::list_conversations(c, &team))?
         .into_iter()
         .filter(|r| archived || !r.is_archived)
         .collect();

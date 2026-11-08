@@ -10,9 +10,19 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use crate::{Error, Result};
+
+fn open_reader(path: &Path) -> Result<Connection> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.pragma_update(None, "query_only", true)?;
+    Ok(conn)
+}
 
 /// `~/Library/Application Support/flek/flek.db` on macOS.
 pub fn default_path() -> Result<PathBuf> {
@@ -20,12 +30,20 @@ pub fn default_path() -> Result<PathBuf> {
     Ok(dir.join("flek").join("flek.db"))
 }
 
-/// Shared handle to one connection. Blocking work goes through
-/// [`Store::call`], which runs it on tokio's blocking pool.
+/// Idle read-only connections kept around for reuse.
+const MAX_IDLE_READERS: usize = 4;
+
+/// Shared handle to the database: one writer connection behind a mutex, plus
+/// read-only connections for readers (UI, CLI), so reads never queue behind a
+/// long sync transaction. WAL lets them see the last committed state while
+/// the writer works. Blocking work goes through [`Store::call`] /
+/// [`Store::read`], which run it on tokio's blocking pool.
 #[derive(Clone)]
 pub struct Store {
     conn: Arc<Mutex<Connection>>,
     path: Option<PathBuf>,
+    /// `None` for in-memory databases: reads share the writer.
+    readers: Option<Arc<Mutex<Vec<Connection>>>>,
 }
 
 impl Store {
@@ -63,6 +81,7 @@ impl Store {
         conn.pragma_update(None, "foreign_keys", true)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
+            readers: path.as_ref().map(|_| Arc::default()),
             path,
         })
     }
@@ -96,6 +115,41 @@ impl Store {
             .lock()
             .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
         f(&mut guard)
+    }
+
+    /// Runs a read-only `f` on a reader connection on the blocking pool.
+    pub async fn read<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(&Connection) -> Result<R> + Send + 'static,
+        R: Send + 'static,
+    {
+        let store = self.clone();
+        tokio::task::spawn_blocking(move || store.with_read(f))
+            .await
+            .map_err(|e| Error::Store(format!("database task failed: {e}")))?
+    }
+
+    /// Synchronous [`Store::read`]. Sees committed data only; never waits for
+    /// the writer.
+    pub fn with_read<R>(&self, f: impl FnOnce(&Connection) -> Result<R>) -> Result<R> {
+        let (Some(readers), Some(path)) = (&self.readers, &self.path) else {
+            return self.with_conn(|c| f(c));
+        };
+        let idle = readers
+            .lock()
+            .map_err(|_| Error::Store("reader pool poisoned".into()))?
+            .pop();
+        let conn = match idle {
+            Some(c) => c,
+            None => open_reader(path)?,
+        };
+        let out = f(&conn);
+        if let Ok(mut pool) = readers.lock() {
+            if pool.len() < MAX_IDLE_READERS {
+                pool.push(conn);
+            }
+        }
+        out
     }
 
     /// Schema version currently applied.

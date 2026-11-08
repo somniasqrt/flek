@@ -123,3 +123,28 @@ fn refuses_newer_schema() {
         .unwrap();
     assert!(migrations::migrate(&mut conn).is_err());
 }
+
+#[test]
+fn reads_do_not_wait_for_the_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open(&dir.path().join("flek.db")).unwrap();
+    let count = |c: &rusqlite::Connection| -> flek_core::Result<i64> {
+        Ok(c.query_row("SELECT COUNT(*) FROM teams", [], |r| r.get(0))?)
+    };
+    store
+        .with_conn(|c| {
+            // The writer is locked and mid-transaction; a reader still answers
+            // with the last committed state instead of deadlocking.
+            let tx = c.transaction()?;
+            tx.execute("INSERT INTO teams (id, name) VALUES ('T1', 'Team')", [])?;
+            assert_eq!(store.with_read(count)?, 0);
+            tx.commit()?;
+            assert_eq!(store.with_read(count)?, 1);
+            Ok(())
+        })
+        .unwrap();
+    let err = store
+        .with_read(|c| Ok(c.execute("DELETE FROM teams", [])?))
+        .unwrap_err();
+    assert!(err.to_string().contains("readonly"), "{err}");
+}
