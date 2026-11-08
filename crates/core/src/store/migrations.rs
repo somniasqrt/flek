@@ -9,6 +9,7 @@ use crate::Result;
 const MIGRATIONS: &[(u32, &str)] = &[
     (1, include_str!("migrations/0001_init.sql")),
     (2, include_str!("migrations/0002_conversation_label.sql")),
+    (3, include_str!("migrations/0003_threads.sql")),
 ];
 
 /// Latest schema version this build knows.

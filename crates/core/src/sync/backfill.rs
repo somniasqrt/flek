@@ -119,7 +119,7 @@ pub async fn backfill_conversation(
     Ok(stats)
 }
 
-async fn save_page(
+pub(crate) async fn save_page(
     store: &Store,
     conversation_id: &str,
     page: &[Message],
@@ -156,6 +156,7 @@ fn to_row(m: &Message) -> MessageRow {
         text: m.text.clone(),
         blocks_json: m.blocks.as_ref().map(|b| b.to_string()),
         reply_count: m.reply_count,
+        latest_reply: m.latest_reply.clone(),
         edited_ts: m.edited.as_ref().and_then(|e| e.ts.clone()),
         hidden_by_limit: m.is_hidden_by_limit(),
         raw_json: m.raw.to_string(),

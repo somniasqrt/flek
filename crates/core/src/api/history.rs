@@ -35,6 +35,9 @@ pub struct Message {
     pub files: Vec<Value>,
     #[serde(default)]
     pub reply_count: i64,
+    /// For a thread root: ts of the newest reply.
+    #[serde(default)]
+    pub latest_reply: Option<String>,
     #[serde(default)]
     pub edited: Option<Edited>,
     #[serde(skip)]
@@ -87,48 +90,71 @@ impl Client {
         channel: &str,
         q: HistoryQuery<'_>,
     ) -> Result<HistoryPage> {
-        #[derive(Deserialize)]
-        struct Raw {
-            #[serde(default)]
-            messages: Vec<Value>,
-            #[serde(default)]
-            has_more: bool,
-            #[serde(default)]
-            response_metadata: Option<Meta>,
-        }
-        #[derive(Deserialize)]
-        struct Meta {
-            #[serde(default)]
-            next_cursor: String,
-        }
-
         let mut params = vec![("channel", channel), ("limit", PAGE_SIZE)];
-        for (k, v) in [
-            ("latest", q.latest),
-            ("oldest", q.oldest),
-            ("cursor", q.cursor),
-        ] {
-            if let Some(v) = v {
-                params.push((k, v));
-            }
-        }
-        let raw: Raw = self.call("conversations.history", &params).await?;
-        let messages = raw
-            .messages
-            .into_iter()
-            .map(|v| {
-                let mut m: Message = serde_json::from_value(v.clone())?;
-                m.raw = v;
-                Ok(m)
-            })
-            .collect::<Result<_>>()?;
-        Ok(HistoryPage {
-            messages,
-            has_more: raw.has_more,
-            next_cursor: raw
-                .response_metadata
-                .map(|m| m.next_cursor)
-                .filter(|c| !c.is_empty()),
-        })
+        push_some(
+            &mut params,
+            &[
+                ("latest", q.latest),
+                ("oldest", q.oldest),
+                ("cursor", q.cursor),
+            ],
+        );
+        parse_page(self.call("conversations.history", &params).await?)
     }
+
+    /// One page of a thread: the root first, then replies oldest first.
+    pub async fn conversations_replies(
+        &self,
+        channel: &str,
+        thread_ts: &str,
+        cursor: Option<&str>,
+    ) -> Result<HistoryPage> {
+        let mut params = vec![
+            ("channel", channel),
+            ("ts", thread_ts),
+            ("limit", PAGE_SIZE),
+        ];
+        push_some(&mut params, &[("cursor", cursor)]);
+        parse_page(self.call("conversations.replies", &params).await?)
+    }
+}
+
+fn push_some<'a>(params: &mut Vec<(&'a str, &'a str)>, optional: &[(&'a str, Option<&'a str>)]) {
+    params.extend(optional.iter().filter_map(|&(k, v)| v.map(|v| (k, v))));
+}
+
+fn parse_page(raw: Value) -> Result<HistoryPage> {
+    #[derive(Deserialize)]
+    struct Raw {
+        #[serde(default)]
+        messages: Vec<Value>,
+        #[serde(default)]
+        has_more: bool,
+        #[serde(default)]
+        response_metadata: Option<Meta>,
+    }
+    #[derive(Deserialize)]
+    struct Meta {
+        #[serde(default)]
+        next_cursor: String,
+    }
+
+    let raw: Raw = serde_json::from_value(raw)?;
+    let messages = raw
+        .messages
+        .into_iter()
+        .map(|v| {
+            let mut m: Message = serde_json::from_value(v.clone())?;
+            m.raw = v;
+            Ok(m)
+        })
+        .collect::<Result<_>>()?;
+    Ok(HistoryPage {
+        messages,
+        has_more: raw.has_more,
+        next_cursor: raw
+            .response_metadata
+            .map(|m| m.next_cursor)
+            .filter(|c| !c.is_empty()),
+    })
 }

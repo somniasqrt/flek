@@ -56,6 +56,9 @@ enum Command {
         /// How many messages.
         #[arg(long, default_value_t = 30)]
         limit: usize,
+        /// Show one thread (root ts, as printed next to "replies").
+        #[arg(long, value_name = "TS")]
+        thread: Option<String>,
     },
     /// List conversations from the local database.
     Channels {
@@ -90,7 +93,11 @@ async fn main() -> Result<()> {
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
         Command::Sync { channel } => sync(&store, g, channel.as_deref()).await,
-        Command::History { channel, limit } => history(&store, g, &channel, limit),
+        Command::History {
+            channel,
+            limit,
+            thread,
+        } => history(&store, g, &channel, limit, thread.as_deref()),
         Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
@@ -155,6 +162,7 @@ fn db(g: &Global) -> Result<()> {
 async fn sync(creds: &CredentialStore, g: &Global, only: Option<&str>) -> Result<()> {
     use flek_core::store::directory;
     use flek_core::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
+    use flek_core::sync::threads::sync_threads;
 
     let session = auth::resolve_session(creds, g.team.as_deref()).await?;
     let db = open_db(g)?;
@@ -180,15 +188,23 @@ async fn sync(creds: &CredentialStore, g: &Global, only: Option<&str>) -> Result
     let (mut total, mut failed) = (0usize, 0usize);
     let n = convs.len();
     for (i, conv) in convs.iter().enumerate() {
-        match backfill_conversation(&client, &db, &mut limiter, &conv.id).await {
-            Ok(stats) => {
-                total += stats.messages;
-                if stats.messages > 0 {
+        let result = async {
+            let b = backfill_conversation(&client, &db, &mut limiter, &conv.id).await?;
+            let t = sync_threads(&client, &db, &mut limiter, &conv.id).await?;
+            Ok::<_, flek_core::Error>((b, t))
+        }
+        .await;
+        match result {
+            Ok((b, t)) => {
+                total += b.messages + t.replies;
+                if b.messages + t.replies > 0 {
                     eprintln!(
-                        "[{}/{n}] {}: +{} messages",
+                        "[{}/{n}] {}: +{} messages, {} threads (+{} replies)",
                         i + 1,
                         conv.label,
-                        stats.messages
+                        b.messages,
+                        t.threads,
+                        t.replies
                     );
                 }
             }
@@ -220,7 +236,13 @@ fn default_team(creds: &CredentialStore, g: &Global) -> Result<String> {
     }
 }
 
-fn history(creds: &CredentialStore, g: &Global, query: &str, limit: usize) -> Result<()> {
+fn history(
+    creds: &CredentialStore,
+    g: &Global,
+    query: &str,
+    limit: usize,
+    thread: Option<&str>,
+) -> Result<()> {
     use flek_core::store::{directory, messages};
 
     let team = default_team(creds, g)?;
@@ -228,7 +250,10 @@ fn history(creds: &CredentialStore, g: &Global, query: &str, limit: usize) -> Re
     let conv = db
         .with_conn(|c| directory::find_conversation(c, &team, query))?
         .with_context(|| format!("no conversation matches {query:?}; try `flek channels`"))?;
-    let rows = db.with_conn(|c| messages::recent(c, &conv.id, limit))?;
+    let rows = match thread {
+        Some(ts) => db.with_conn(|c| messages::thread(c, &conv.id, ts))?,
+        None => db.with_conn(|c| messages::recent(c, &conv.id, limit))?,
+    };
     if g.json {
         println!("{}", serde_json::to_string_pretty(&rows)?);
         return Ok(());
@@ -250,8 +275,8 @@ fn history(creds: &CredentialStore, g: &Global, query: &str, limit: usize) -> Re
         if r.edited {
             extra.push_str(" (edited)");
         }
-        if r.reply_count > 0 {
-            extra.push_str(&format!(" [{} replies]", r.reply_count));
+        if r.reply_count > 0 && thread.is_none() {
+            extra.push_str(&format!(" [{} replies: --thread {}]", r.reply_count, r.ts));
         }
         println!("{time} {author}: {text}{extra}");
     }

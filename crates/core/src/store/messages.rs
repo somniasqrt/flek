@@ -14,6 +14,7 @@ pub struct MessageRow {
     pub text: String,
     pub blocks_json: Option<String>,
     pub reply_count: i64,
+    pub latest_reply: Option<String>,
     pub edited_ts: Option<String>,
     pub hidden_by_limit: bool,
     pub raw_json: String,
@@ -34,12 +35,13 @@ pub fn upsert_messages(
         let mut stmt = tx.prepare(
             "INSERT INTO messages
                 (conversation_id, ts, thread_ts, user_id, subtype, text, blocks_json,
-                 reply_count, edited_ts, hidden_by_limit, raw_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                 reply_count, latest_reply, edited_ts, hidden_by_limit, raw_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(conversation_id, ts) DO UPDATE SET
                 thread_ts = excluded.thread_ts, user_id = excluded.user_id,
                 subtype = excluded.subtype, text = excluded.text,
                 blocks_json = excluded.blocks_json, reply_count = excluded.reply_count,
+                latest_reply = excluded.latest_reply,
                 edited_ts = excluded.edited_ts, hidden_by_limit = excluded.hidden_by_limit,
                 raw_json = excluded.raw_json
              WHERE excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
@@ -54,6 +56,7 @@ pub fn upsert_messages(
                 r.text,
                 r.blocks_json,
                 r.reply_count,
+                r.latest_reply,
                 r.edited_ts,
                 r.hidden_by_limit,
                 r.raw_json
@@ -104,6 +107,40 @@ pub fn set_sync_state(conn: &Connection, conversation_id: &str, s: &SyncState) -
     Ok(())
 }
 
+/// Thread roots of a conversation whose replies are missing or stale:
+/// never synced, or the root's `latest_reply` is newer than what was fetched.
+/// Roots hidden by the Free limit are skipped (their replies are hidden too).
+pub fn stale_threads(conn: &Connection, conversation_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT m.ts FROM messages m
+         LEFT JOIN thread_sync t ON t.conversation_id = m.conversation_id AND t.thread_ts = m.ts
+         WHERE m.conversation_id = ?1 AND m.reply_count > 0 AND m.hidden_by_limit = 0
+           AND (t.latest_reply IS NULL OR t.latest_reply < COALESCE(m.latest_reply, ''))
+         ORDER BY m.ts DESC",
+    )?;
+    let rows = stmt
+        .query_map([conversation_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+/// Records that a thread was fetched up to `latest_reply`.
+pub fn mark_thread_synced(
+    conn: &Connection,
+    conversation_id: &str,
+    thread_ts: &str,
+    latest_reply: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO thread_sync (conversation_id, thread_ts, latest_reply, synced_at)
+         VALUES (?1, ?2, ?3, unixepoch())
+         ON CONFLICT(conversation_id, thread_ts) DO UPDATE SET
+            latest_reply = excluded.latest_reply, synced_at = excluded.synced_at",
+        params![conversation_id, thread_ts, latest_reply],
+    )?;
+    Ok(())
+}
+
 /// A message prepared for display.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HistoryRow {
@@ -117,20 +154,47 @@ pub struct HistoryRow {
     pub hidden_by_limit: bool,
 }
 
-/// The latest `limit` top-level messages (thread replies excluded), oldest first.
+const DISPLAY_COLUMNS: &str =
+    "m.ts, m.user_id, COALESCE(u.display_name, u.name), COALESCE(m.text, ''),
+    m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit
+    FROM messages m LEFT JOIN users u ON u.id = m.user_id";
+
+/// The latest `limit` top-level messages (thread replies excluded, broadcasts
+/// kept), oldest first.
 pub fn recent(conn: &Connection, conversation_id: &str, limit: usize) -> Result<Vec<HistoryRow>> {
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT * FROM (
-            SELECT m.ts, m.user_id, COALESCE(u.display_name, u.name), COALESCE(m.text, ''),
-                   m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit
-            FROM messages m LEFT JOIN users u ON u.id = m.user_id
+            SELECT {DISPLAY_COLUMNS}
             WHERE m.conversation_id = ?1 AND m.deleted = 0
               AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
             ORDER BY m.ts DESC LIMIT ?2
-         ) ORDER BY ts",
-    )?;
+         ) ORDER BY ts"
+    );
+    query_display(conn, &sql, params![conversation_id, limit as i64])
+}
+
+/// A thread: root and all replies, oldest first.
+pub fn thread(
+    conn: &Connection,
+    conversation_id: &str,
+    thread_ts: &str,
+) -> Result<Vec<HistoryRow>> {
+    let sql = format!(
+        "SELECT {DISPLAY_COLUMNS}
+         WHERE m.conversation_id = ?1 AND m.deleted = 0 AND (m.ts = ?2 OR m.thread_ts = ?2)
+         ORDER BY m.ts"
+    );
+    query_display(conn, &sql, params![conversation_id, thread_ts])
+}
+
+fn query_display(
+    conn: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> Result<Vec<HistoryRow>> {
+    let mut stmt = conn.prepare(sql)?;
     let rows = stmt
-        .query_map(params![conversation_id, limit as i64], |r| {
+        .query_map(params, |r| {
             Ok(HistoryRow {
                 ts: r.get(0)?,
                 user_id: r.get(1)?,
