@@ -19,7 +19,7 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 | done (M0) | Zero-click login: import session from the installed Slack desktop app (macOS Keychain prompt once) |
 | done (M0) | Credentials stored only in macOS Keychain |
 | done (M1) | Backfill of all available history into SQLite, resumable, with threads, reactions and files |
-| planned | Live updates over websocket |
+| done (M2, CLI) | Live updates over websocket, survives network drops and sleep |
 | planned | Channels, DMs, threads, reactions, images, files |
 | planned | Sending messages, replies, reactions, mark as read |
 | done (M1, CLI) | Local full-text search including hidden (>90 days) messages |
@@ -63,6 +63,7 @@ cargo run -p flek-cli -- auth list              # teams stored in Keychain
 cargo run -p flek-cli -- auth logout            # remove stored session
 ```
 
+`flek sync --follow` stays connected and prints new messages live.
 `flek sync` is resumable (Ctrl+C is safe) and re-reads the last 7 days for
 edits, reactions and deletions (`--refresh-days`); `--full` walks everything
 again, `--no-files` skips downloads.
