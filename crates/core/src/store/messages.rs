@@ -16,8 +16,12 @@ pub struct MessageRow {
     pub reply_count: i64,
     pub latest_reply: Option<String>,
     pub edited_ts: Option<String>,
+    /// Deleted in Slack (tombstone, live event, or gone from a refreshed window).
+    pub deleted: bool,
     pub hidden_by_limit: bool,
     pub raw_json: String,
+    /// `(emoji name, user id)`; replaces the stored set when the row is written.
+    pub reactions: Vec<(String, String)>,
 }
 
 /// Inserts or updates messages of one conversation in a transaction.
@@ -35,19 +39,24 @@ pub fn upsert_messages(
         let mut stmt = tx.prepare(
             "INSERT INTO messages
                 (conversation_id, ts, thread_ts, user_id, subtype, text, blocks_json,
-                 reply_count, latest_reply, edited_ts, hidden_by_limit, raw_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 reply_count, latest_reply, edited_ts, deleted, hidden_by_limit, raw_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(conversation_id, ts) DO UPDATE SET
                 thread_ts = excluded.thread_ts, user_id = excluded.user_id,
                 subtype = excluded.subtype, text = excluded.text,
                 blocks_json = excluded.blocks_json, reply_count = excluded.reply_count,
                 latest_reply = excluded.latest_reply,
-                edited_ts = excluded.edited_ts, hidden_by_limit = excluded.hidden_by_limit,
+                edited_ts = excluded.edited_ts, deleted = excluded.deleted,
+                hidden_by_limit = excluded.hidden_by_limit,
                 raw_json = excluded.raw_json
              WHERE excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
         )?;
+        let mut clear_reactions =
+            tx.prepare("DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2")?;
+        let mut add_reaction =
+            tx.prepare("INSERT OR IGNORE INTO reactions VALUES (?1, ?2, ?3, ?4)")?;
         for r in rows {
-            stmt.execute(params![
+            let written = stmt.execute(params![
                 conversation_id,
                 r.ts,
                 r.thread_ts,
@@ -58,9 +67,18 @@ pub fn upsert_messages(
                 r.reply_count,
                 r.latest_reply,
                 r.edited_ts,
+                r.deleted,
                 r.hidden_by_limit,
                 r.raw_json
             ])?;
+            // Upsert skipped by the hidden rule → keep everything attached too.
+            if written == 0 {
+                continue;
+            }
+            clear_reactions.execute(params![conversation_id, r.ts])?;
+            for (name, user) in &r.reactions {
+                add_reaction.execute(params![conversation_id, r.ts, name, user])?;
+            }
         }
     }
     tx.commit()?;
@@ -141,6 +159,30 @@ pub fn mark_thread_synced(
     Ok(())
 }
 
+/// Marks messages deleted (live `message_deleted`, or missing from a refresh).
+pub fn mark_deleted(conn: &Connection, conversation_id: &str, ts: &[String]) -> Result<usize> {
+    let mut stmt = conn.prepare(
+        "UPDATE messages SET deleted = 1 WHERE conversation_id = ?1 AND ts = ?2 AND deleted = 0 AND hidden_by_limit = 0",
+    )?;
+    let mut n = 0;
+    for t in ts {
+        n += stmt.execute(params![conversation_id, t])?;
+    }
+    Ok(n)
+}
+
+/// Reactions of one message as `(name, count)`, most used first.
+pub fn reactions(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT name, COUNT(*) FROM reactions WHERE conversation_id = ?1 AND ts = ?2
+         GROUP BY name ORDER BY COUNT(*) DESC, name",
+    )?;
+    let rows = stmt
+        .query_map(params![conversation_id, ts], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// A message prepared for display.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HistoryRow {
@@ -152,11 +194,17 @@ pub struct HistoryRow {
     pub reply_count: i64,
     pub edited: bool,
     pub hidden_by_limit: bool,
+    /// `:name: count` pairs, most used first.
+    pub reactions: Option<String>,
 }
 
 const DISPLAY_COLUMNS: &str =
     "m.ts, m.user_id, COALESCE(u.display_name, u.name), COALESCE(m.text, ''),
-    m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit
+    m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit,
+    (SELECT group_concat(':' || name || ': ' || n, '  ') FROM (
+        SELECT name, COUNT(*) AS n FROM reactions r
+        WHERE r.conversation_id = m.conversation_id AND r.ts = m.ts
+        GROUP BY name ORDER BY n DESC, name))
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -204,6 +252,7 @@ fn query_display(
                 reply_count: r.get(5)?,
                 edited: r.get(6)?,
                 hidden_by_limit: r.get(7)?,
+                reactions: r.get(8)?,
             })
         })?
         .collect::<Result<_, _>>()?;

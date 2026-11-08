@@ -147,7 +147,7 @@ async fn save_state(store: &Store, conversation_id: &str, state: &SyncState) -> 
         .await
 }
 
-fn to_row(m: &Message) -> MessageRow {
+pub(crate) fn to_row(m: &Message) -> MessageRow {
     MessageRow {
         ts: m.ts.clone(),
         thread_ts: m.thread_ts.clone(),
@@ -158,7 +158,14 @@ fn to_row(m: &Message) -> MessageRow {
         reply_count: m.reply_count,
         latest_reply: m.latest_reply.clone(),
         edited_ts: m.edited.as_ref().and_then(|e| e.ts.clone()),
+        // A deleted thread root that still has replies stays as a tombstone.
+        deleted: m.subtype.as_deref() == Some("tombstone"),
         hidden_by_limit: m.is_hidden_by_limit(),
         raw_json: m.raw.to_string(),
+        reactions: m
+            .reactions
+            .iter()
+            .flat_map(|r| r.users.iter().map(move |u| (r.name.clone(), u.clone())))
+            .collect(),
     }
 }

@@ -14,6 +14,15 @@ pub struct Edited {
     pub ts: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Reaction {
+    pub name: String,
+    #[serde(default)]
+    pub users: Vec<String>,
+    #[serde(default)]
+    pub count: i64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Message {
     pub ts: String,
@@ -40,6 +49,8 @@ pub struct Message {
     pub latest_reply: Option<String>,
     #[serde(default)]
     pub edited: Option<Edited>,
+    #[serde(default)]
+    pub reactions: Vec<Reaction>,
     #[serde(skip)]
     pub raw: Value,
 }

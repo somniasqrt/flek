@@ -275,6 +275,9 @@ fn history(
         if r.edited {
             extra.push_str(" (edited)");
         }
+        if let Some(reactions) = &r.reactions {
+            extra.push_str(&format!("  {reactions}"));
+        }
         if r.reply_count > 0 && thread.is_none() {
             extra.push_str(&format!(" [{} replies: --thread {}]", r.reply_count, r.ts));
         }
