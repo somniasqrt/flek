@@ -39,7 +39,7 @@ fn msg(ts: &str, text: &str) -> Value {
 fn window(since: &str) -> SyncOptions {
     SyncOptions {
         refresh_since: Some(since.into()),
-        full: false,
+        ..Default::default()
     }
 }
 
@@ -197,8 +197,8 @@ async fn full_resync_walks_everything_again_without_loss() {
         .mount(&server)
         .await;
     let full = SyncOptions {
-        refresh_since: None,
         full: true,
+        ..Default::default()
     };
     let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &full)
         .await

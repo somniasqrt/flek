@@ -11,8 +11,12 @@ use crate::{Error, Result, Secret};
 
 pub const DEFAULT_BASE_URL: &str = "https://slack.com/api";
 
+/// The one client profile Flek presents, on HTTP and on the websocket alike:
+/// the Slack web client (Origin app.slack.com, where an xoxc + d session
+/// lives) in a current desktop Chrome. Keep the version reasonably fresh;
+/// a years-old browser stands out.
 const DESKTOP_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(120);
 

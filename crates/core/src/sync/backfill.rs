@@ -125,8 +125,17 @@ pub async fn backfill_conversation(
         state.complete = false;
     }
 
-    // 2. Backfill below oldest_ts.
-    while !state.complete {
+    // 2. Backfill below oldest_ts (on a first sync this is also where the
+    //    newest messages come from, so catch_up_only still takes one page).
+    let mut pages_left = if opts.catch_up_only && state.newest_ts.is_some() {
+        0
+    } else if opts.catch_up_only {
+        1
+    } else {
+        usize::MAX
+    };
+    while !state.complete && pages_left > 0 {
+        pages_left -= 1;
         limiter.wait().await;
         let page = client
             .conversations_history(

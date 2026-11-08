@@ -40,6 +40,27 @@ pub enum Change {
     /// Users or conversations changed.
     Directory,
     Connection(ConnectionState),
+    /// Background sync progress, for a "Syncing messages" bar.
+    Progress(Progress),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Progress {
+    /// Users and conversations.
+    Directory,
+    /// `done` of `total` conversations; `deep` is the background backfill pass.
+    Conversations {
+        done: usize,
+        total: usize,
+        current: String,
+        deep: bool,
+    },
+    Files {
+        done: usize,
+        total: usize,
+    },
+    /// A full pass finished.
+    Idle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

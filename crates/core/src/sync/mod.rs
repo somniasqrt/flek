@@ -2,6 +2,7 @@
 
 pub mod backfill;
 pub mod directory;
+pub mod engine;
 pub mod files;
 pub mod follow;
 pub mod import;
@@ -18,6 +19,9 @@ pub struct SyncOptions {
     pub refresh_since: Option<String>,
     /// Walk the whole history and every thread again, merging without loss.
     pub full: bool,
+    /// Only fetch what is newer than the stored history (no deep backfill);
+    /// the engine's first, fast pass.
+    pub catch_up_only: bool,
 }
 
 impl SyncOptions {
@@ -25,7 +29,7 @@ impl SyncOptions {
     pub fn refresh_days(days: u32) -> Self {
         Self {
             refresh_since: (days > 0).then(|| ts_days_ago(days)),
-            full: false,
+            ..Self::default()
         }
     }
 }

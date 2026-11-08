@@ -246,3 +246,18 @@ pub fn set_read_markers(conn: &mut Connection, markers: &[(String, Option<String
     tx.commit()?;
     Ok(())
 }
+
+/// `(id, label)` of a team's conversations, most recently active first
+/// (then never-synced ones), so fresh conversations are synced first.
+pub fn conversation_activity(conn: &Connection, team_id: &str) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT c.id, COALESCE(c.label, c.name, c.id) FROM conversations c
+         LEFT JOIN sync_state s ON s.conversation_id = c.id
+         WHERE c.team_id = ?1 AND c.is_member = 1
+         ORDER BY s.newest_ts IS NULL, s.newest_ts DESC, c.is_archived, lower(COALESCE(c.label, c.name, c.id))",
+    )?;
+    let rows = stmt
+        .query_map([team_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
