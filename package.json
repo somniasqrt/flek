@@ -4,7 +4,7 @@
   "workspaces": ["ui"],
   "scripts": {
     "tauri": "tauri",
-    "app": "tauri dev",
+    "app": "tauri dev --no-watch",
     "app:build": "tauri build"
   },
   "devDependencies": {
