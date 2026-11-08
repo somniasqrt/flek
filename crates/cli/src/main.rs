@@ -43,8 +43,20 @@ enum Command {
     Whoami,
     /// Open (create, migrate) the local database and show where it lives.
     Db,
-    /// Fetch from Slack into the local database (for now: users and conversations).
-    Sync,
+    /// Fetch users, conversations and message history into the local database.
+    Sync {
+        /// Only this conversation (name, #name or id).
+        #[arg(long)]
+        channel: Option<String>,
+    },
+    /// Show recent messages of a conversation from the local database.
+    History {
+        /// Conversation name, #name, person for a DM, or id.
+        channel: String,
+        /// How many messages.
+        #[arg(long, default_value_t = 30)]
+        limit: usize,
+    },
     /// List conversations from the local database.
     Channels {
         /// Include archived channels.
@@ -77,7 +89,8 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
-        Command::Sync => sync(&store, g).await,
+        Command::Sync { channel } => sync(&store, g, channel.as_deref()).await,
+        Command::History { channel, limit } => history(&store, g, &channel, limit),
         Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
@@ -139,20 +152,129 @@ fn db(g: &Global) -> Result<()> {
     Ok(())
 }
 
-async fn sync(creds: &CredentialStore, g: &Global) -> Result<()> {
+async fn sync(creds: &CredentialStore, g: &Global, only: Option<&str>) -> Result<()> {
+    use flek_core::store::directory;
+    use flek_core::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
+
     let session = auth::resolve_session(creds, g.team.as_deref()).await?;
     let db = open_db(g)?;
     let client = session.client()?;
-    let stats = flek_core::sync::directory::sync_directory(&client, &db, &session.identity).await?;
+    let me = &session.identity;
+
+    let dir = flek_core::sync::directory::sync_directory(&client, &db, me).await?;
+    eprintln!(
+        "{}: {} users, {} conversations",
+        me.team, dir.users, dir.conversations
+    );
+
+    let team = me.team_id.clone();
+    let mut convs = db.with_conn(|c| directory::list_conversations(c, &team))?;
+    if let Some(q) = only {
+        let found = db
+            .with_conn(|c| directory::find_conversation(c, &team, q))?
+            .with_context(|| format!("no conversation matches {q:?}"))?;
+        convs = vec![found];
+    }
+
+    let mut limiter = RateLimiter::new(HISTORY_INTERVAL);
+    let (mut total, mut failed) = (0usize, 0usize);
+    let n = convs.len();
+    for (i, conv) in convs.iter().enumerate() {
+        match backfill_conversation(&client, &db, &mut limiter, &conv.id).await {
+            Ok(stats) => {
+                total += stats.messages;
+                if stats.messages > 0 {
+                    eprintln!(
+                        "[{}/{n}] {}: +{} messages",
+                        i + 1,
+                        conv.label,
+                        stats.messages
+                    );
+                }
+            }
+            Err(e) if e.is_auth_error() => return Err(e.into()),
+            Err(e) => {
+                failed += 1;
+                eprintln!("[{}/{n}] {}: {e}", i + 1, conv.label);
+            }
+        }
+    }
+
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&stats)?);
+        let out = json!({ "users": dir.users, "conversations": dir.conversations, "new_messages": total, "failed": failed });
+        println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
-        println!(
-            "{}: {} users, {} conversations",
-            session.identity.team, stats.users, stats.conversations
-        );
+        println!("done: {total} new messages in {n} conversations, {failed} failed");
     }
     Ok(())
+}
+
+fn default_team(creds: &CredentialStore, g: &Global) -> Result<String> {
+    match &g.team {
+        Some(t) => Ok(t.clone()),
+        None => creds
+            .list()?
+            .into_iter()
+            .next()
+            .context("no stored team; run `flek auth import`"),
+    }
+}
+
+fn history(creds: &CredentialStore, g: &Global, query: &str, limit: usize) -> Result<()> {
+    use flek_core::store::{directory, messages};
+
+    let team = default_team(creds, g)?;
+    let db = open_db(g)?;
+    let conv = db
+        .with_conn(|c| directory::find_conversation(c, &team, query))?
+        .with_context(|| format!("no conversation matches {query:?}; try `flek channels`"))?;
+    let rows = db.with_conn(|c| messages::recent(c, &conv.id, limit))?;
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+    let mut last_day = String::new();
+    for r in rows {
+        let (day, time) = format_ts(&r.ts);
+        if day != last_day {
+            println!("── {day} ──");
+            last_day = day;
+        }
+        let author = r.author.or(r.user_id).unwrap_or_else(|| "?".into());
+        let text = if r.hidden_by_limit {
+            "[hidden by Slack Free limit]".to_owned()
+        } else {
+            r.text
+        };
+        let mut extra = String::new();
+        if r.edited {
+            extra.push_str(" (edited)");
+        }
+        if r.reply_count > 0 {
+            extra.push_str(&format!(" [{} replies]", r.reply_count));
+        }
+        println!("{time} {author}: {text}{extra}");
+    }
+    Ok(())
+}
+
+/// Slack ts → local ("2026-11-08", "14:03").
+fn format_ts(ts: &str) -> (String, String) {
+    let secs = ts
+        .split('.')
+        .next()
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(0);
+    match chrono::DateTime::from_timestamp(secs, 0) {
+        Some(t) => {
+            let t = t.with_timezone(&chrono::Local);
+            (
+                t.format("%Y-%m-%d").to_string(),
+                t.format("%H:%M").to_string(),
+            )
+        }
+        None => (String::new(), ts.to_owned()),
+    }
 }
 
 fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
@@ -185,7 +307,7 @@ fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
             _ => "@",
         };
         let archived = if r.is_archived { "  (archived)" } else { "" };
-        println!("{prefix} {}{archived}", r.label);
+        println!("{prefix} {}{archived}  {}", r.label, r.messages);
     }
     Ok(())
 }

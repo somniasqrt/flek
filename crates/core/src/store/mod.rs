@@ -1,6 +1,7 @@
 //! Local SQLite database: the single source of truth for the UI.
 
 pub mod directory;
+pub mod messages;
 pub mod migrations;
 
 use std::path::{Path, PathBuf};

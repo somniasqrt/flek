@@ -161,12 +161,15 @@ pub struct ConversationRow {
     pub label: String,
     pub is_archived: bool,
     pub topic: Option<String>,
+    pub messages: i64,
 }
 
 /// Conversations of a team: channels first, then group DMs and DMs, by label.
 pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
-        "SELECT id, kind, COALESCE(label, name, id), is_archived, topic FROM conversations
+        "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
+                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = conversations.id AND m.deleted = 0)
+         FROM conversations
          WHERE team_id = ?1
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
                   is_archived, lower(COALESCE(label, name, id))",
@@ -179,6 +182,7 @@ pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<Conver
                 label: r.get(2)?,
                 is_archived: r.get(3)?,
                 topic: r.get(4)?,
+                messages: r.get(5)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -194,4 +198,16 @@ pub fn user_label(conn: &Connection, user_id: &str) -> Result<Option<String>> {
             |r| r.get(0),
         )
         .optional()?)
+}
+
+/// Finds a conversation by id, name or label (`#general`, `general`, `Bob`).
+pub fn find_conversation(
+    conn: &Connection,
+    team_id: &str,
+    query: &str,
+) -> Result<Option<ConversationRow>> {
+    let q = query.trim_start_matches(['#', '@']);
+    Ok(list_conversations(conn, team_id)?
+        .into_iter()
+        .find(|r| r.id.eq_ignore_ascii_case(q) || r.label.eq_ignore_ascii_case(q)))
 }
