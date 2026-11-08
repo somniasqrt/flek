@@ -255,7 +255,8 @@ async fn empty_conversation_catches_up_later() {
 
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(body_string_contains("oldest=0000000000.000000"))
+        // No `oldest` at all: Slack rejects a zero ts with invalid_ts_oldest.
+        .and(|req: &wiremock::Request| !String::from_utf8_lossy(&req.body).contains("oldest"))
         .respond_with(page(&[msg("50.000000")], false))
         .expect(1)
         .mount(&server)

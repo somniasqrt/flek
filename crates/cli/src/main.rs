@@ -348,7 +348,7 @@ async fn sync(
         println!("{}", serde_json::to_string_pretty(&stats)?);
     } else {
         println!(
-            "done: {} new messages, {} deleted, {} conversations, {} failed, {} files downloaded",
+            "done: {} messages fetched, {} deleted, {} conversations, {} failed, {} files downloaded",
             stats.messages,
             stats.deleted,
             stats.conversations,

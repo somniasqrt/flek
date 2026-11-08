@@ -25,7 +25,8 @@ use crate::Result;
 
 /// `conversations.history` / `.replies` are Tier 3 (~50 requests/minute):
 /// one request every 1.2 s never goes above it, bursts included.
-/// Lower bound for catching up a conversation that has no messages yet.
+/// Internal marker: catch up a conversation that has no messages yet from
+/// its very start. Never sent to Slack (it answers `invalid_ts_oldest`).
 const EPOCH_TS: &str = "0000000000.000000";
 
 pub const HISTORY_INTERVAL: Duration = Duration::from_millis(1200);
@@ -95,7 +96,8 @@ pub async fn backfill_conversation(
                 .conversations_history(
                     conversation_id,
                     HistoryQuery {
-                        oldest: Some(&lower),
+                        // Slack rejects a zero ts; no lower bound means "from the start".
+                        oldest: (lower != EPOCH_TS).then_some(lower.as_str()),
                         cursor: cursor.as_deref(),
                         ..Default::default()
                     },
