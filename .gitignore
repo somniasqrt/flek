@@ -14,3 +14,7 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Frontend build and Tauri generated files
+ui/dist/
+crates/app/gen/
