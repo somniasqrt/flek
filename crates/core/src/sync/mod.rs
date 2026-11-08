@@ -3,6 +3,7 @@
 pub mod backfill;
 pub mod directory;
 pub mod files;
+pub mod follow;
 pub mod import;
 pub mod live;
 pub mod threads;
