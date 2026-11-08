@@ -9,6 +9,7 @@ import {
   type Progress,
   type Status,
 } from "./api";
+import { loadPeople } from "./people";
 import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
 import Timeline from "./Timeline";
@@ -58,7 +59,7 @@ export default function Workspace(props: { status: Ready }) {
   };
 
   onMount(async () => {
-    const unlisten = await onChange((c) => {
+    const unlisten = onChange((c) => {
       switch (c.type) {
         case "progress":
           setProgress(c.data);
@@ -68,6 +69,9 @@ export default function Workspace(props: { status: Ready }) {
           setConnection(c.data);
           break;
         case "directory":
+          refreshSoon();
+          loadPeople();
+          break;
         case "read_marker":
           refreshSoon();
           break;
@@ -86,11 +90,12 @@ export default function Workspace(props: { status: Ready }) {
       }
     });
     onCleanup(() => {
-      unlisten();
+      unlisten.then((f) => f());
       window.clearTimeout(refreshTimer);
     });
+    await unlisten;
     setProgress(await api.progress());
-    await loadConversations();
+    await Promise.all([loadConversations(), loadPeople()]);
   });
 
   const current = () => conversations.find((c) => c.id === selected()) ?? null;

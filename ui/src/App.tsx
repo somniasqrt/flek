@@ -8,8 +8,9 @@ export default function App() {
 
   onMount(async () => {
     // Listen first, then read: a status sent in between is not lost.
-    const unlisten = await onStatus(setStatus);
-    onCleanup(unlisten);
+    const unlisten = onStatus(setStatus);
+    onCleanup(() => unlisten.then((f) => f()));
+    await unlisten;
     setStatus(await api.status());
   });
 

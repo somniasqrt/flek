@@ -40,6 +40,20 @@ export type Conversation = {
   latest_ts: string | null;
 };
 
+export type FileRef = {
+  id: string;
+  name: string | null;
+  title: string | null;
+  mimetype: string | null;
+  filetype: string | null;
+  size: number | null;
+  local_path: string | null;
+  permalink: string | null;
+  hidden_by_limit: boolean;
+  width: number | null;
+  height: number | null;
+};
+
 export type Message = {
   ts: string;
   user_id: string | null;
@@ -51,6 +65,7 @@ export type Message = {
   hidden_by_limit: boolean;
   reactions: string | null;
   thread_ts: string | null;
+  files: FileRef[];
 };
 
 export const api = {
@@ -65,6 +80,9 @@ export const api = {
     invoke<Message[]>("thread", { conversationId, ts }),
   importDesktop: () => invoke<void>("import_desktop"),
   signIn: () => invoke<void>("sign_in"),
+  people: () => invoke<Record<string, string>>("people"),
+  openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
 };
 
 export const onStatus = (f: (s: Status) => void): Promise<UnlistenFn> =>
