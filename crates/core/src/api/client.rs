@@ -7,16 +7,11 @@ use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use super::ClientProfile;
 use crate::{Error, Result, Secret};
 
 pub const DEFAULT_BASE_URL: &str = "https://slack.com/api";
 
-/// The one client profile Flek presents, on HTTP and on the websocket alike:
-/// the Slack web client (Origin app.slack.com, where an xoxc + d session
-/// lives) in a current desktop Chrome. Keep the version reasonably fresh;
-/// a years-old browser stands out.
-const DESKTOP_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
-AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(120);
 
@@ -28,6 +23,7 @@ pub struct Client {
     cookie: Secret,
     /// Wait between pages of list methods to stay inside their tier.
     pub(crate) pacing: bool,
+    profile: ClientProfile,
 }
 
 impl std::fmt::Debug for Client {
@@ -47,8 +43,9 @@ impl Client {
 
     /// Same as [`Client::new`] with another API root (tests point it at a mock server).
     pub fn with_base_url(token: Secret, cookie: Secret, base_url: &str) -> Result<Self> {
+        let profile = ClientProfile::detect();
         let http = reqwest::Client::builder()
-            .default_headers(auth_headers(&token, &cookie)?)
+            .default_headers(auth_headers(&token, &cookie, &profile)?)
             .timeout(Duration::from_secs(30))
             .build()?;
         Ok(Self {
@@ -57,6 +54,7 @@ impl Client {
             token,
             cookie,
             pacing: true,
+            profile,
         })
     }
 
@@ -65,8 +63,8 @@ impl Client {
     pub(crate) fn ws_headers(&self) -> Vec<(&'static str, String)> {
         vec![
             ("cookie", format!("d={}", self.cookie.expose())),
-            ("user-agent", DESKTOP_USER_AGENT.to_owned()),
-            ("origin", "https://app.slack.com".to_owned()),
+            ("user-agent", self.profile.user_agent.clone()),
+            ("origin", self.profile.origin.clone()),
         ]
     }
 
@@ -219,7 +217,7 @@ impl Client {
     }
 }
 
-fn auth_headers(token: &Secret, cookie: &Secret) -> Result<HeaderMap> {
+fn auth_headers(token: &Secret, cookie: &Secret, profile: &ClientProfile) -> Result<HeaderMap> {
     let invalid = |what: &str| {
         Error::DesktopData(format!(
             "{what} contains characters not allowed in a header"
@@ -235,7 +233,10 @@ fn auth_headers(token: &Secret, cookie: &Secret) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
     headers.insert(AUTHORIZATION, bearer);
     headers.insert(COOKIE, cookie);
-    headers.insert(USER_AGENT, HeaderValue::from_static(DESKTOP_USER_AGENT));
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_str(&profile.user_agent).map_err(|_| invalid("user agent"))?,
+    );
     Ok(headers)
 }
 

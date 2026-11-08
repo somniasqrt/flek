@@ -6,6 +6,7 @@ mod conversations;
 mod history;
 mod internal;
 mod pagination;
+mod profile;
 mod rtm;
 mod users;
 
@@ -14,5 +15,6 @@ pub use client::{Client, DEFAULT_BASE_URL};
 pub use conversations::{Conversation, ConversationKind, TextValue};
 pub use history::{Edited, HistoryPage, HistoryQuery, Message, Reaction};
 pub use internal::ReadMarker;
+pub use profile::ClientProfile;
 pub use rtm::RtmConnect;
 pub use users::{Profile, User};
