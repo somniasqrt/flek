@@ -11,6 +11,9 @@ const COMMANDS: &[&str] = &[
     "thread",
     "import_desktop",
     "sign_in",
+    "people",
+    "open_file",
+    "open_url",
 ];
 
 fn main() {

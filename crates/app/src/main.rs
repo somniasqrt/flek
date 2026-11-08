@@ -35,6 +35,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app)
         }))
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
@@ -49,6 +50,9 @@ fn main() {
             commands::thread,
             commands::import_desktop,
             commands::sign_in,
+            commands::people,
+            commands::open_file,
+            commands::open_url,
         ])
         .setup(move |app| {
             let handle = app.handle();

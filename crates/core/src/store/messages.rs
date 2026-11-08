@@ -336,6 +336,26 @@ pub struct HistoryRow {
     /// `:name: count` pairs, most used first.
     pub reactions: Option<String>,
     pub thread_ts: Option<String>,
+    /// Files attached to the message.
+    pub files: Vec<FileRef>,
+}
+
+/// A file attached to a message, for display.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileRef {
+    pub id: String,
+    pub name: Option<String>,
+    pub title: Option<String>,
+    pub mimetype: Option<String>,
+    pub filetype: Option<String>,
+    pub size: Option<i64>,
+    /// Cached copy on disk, once downloaded.
+    pub local_path: Option<String>,
+    pub permalink: Option<String>,
+    pub hidden_by_limit: bool,
+    /// Pixel size of images and videos, when Slack told it.
+    pub width: Option<i64>,
+    pub height: Option<i64>,
 }
 
 const DISPLAY_COLUMNS: &str =
@@ -359,7 +379,12 @@ pub fn recent(conn: &Connection, conversation_id: &str, limit: usize) -> Result<
             ORDER BY m.ts DESC LIMIT ?2
          ) ORDER BY ts"
     );
-    query_display(conn, &sql, params![conversation_id, limit as i64])
+    query_display(
+        conn,
+        conversation_id,
+        &sql,
+        params![conversation_id, limit as i64],
+    )
 }
 
 /// Up to `limit` top-level messages older than `before` (the newest ones
@@ -378,7 +403,12 @@ pub fn page(
             ORDER BY m.ts DESC LIMIT ?3
          ) ORDER BY ts"
     );
-    query_display(conn, &sql, params![conversation_id, before, limit as i64])
+    query_display(
+        conn,
+        conversation_id,
+        &sql,
+        params![conversation_id, before, limit as i64],
+    )
 }
 
 /// One message for display (live updates), deleted ones excluded.
@@ -387,9 +417,11 @@ pub fn message(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Opt
         "SELECT {DISPLAY_COLUMNS}
          WHERE m.conversation_id = ?1 AND m.ts = ?2 AND m.deleted = 0"
     );
-    Ok(query_display(conn, &sql, params![conversation_id, ts])?
-        .into_iter()
-        .next())
+    Ok(
+        query_display(conn, conversation_id, &sql, params![conversation_id, ts])?
+            .into_iter()
+            .next(),
+    )
 }
 
 /// A thread: root and all replies, oldest first.
@@ -403,11 +435,17 @@ pub fn thread(
          WHERE m.conversation_id = ?1 AND m.deleted = 0 AND (m.ts = ?2 OR m.thread_ts = ?2)
          ORDER BY m.ts"
     );
-    query_display(conn, &sql, params![conversation_id, thread_ts])
+    query_display(
+        conn,
+        conversation_id,
+        &sql,
+        params![conversation_id, thread_ts],
+    )
 }
 
 fn query_display(
     conn: &Connection,
+    conversation_id: &str,
     sql: &str,
     params: impl rusqlite::Params,
 ) -> Result<Vec<HistoryRow>> {
@@ -425,8 +463,72 @@ fn query_display(
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
                 thread_ts: r.get(9)?,
+                files: Vec::new(),
             })
         })?
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Vec<HistoryRow>, _>>()?;
+    attach_files(conn, conversation_id, rows)
+}
+
+/// Fills `files` of `rows` (one query over their ts range).
+fn attach_files(
+    conn: &Connection,
+    conversation_id: &str,
+    mut rows: Vec<HistoryRow>,
+) -> Result<Vec<HistoryRow>> {
+    let (Some(lo), Some(hi)) = (
+        rows.iter().map(|r| r.ts.as_str()).min(),
+        rows.iter().map(|r| r.ts.as_str()).max(),
+    ) else {
+        return Ok(rows);
+    };
+    let mut stmt = conn.prepare_cached(
+        "SELECT mf.ts, f.id, f.name, f.title, f.mimetype, f.filetype, f.size, f.local_path,
+                f.permalink, f.hidden_by_limit,
+                json_extract(f.raw_json, '$.original_w'), json_extract(f.raw_json, '$.original_h')
+         FROM message_files mf JOIN files f ON f.id = mf.file_id
+         WHERE mf.conversation_id = ?1 AND mf.ts BETWEEN ?2 AND ?3
+         ORDER BY mf.ts, f.rowid",
+    )?;
+    let mut by_ts: std::collections::HashMap<String, Vec<FileRef>> = Default::default();
+    let found = stmt.query_map(params![conversation_id, lo, hi], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            FileRef {
+                id: r.get(1)?,
+                name: r.get(2)?,
+                title: r.get(3)?,
+                mimetype: r.get(4)?,
+                filetype: r.get(5)?,
+                size: r.get(6)?,
+                local_path: r.get(7)?,
+                permalink: r.get(8)?,
+                hidden_by_limit: r.get(9)?,
+                width: r.get(10)?,
+                height: r.get(11)?,
+            },
+        ))
+    })?;
+    for item in found {
+        let (ts, file) = item?;
+        by_ts.entry(ts).or_default().push(file);
+    }
+    for row in &mut rows {
+        if let Some(files) = by_ts.remove(&row.ts) {
+            row.files = files;
+        }
+    }
     Ok(rows)
+}
+
+/// Local path of a cached file, if downloaded.
+pub fn file_local_path(conn: &Connection, file_id: &str) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT local_path FROM files WHERE id = ?1",
+            [file_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten())
 }

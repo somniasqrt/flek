@@ -5,6 +5,7 @@ use flek_core::store::directory::{self, ConversationRow};
 use flek_core::store::messages::{self, HistoryRow};
 use flek_core::sync::live::Progress;
 use tauri::{AppHandle, State};
+use tauri_plugin_opener::OpenerExt;
 
 use crate::state::{self, AppState, Status};
 
@@ -97,4 +98,49 @@ pub async fn import_desktop(app: AppHandle) {
 #[tauri::command]
 pub fn sign_in(app: AppHandle) -> CmdResult<()> {
     crate::login::open(&app).map_err(text)
+}
+
+/// `user id → display name`, for `<@U…>` mentions.
+#[tauri::command]
+pub async fn people(
+    state: State<'_, AppState>,
+) -> CmdResult<std::collections::HashMap<String, String>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Default::default());
+    };
+    state
+        .store
+        .read(move |c| directory::people(c, &team))
+        .await
+        .map_err(text)
+}
+
+/// Opens a cached file with its default app. Takes the file id, not a path,
+/// so the UI cannot open arbitrary files.
+#[tauri::command]
+pub async fn open_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+) -> CmdResult<()> {
+    let path = state
+        .store
+        .read(move |c| messages::file_local_path(c, &file_id))
+        .await
+        .map_err(text)?
+        .ok_or("the file is not downloaded yet")?;
+    app.opener().open_path(path, None::<&str>).map_err(text)
+}
+
+/// Opens a link from a message in the default browser (never in Flek's
+/// own webview).
+#[tauri::command]
+pub fn open_url(app: AppHandle, url: String) -> CmdResult<()> {
+    let parsed = tauri::Url::parse(&url).map_err(text)?;
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+        return Err(format!("not opening {} links", parsed.scheme()));
+    }
+    app.opener()
+        .open_url(parsed.as_str(), None::<&str>)
+        .map_err(text)
 }

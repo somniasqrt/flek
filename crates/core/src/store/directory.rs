@@ -232,6 +232,21 @@ pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<Conver
     Ok(rows)
 }
 
+/// `id → display label` of every known user of a team, for mentions.
+pub fn people(
+    conn: &Connection,
+    team_id: &str,
+) -> Result<std::collections::HashMap<String, String>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, COALESCE(NULLIF(display_name, ''), NULLIF(real_name, ''), name)
+         FROM users WHERE team_id = ?1",
+    )?;
+    let rows = stmt
+        .query_map([team_id], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
 /// Display label of one user, if known.
 pub fn user_label(conn: &Connection, user_id: &str) -> Result<Option<String>> {
     Ok(conn

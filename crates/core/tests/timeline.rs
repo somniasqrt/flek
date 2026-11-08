@@ -100,3 +100,47 @@ fn changes_serialize_for_the_ui() {
         serde_json::json!({"type": "directory"})
     );
 }
+
+#[test]
+fn files_come_with_their_message() {
+    let store = store();
+    store
+        .with_conn(|c| {
+            c.execute_batch(
+                r#"INSERT INTO files (id, name, mimetype, size, local_path, raw_json) VALUES
+                       ('F1', 'cat.png', 'image/png', 10, '/cache/F1/cat.png', '{"original_w": 640, "original_h": 480}'),
+                       ('F2', 'notes.pdf', 'application/pdf', 20, NULL, '{}');
+                   INSERT INTO message_files VALUES ('C1', '020.000000', 'F1'), ('C1', '020.000000', 'F2');"#,
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let page = store
+        .with_read(|c| messages::page(c, "C1", None, 100))
+        .unwrap();
+    let with = page.iter().find(|m| m.ts == "020.000000").unwrap();
+    let names: Vec<_> = with
+        .files
+        .iter()
+        .map(|f| f.name.as_deref().unwrap())
+        .collect();
+    assert_eq!(names, ["cat.png", "notes.pdf"]);
+    assert_eq!(
+        (with.files[0].width, with.files[0].height),
+        (Some(640), Some(480))
+    );
+    assert!(with.files[1].local_path.is_none());
+    assert!(page
+        .iter()
+        .filter(|m| m.ts != "020.000000")
+        .all(|m| m.files.is_empty()));
+    assert_eq!(
+        store
+            .with_read(|c| messages::file_local_path(c, "F1"))
+            .unwrap()
+            .as_deref(),
+        Some("/cache/F1/cat.png")
+    );
+    let people = store.with_read(|c| directory::people(c, "T1")).unwrap();
+    assert_eq!(people.get("U0ME").map(String::as_str), Some("me"));
+}
