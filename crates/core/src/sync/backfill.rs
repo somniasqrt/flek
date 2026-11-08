@@ -25,6 +25,9 @@ use crate::Result;
 
 /// `conversations.history` / `.replies` are Tier 3 (~50 requests/minute):
 /// one request every 1.2 s never goes above it, bursts included.
+/// Lower bound for catching up a conversation that has no messages yet.
+const EPOCH_TS: &str = "0000000000.000000";
+
 pub const HISTORY_INTERVAL: Duration = Duration::from_millis(1200);
 
 /// Spaces out requests: [`RateLimiter::wait`] returns no sooner than
@@ -72,7 +75,13 @@ pub async fn backfill_conversation(
     let mut stats = BackfillStats::default();
 
     // 1. Catch-up above newest_ts (or above the refresh window).
-    if let Some(newest) = state.newest_ts.clone() {
+    // A conversation that was empty when backfill completed has no newest
+    // ts; catch up from the beginning so its first messages are not missed.
+    let catch_up_from = state
+        .newest_ts
+        .clone()
+        .or_else(|| state.complete.then(|| EPOCH_TS.to_owned()));
+    if let Some(newest) = catch_up_from {
         let lower = match &opts.refresh_since {
             Some(since) if *since < newest => since.clone(),
             _ => newest.clone(),

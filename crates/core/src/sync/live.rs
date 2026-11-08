@@ -101,16 +101,11 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                         return Ok(Applied::NeedsDirectory);
                     }
                     let row = to_row(&message);
+                    // Sync markers are left alone on purpose: after a reconnect a
+                    // live message can arrive before catch-up reaches this
+                    // conversation, and moving newest_ts past it would skip
+                    // whatever was sent while we were offline.
                     messages::upsert_messages(c, &channel, std::slice::from_ref(&row))?;
-                    let top_level = row.thread_ts.is_none()
-                        || row.thread_ts.as_deref() == Some(row.ts.as_str())
-                        || row.subtype.as_deref() == Some("thread_broadcast");
-                    let thread = if top_level {
-                        None
-                    } else {
-                        row.thread_ts.as_deref()
-                    };
-                    messages::advance_markers(c, &channel, &row.ts, thread)?;
                     Applied::Changed(Change::Message {
                         conversation_id: channel,
                         ts: row.ts,

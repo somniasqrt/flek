@@ -229,3 +229,82 @@ async fn limiter_spaces_requests() {
     }
     assert_eq!(start.elapsed(), Duration::from_secs(2));
 }
+
+/// Regression (found live 2026-11-08): a conversation that was empty when
+/// its backfill completed never caught up on new messages.
+#[tokio::test]
+async fn empty_conversation_catches_up_later() {
+    let server = MockServer::start().await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    let store = store();
+    let mut limiter = RateLimiter::new(Duration::ZERO);
+
+    Mock::given(path("/conversations.history"))
+        .respond_with(page(&[], false))
+        .mount(&server)
+        .await;
+    backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
+        .await
+        .unwrap();
+    assert!(state(&store).complete);
+
+    server.reset().await;
+    Mock::given(path("/conversations.history"))
+        .and(body_string_contains("oldest=0000000000.000000"))
+        .respond_with(page(&[msg("50.000000")], false))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(stats.messages, 1);
+    assert_eq!(state(&store).newest_ts.as_deref(), Some("50.000000"));
+}
+
+/// Regression: after a reconnect, a live message that lands before catch-up
+/// reaches the conversation must not hide what was sent while offline.
+#[tokio::test]
+async fn live_message_before_catch_up_does_not_skip_offline_ones() {
+    use flek_core::rtm::Event;
+    use flek_core::sync::live::apply;
+
+    let server = MockServer::start().await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    let store = store();
+    let mut limiter = RateLimiter::new(Duration::ZERO);
+    Mock::given(path("/conversations.history"))
+        .respond_with(page(&[msg("10.000000")], false))
+        .mount(&server)
+        .await;
+    backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
+        .await
+        .unwrap();
+
+    // Offline: "20" sent. Back online: live "30" arrives first.
+    apply(&store, Event::parse(json!({"type": "message", "channel": "C1", "ts": "30.000000", "user": "U1", "text": "live"})))
+        .await
+        .unwrap();
+
+    server.reset().await;
+    Mock::given(path("/conversations.history"))
+        .and(body_string_contains("oldest=10.000000"))
+        .respond_with(page(&[msg("30.000000"), msg("20.000000")], false))
+        .expect(1)
+        .mount(&server)
+        .await;
+    backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(count(&store), 3);
+}

@@ -302,33 +302,6 @@ pub fn set_reaction(
     Ok(exists)
 }
 
-/// A live message arrived over a connection that was open before the last
-/// catch-up, so there is no gap: catch-up may start after it next time.
-/// Thread replies advance the thread's fetched marker the same way.
-pub fn advance_markers(
-    conn: &Connection,
-    conversation_id: &str,
-    ts: &str,
-    thread_ts: Option<&str>,
-) -> Result<()> {
-    match thread_ts.filter(|t| *t != ts) {
-        Some(root) => {
-            conn.execute(
-                "UPDATE thread_sync SET latest_reply = ?3 WHERE conversation_id = ?1 AND thread_ts = ?2 AND latest_reply < ?3",
-                params![conversation_id, root, ts],
-            )?;
-        }
-        None => {
-            conn.execute(
-                "UPDATE sync_state SET newest_ts = ?2, updated_at = unixepoch()
-                 WHERE conversation_id = ?1 AND newest_ts IS NOT NULL AND newest_ts < ?2",
-                params![conversation_id, ts],
-            )?;
-        }
-    }
-    Ok(())
-}
-
 pub fn conversation_exists(conn: &Connection, conversation_id: &str) -> Result<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = ?1)",

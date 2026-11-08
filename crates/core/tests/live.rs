@@ -53,7 +53,8 @@ async fn message_lifecycle() {
         .with_conn(|c| messages::sync_state(c, "C1"))
         .unwrap()
         .newest_ts;
-    assert_eq!(newest.as_deref(), Some("20.000000"));
+    // Live messages never move sync markers (race test in backfill.rs).
+    assert_eq!(newest.as_deref(), Some("10.000000"));
 
     ev(&store, json!({"type": "message", "subtype": "message_changed", "channel": "C1", "ts": "21.000000",
                       "message": {"ts": "20.000000", "user": "U1", "text": "hello!", "edited": {"ts": "21.000000"}}})).await;
@@ -84,7 +85,7 @@ async fn message_lifecycle() {
 }
 
 #[tokio::test]
-async fn thread_reply_advances_thread_marker_not_history() {
+async fn thread_reply_moves_no_markers() {
     let store = store();
     ev(&store, json!({"type": "message", "channel": "C1", "ts": "15.000000", "thread_ts": "10.000000", "user": "U1", "text": "reply"})).await;
     let (newest, thread): (Option<String>, String) = store
@@ -100,7 +101,7 @@ async fn thread_reply_advances_thread_marker_not_history() {
         })
         .unwrap();
     assert_eq!(newest.as_deref(), Some("10.000000"));
-    assert_eq!(thread, "15.000000");
+    assert_eq!(thread, "10.000000");
 }
 
 #[tokio::test]
