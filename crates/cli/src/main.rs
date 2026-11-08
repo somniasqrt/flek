@@ -72,6 +72,14 @@ enum Command {
         #[arg(long, value_name = "TS")]
         thread: Option<String>,
     },
+    /// Import an existing archive (simple JSON or Slack export / slackdump).
+    Import {
+        /// Archive file or directory.
+        path: PathBuf,
+        /// Put every message of a single-file archive into this conversation.
+        #[arg(long)]
+        channel: Option<String>,
+    },
     /// List conversations from the local database.
     Channels {
         /// Include archived channels.
@@ -123,6 +131,7 @@ async fn main() -> Result<()> {
             limit,
             thread,
         } => history(&store, g, &channel, limit, thread.as_deref()),
+        Command::Import { path, channel } => import_archive(&store, g, &path, channel.as_deref()),
         Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
@@ -271,6 +280,34 @@ async fn sync(
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("done: {total} new messages in {n} conversations, {failed} failed");
+    }
+    Ok(())
+}
+
+fn import_archive(
+    creds: &CredentialStore,
+    g: &Global,
+    path: &std::path::Path,
+    channel: Option<&str>,
+) -> Result<()> {
+    let team = default_team(creds, g)?;
+    let db = open_db(g)?;
+    let stats = db
+        .with_conn(|c| flek_core::sync::import::import_path(c, &team, path, channel))
+        .with_context(|| format!("importing {}", path.display()))?;
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&stats)?);
+        return Ok(());
+    }
+    println!(
+        "{} archive: {} messages read, {} added or recovered",
+        stats.format, stats.read, stats.written
+    );
+    if !stats.unknown_channels.is_empty() {
+        println!(
+            "skipped (no such conversation, run `flek sync` or pass --channel): {}",
+            stats.unknown_channels.join(", ")
+        );
     }
     Ok(())
 }

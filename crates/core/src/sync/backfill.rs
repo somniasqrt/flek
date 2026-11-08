@@ -201,5 +201,6 @@ pub(crate) fn to_row(m: &Message) -> MessageRow {
             .flat_map(|r| r.users.iter().map(move |u| (r.name.clone(), u.clone())))
             .collect(),
         files: m.files.iter().filter_map(FileRow::from_slack).collect(),
+        author_name: None,
     }
 }

@@ -25,6 +25,8 @@ pub struct MessageRow {
     pub reactions: Vec<(String, String)>,
     /// Files attached to the message; replace the stored links likewise.
     pub files: Vec<FileRow>,
+    /// Author as written in an imported archive, when it maps to no user.
+    pub author_name: Option<String>,
 }
 
 /// Inserts or updates messages of one conversation in a transaction.
@@ -37,13 +39,43 @@ pub fn upsert_messages(
     conversation_id: &str,
     rows: &[MessageRow],
 ) -> Result<()> {
+    write_messages(conn, conversation_id, rows, Mode::Sync).map(drop)
+}
+
+/// Writes messages from an archive: they only fill gaps, i.e. new messages
+/// and ones Slack already hides. Anything Slack still serves stays as is.
+pub fn import_messages(
+    conn: &mut Connection,
+    conversation_id: &str,
+    rows: &[MessageRow],
+) -> Result<usize> {
+    write_messages(conn, conversation_id, rows, Mode::Import)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Sync,
+    Import,
+}
+
+fn write_messages(
+    conn: &mut Connection,
+    conversation_id: &str,
+    rows: &[MessageRow],
+    mode: Mode,
+) -> Result<usize> {
+    let guard = match mode {
+        Mode::Sync => "excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
+        Mode::Import => "excluded.hidden_by_limit = 0 AND messages.hidden_by_limit = 1",
+    };
     let tx = conn.transaction()?;
+    let mut total = 0;
     {
-        let mut stmt = tx.prepare(
+        let mut stmt = tx.prepare(&format!(
             "INSERT INTO messages
                 (conversation_id, ts, thread_ts, user_id, subtype, text, blocks_json,
-                 reply_count, latest_reply, edited_ts, deleted, hidden_by_limit, raw_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                 reply_count, latest_reply, edited_ts, deleted, hidden_by_limit, raw_json, author_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(conversation_id, ts) DO UPDATE SET
                 thread_ts = excluded.thread_ts, user_id = excluded.user_id,
                 subtype = excluded.subtype, text = excluded.text,
@@ -51,9 +83,10 @@ pub fn upsert_messages(
                 latest_reply = excluded.latest_reply,
                 edited_ts = excluded.edited_ts, deleted = excluded.deleted,
                 hidden_by_limit = excluded.hidden_by_limit,
-                raw_json = excluded.raw_json
-             WHERE excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
-        )?;
+                raw_json = excluded.raw_json,
+                author_name = COALESCE(excluded.author_name, messages.author_name)
+             WHERE {guard}"
+        ))?;
         let mut clear_reactions =
             tx.prepare("DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2")?;
         let mut add_reaction =
@@ -76,12 +109,14 @@ pub fn upsert_messages(
                 r.edited_ts,
                 r.deleted,
                 r.hidden_by_limit,
-                r.raw_json
+                r.raw_json,
+                r.author_name
             ])?;
             // Upsert skipped by the hidden rule → keep everything attached too.
             if written == 0 {
                 continue;
             }
+            total += 1;
             clear_reactions.execute(params![conversation_id, r.ts])?;
             for (name, user) in &r.reactions {
                 add_reaction.execute(params![conversation_id, r.ts, name, user])?;
@@ -94,7 +129,7 @@ pub fn upsert_messages(
         }
     }
     tx.commit()?;
-    Ok(())
+    Ok(total)
 }
 
 /// How far backfill got for one conversation.
@@ -270,7 +305,7 @@ pub struct HistoryRow {
 }
 
 const DISPLAY_COLUMNS: &str =
-    "m.ts, m.user_id, COALESCE(u.display_name, u.name), COALESCE(m.text, ''),
+    "m.ts, m.user_id, COALESCE(u.display_name, u.name, m.author_name), COALESCE(m.text, ''),
     m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit,
     (SELECT group_concat(':' || name || ': ' || n, '  ') FROM (
         SELECT name, COUNT(*) AS n FROM reactions r
