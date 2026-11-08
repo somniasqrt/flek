@@ -14,7 +14,8 @@ const conversations: Conversation[] = [
 ];
 const file = (f: Partial<FileRef>): FileRef => ({
   id: "F", name: null, title: null, mimetype: null, filetype: null, size: null, local_path: null,
-  permalink: "https://example.com/f", hidden_by_limit: false, width: null, height: null, ...f,
+  permalink: "https://example.com/f", hidden_by_limit: false, width: null, height: null,
+  preview_path: null, preview_width: null, preview_height: null, ...f,
 });
 const msg = (ts: number, user: string, text: string, extra: Partial<Message> = {}): Message => ({
   ts: `${ts}.000000`, user_id: user, author: people[user], text, subtype: null, reply_count: 0,
@@ -25,7 +26,7 @@ const messages: Message[] = [
   msg(1762300060, "U1", "Plan:\n- predicates recap\n- test, _half_ the class\n  - variants at 3 times\n1. read chapter 2\n2. try `forall x. P(x)`"),
   msg(1762300120, "U2", "&gt; Will the recording be on the drive?\nYes, <@U1> said so <!here>. See https://github.com/example/repo and :pink_heart:", { edited: true, reply_count: 3 }),
   msg(1762400000, "U3", "```fn main() {\n    println!(\"hi\");\n}```"),
-  msg(1762400030, "U3", "", { files: [file({ id: "F1", name: "calendar.png", mimetype: "image/png", local_path: "/tmp/x.png", width: 1200, height: 800 }), file({ id: "F2", name: "lecture-5.pdf", mimetype: "application/pdf", filetype: "pdf", size: 2_400_000, local_path: "/tmp/l.pdf" })] }),
+  msg(1762400030, "U3", "", { files: [file({ id: "F1", name: "calendar.png", mimetype: "image/png", local_path: "/tmp/x.png", width: 1200, height: 800 }), file({ id: "F2", name: "Schedule_Monday stream 70236.pdf", mimetype: "application/pdf", filetype: "pdf", size: 2_400_000, local_path: "/tmp/l.pdf", preview_path: "/tmp/p.png", preview_width: 910, preview_height: 1286 })] }),
   msg(1762500000, "U2", "Old one ~gone~ but kept :custom_party:", { hidden_by_limit: true, files: [file({ id: "F3", name: "notes.docx", filetype: "docx", size: 48_000, hidden_by_limit: true })] }),
 ];
 

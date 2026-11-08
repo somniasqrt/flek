@@ -12,6 +12,9 @@ pub fn default_cache_dir() -> Result<PathBuf> {
     Ok(dir.join("flek").join("files"))
 }
 
+/// Cache name of a file's preview image, next to the file itself.
+pub const PREVIEW_NAME: &str = "_flek_preview.png";
+
 /// Where a file lives in the cache: `<cache>/<id>/<name>`. The id directory
 /// dedupes; the original name lets the OS pick the right app to open it.
 pub fn cache_path(cache_dir: &Path, id: &str, name: Option<&str>) -> PathBuf {

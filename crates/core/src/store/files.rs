@@ -120,3 +120,38 @@ pub fn set_local_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     )?;
     Ok(())
 }
+
+/// Previews Slack rendered for files (first page of a PDF, a video frame)
+/// that should be cached. `local_path` is the recorded preview path.
+pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, url, preview_path FROM (
+            SELECT id, preview_path, hidden_by_limit, is_external,
+                   COALESCE(json_extract(raw_json, '$.thumb_pdf'),
+                            json_extract(raw_json, '$.thumb_video')) AS url
+            FROM files)
+         WHERE hidden_by_limit = 0 AND is_external = 0 AND url IS NOT NULL
+         ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(PendingDownload {
+                id: r.get(0)?,
+                name: Some(crate::files::PREVIEW_NAME.to_owned()),
+                mimetype: Some("image/png".to_owned()),
+                size: None,
+                url: r.get(1)?,
+                local_path: r.get(2)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+pub fn set_preview_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE files SET preview_path = ?2 WHERE id = ?1",
+        params![id, path],
+    )?;
+    Ok(())
+}

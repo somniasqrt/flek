@@ -356,6 +356,10 @@ pub struct FileRef {
     /// Pixel size of images and videos, when Slack told it.
     pub width: Option<i64>,
     pub height: Option<i64>,
+    /// Cached preview image (first page of a PDF, a video frame) and its size.
+    pub preview_path: Option<String>,
+    pub preview_width: Option<i64>,
+    pub preview_height: Option<i64>,
 }
 
 const DISPLAY_COLUMNS: &str =
@@ -485,7 +489,10 @@ fn attach_files(
     let mut stmt = conn.prepare_cached(
         "SELECT mf.ts, f.id, f.name, f.title, f.mimetype, f.filetype, f.size, f.local_path,
                 f.permalink, f.hidden_by_limit,
-                json_extract(f.raw_json, '$.original_w'), json_extract(f.raw_json, '$.original_h')
+                json_extract(f.raw_json, '$.original_w'), json_extract(f.raw_json, '$.original_h'),
+                f.preview_path,
+                COALESCE(json_extract(f.raw_json, '$.thumb_pdf_w'), json_extract(f.raw_json, '$.thumb_video_w')),
+                COALESCE(json_extract(f.raw_json, '$.thumb_pdf_h'), json_extract(f.raw_json, '$.thumb_video_h'))
          FROM message_files mf JOIN files f ON f.id = mf.file_id
          WHERE mf.conversation_id = ?1 AND mf.ts BETWEEN ?2 AND ?3
          ORDER BY mf.ts, f.rowid",
@@ -506,6 +513,9 @@ fn attach_files(
                 hidden_by_limit: r.get(9)?,
                 width: r.get(10)?,
                 height: r.get(11)?,
+                preview_path: r.get(12)?,
+                preview_width: r.get(13)?,
+                preview_height: r.get(14)?,
             },
         ))
     })?;

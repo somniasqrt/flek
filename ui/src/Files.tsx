@@ -41,20 +41,36 @@ function Card(props: { f: FileRef }) {
   const f = props.f;
   const available = !f.hidden_by_limit && (!!f.local_path || !!f.permalink);
   return (
-    <button class="file-card" disabled={!available} onClick={() => open(f)} title={name(f)}>
-      <span class="file-badge" data-kind={kind(f)}>
-        {(f.filetype ?? kind(f)).slice(0, 4).toUpperCase()}
-      </span>
-      <span class="file-text">
-        <span class="file-name">{name(f)}</span>
-        <span class="muted">
-          {f.hidden_by_limit
-            ? "Hidden by Slack's Free plan"
-            : [kindLabel(f), size(f.size), f.local_path ? null : "not downloaded"]
-                .filter(Boolean)
-                .join(" · ")}
+    <button
+      class="file-card"
+      classList={{ "with-preview": !!f.preview_path && !f.hidden_by_limit }}
+      disabled={!available}
+      onClick={() => open(f)}
+      title={name(f)}
+    >
+      <span class="file-head">
+        <span class="file-badge" data-kind={kind(f)}>
+          {(f.filetype ?? kind(f)).slice(0, 4).toUpperCase()}
+        </span>
+        <span class="file-text">
+          <span class="file-name">{name(f)}</span>
+          <span class="muted">
+            {f.hidden_by_limit
+              ? "Hidden by Slack's Free plan"
+              : [kindLabel(f), size(f.size), f.local_path ? null : "not downloaded"]
+                  .filter(Boolean)
+                  .join(" · ")}
+          </span>
         </span>
       </span>
+      {/* First page of a PDF / a video frame, rendered by Slack and cached. */}
+      <Show when={!f.hidden_by_limit && f.preview_path}>
+        {(p) => (
+          <span class="file-preview">
+            <img src={convertFileSrc(p())} alt="" loading="lazy" />
+          </span>
+        )}
+      </Show>
     </button>
   );
 }

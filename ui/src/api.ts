@@ -52,6 +52,9 @@ export type FileRef = {
   hidden_by_limit: boolean;
   width: number | null;
   height: number | null;
+  preview_path: string | null;
+  preview_width: number | null;
+  preview_height: number | null;
 };
 
 export type Message = {

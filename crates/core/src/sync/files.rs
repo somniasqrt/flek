@@ -57,11 +57,15 @@ pub struct FileStats {
     pub downloaded: usize,
     pub cached: usize,
     pub failed: usize,
+    /// Preview images fetched (PDF first pages, video frames).
+    pub previews: usize,
 }
 
 /// Downloads every Slack-hosted, visible file up to `max_size` bytes that is
-/// not in the cache yet, one at a time and paced by [`TokenBucket::for_files`]. One failure does not stop the rest, except an
-/// expired session. `progress(done, total)` is called after each file.
+/// not in the cache yet, then the previews Slack rendered for files (always
+/// small), one at a time and paced by [`TokenBucket::for_files`]. One failure
+/// does not stop the rest, except an expired session. `progress(done, total)`
+/// is called after each item.
 pub async fn download_files(
     client: &Client,
     store: &Store,
@@ -69,35 +73,51 @@ pub async fn download_files(
     max_size: Option<i64>,
     mut progress: impl FnMut(usize, usize),
 ) -> Result<FileStats> {
-    let pending = store
-        .call(move |c| file_store::downloadable(c, max_size))
+    let (files_list, previews) = store
+        .call(move |c| {
+            Ok((
+                file_store::downloadable(c, max_size)?,
+                file_store::previews_to_fetch(c)?,
+            ))
+        })
         .await?;
-    let total = pending.len();
+    let items = files_list
+        .into_iter()
+        .map(|f| (f, false))
+        .chain(previews.into_iter().map(|f| (f, true)));
+    let total = items.size_hint().0;
     let mut stats = FileStats::default();
     let mut bucket = TokenBucket::for_files();
-    for (i, f) in pending.into_iter().enumerate() {
+    for (i, (f, preview)) in items.enumerate() {
         if !files::cache_path(cache_dir, &f.id, f.name.as_deref()).is_file() {
             bucket.acquire().await;
         }
         match files::fetch(client, cache_dir, &f).await {
             Ok((path, fresh)) => {
-                if fresh {
-                    stats.downloaded += 1;
-                } else {
-                    stats.cached += 1;
+                match (fresh, preview) {
+                    (true, true) => stats.previews += 1,
+                    (true, false) => stats.downloaded += 1,
+                    (false, false) => stats.cached += 1,
+                    (false, true) => {}
                 }
                 let path = path.to_string_lossy().into_owned();
                 if f.local_path.as_deref() != Some(path.as_str()) {
                     let id = f.id.clone();
                     store
-                        .call(move |c| file_store::set_local_path(c, &id, &path))
+                        .call(move |c| {
+                            if preview {
+                                file_store::set_preview_path(c, &id, &path)
+                            } else {
+                                file_store::set_local_path(c, &id, &path)
+                            }
+                        })
                         .await?;
                 }
             }
             Err(e) if e.is_auth_error() => return Err(e),
             Err(e) => {
                 stats.failed += 1;
-                tracing::warn!(file = %f.id, error = %e, "file download failed");
+                tracing::warn!(file = %f.id, preview, error = %e, "file download failed");
             }
         }
         progress(i + 1, total);

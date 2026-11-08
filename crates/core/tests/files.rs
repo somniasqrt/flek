@@ -50,7 +50,9 @@ async fn stores_metadata_and_downloads_files() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true, "has_more": false, "messages": [
             {"ts": "3.000000", "user": "U1", "text": "", "files": [{"id": "F3", "mode": "hidden_by_limit"}]},
             {"ts": "2.000000", "user": "U1", "text": "two files", "files": [
-                file("F1", "report.pdf", json!({})),
+                file("F1", "report.pdf", json!({
+                    "thumb_pdf": format!("{base}/thumb/F1.png"), "thumb_pdf_w": 910, "thumb_pdf_h": 1286
+                })),
                 file("F2", "login.pdf", json!({})),
                 file("F4", "big.pdf", json!({"size": 10_000_000})),
                 {"id": "F5", "name": "doc", "is_external": true, "url_private_download": "https://drive.example/doc"}
@@ -65,6 +67,11 @@ async fn stores_metadata_and_downloads_files() {
         .and(header("authorization", "Bearer xoxc-fake"))
         .and(header("cookie", "d=xoxd-fake"))
         .respond_with(ResponseTemplate::new(200).set_body_raw(b"%PDF-".to_vec(), "application/pdf"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/thumb/F1.png"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
         .expect(1)
         .mount(&server)
         .await;
@@ -112,8 +119,30 @@ async fn stores_metadata_and_downloads_files() {
     .await
     .unwrap();
     // F1 ok; F2 is HTML; F6 is on a foreign host; F3 hidden, F4 too big, F5 external are skipped.
-    assert_eq!((stats.downloaded, stats.cached, stats.failed), (1, 0, 2));
-    assert_eq!(calls, 3);
+    // Then F1's PDF preview.
+    assert_eq!(
+        (stats.downloaded, stats.cached, stats.failed, stats.previews),
+        (1, 0, 2, 1)
+    );
+    assert_eq!(calls, 4);
+    let preview = files::cache_path(cache.path(), "F1", Some(files::PREVIEW_NAME));
+    assert_eq!(std::fs::read(&preview).unwrap(), b"\x89PNG");
+    let page = store
+        .with_read(|c| flek_core::store::messages::page(c, "C1", None, 10))
+        .unwrap();
+    let f1 = page
+        .iter()
+        .flat_map(|m| &m.files)
+        .find(|f| f.id == "F1")
+        .unwrap();
+    assert_eq!(
+        f1.preview_path.as_deref(),
+        Some(&*preview.to_string_lossy())
+    );
+    assert_eq!(
+        (f1.preview_width, f1.preview_height),
+        (Some(910), Some(1286))
+    );
 
     let dest = files::cache_path(cache.path(), "F1", Some("report.pdf"));
     assert_eq!(std::fs::read(&dest).unwrap(), b"%PDF-");
@@ -128,7 +157,7 @@ async fn stores_metadata_and_downloads_files() {
         .unwrap();
     assert_eq!(local, dest.to_string_lossy());
 
-    // Second run: F1 already cached, no new request (expect(1) above).
+    // Second run: F1 and its preview already cached, no new request (expect(1) above).
     let stats = download_files(&client, &store, cache.path(), Some(1_000_000), |_, _| {})
         .await
         .unwrap();
