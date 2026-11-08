@@ -52,6 +52,9 @@ pub enum Error {
     #[error("SQLite: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
+    #[error("database: {0}")]
+    Store(String),
+
     #[error("LevelDB: {0}")]
     LevelDb(String),
 }

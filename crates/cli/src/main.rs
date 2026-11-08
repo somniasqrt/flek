@@ -2,7 +2,10 @@
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
+
 use flek_core::auth::{self, CredentialStore, ImportedTeam, Session};
+use flek_core::store::{self, Store};
 use serde_json::json;
 use tracing_subscriber::EnvFilter;
 
@@ -26,6 +29,9 @@ struct Global {
     /// Team id to act on (defaults to the first stored team).
     #[arg(long, global = true, value_name = "TEAM_ID")]
     team: Option<String>,
+    /// Database file (default: ~/Library/Application Support/flek/flek.db).
+    #[arg(long, global = true, value_name = "PATH")]
+    db: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -35,6 +41,8 @@ enum Command {
     Auth(AuthCommand),
     /// Show the current team and user (imports from Slack desktop if needed).
     Whoami,
+    /// Open (create, migrate) the local database and show where it lives.
+    Db,
 }
 
 #[derive(Subcommand)]
@@ -60,6 +68,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Command::Whoami => whoami(&store, g).await,
+        Command::Db => db(g),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
         Command::Auth(AuthCommand::Logout { all }) => logout(&store, g, all),
@@ -89,6 +98,33 @@ async fn whoami(store: &CredentialStore, g: &Global) -> Result<()> {
         println!("team  {} ({})", identity.team, identity.team_id);
         println!("user  {} ({})", identity.user, identity.user_id);
         println!("url   {}", identity.url);
+    }
+    Ok(())
+}
+
+fn open_db(g: &Global) -> Result<Store> {
+    let path = match &g.db {
+        Some(p) => p.clone(),
+        None => store::default_path()?,
+    };
+    Store::open(&path).with_context(|| format!("opening database {}", path.display()))
+}
+
+fn db(g: &Global) -> Result<()> {
+    let db = open_db(g)?;
+    let path = db
+        .path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+    let version = db.schema_version()?;
+    if g.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({ "path": path, "schema_version": version }))?
+        );
+    } else {
+        println!("path    {path}");
+        println!("schema  v{version}");
     }
     Ok(())
 }

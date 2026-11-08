@@ -1,0 +1,89 @@
+//! Local SQLite database: the single source of truth for the UI.
+
+pub mod migrations;
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use rusqlite::Connection;
+
+use crate::{Error, Result};
+
+/// `~/Library/Application Support/flek/flek.db` on macOS.
+pub fn default_path() -> Result<PathBuf> {
+    let dir = dirs::data_dir().ok_or_else(|| Error::Store("data directory is unknown".into()))?;
+    Ok(dir.join("flek").join("flek.db"))
+}
+
+/// Shared handle to one connection. Blocking work goes through
+/// [`Store::call`], which runs it on tokio's blocking pool.
+#[derive(Clone)]
+pub struct Store {
+    conn: Arc<Mutex<Connection>>,
+    path: Option<PathBuf>,
+}
+
+impl Store {
+    /// Opens (creating if needed) the database at `path` and migrates it.
+    pub fn open(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let conn = Connection::open(path)?;
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        Self::init(conn, Some(path.to_owned()))
+    }
+
+    /// Private in-memory database, for tests.
+    pub fn open_in_memory() -> Result<Self> {
+        Self::init(Connection::open_in_memory()?, None)
+    }
+
+    fn init(mut conn: Connection, path: Option<PathBuf>) -> Result<Self> {
+        conn.pragma_update(None, "foreign_keys", true)?;
+        conn.busy_timeout(Duration::from_secs(5))?;
+        migrations::migrate(&mut conn)?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+            path,
+        })
+    }
+
+    /// File path, `None` for in-memory databases.
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Runs `f` with the connection on the blocking thread pool.
+    pub async fn call<F, R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce(&mut Connection) -> Result<R> + Send + 'static,
+        R: Send + 'static,
+    {
+        let conn = Arc::clone(&self.conn);
+        tokio::task::spawn_blocking(move || {
+            let mut guard = conn
+                .lock()
+                .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
+            f(&mut guard)
+        })
+        .await
+        .map_err(|e| Error::Store(format!("database task failed: {e}")))?
+    }
+
+    /// Synchronous access, for callers already off the async runtime.
+    pub fn with_conn<R>(&self, f: impl FnOnce(&mut Connection) -> Result<R>) -> Result<R> {
+        let mut guard = self
+            .conn
+            .lock()
+            .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
+        f(&mut guard)
+    }
+
+    /// Schema version currently applied.
+    pub fn schema_version(&self) -> Result<u32> {
+        self.with_conn(|c| migrations::current_version(c))
+    }
+}
