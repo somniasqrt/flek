@@ -78,7 +78,9 @@ certificate once and `cargo run` signs `flek` with it
 2. Name `Flek Dev`, Identity Type *Self Signed Root*, Certificate Type *Code Signing* → Create.
 3. Run any `flek` command and click *Always Allow* once per prompt; rebuilds keep the permission.
 
-Another name works via `FLEK_CODESIGN_IDENTITY`.
+`security find-identity -p codesigning` should list `"Flek Dev"`; being
+marked `CSSMERR_TP_NOT_TRUSTED` is fine (no need to trust it). Another name
+works via `FLEK_CODESIGN_IDENTITY`.
 
 **Desktop app**:
 
