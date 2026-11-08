@@ -76,10 +76,25 @@ current Chrome for the running OS.
 Tier-safe pacing, a token bucket for files, websocket instead of polling,
 reads from the local database only.
 
-## Limits we accept
+## Limits we accept (for now)
 
-Requests made from Rust cannot match a Chromium TLS fingerprint (JA3/JA4).
-Flek aims to be **consistent** with the issuing client, not indistinguishable.
+`reqwest` + `rustls` cannot reproduce Chrome's TLS ClientHello (JA3/JA4:
+GREASE, extension set and order) or its HTTP/2 fingerprint. It *can* be
+done: BoringSSL-based impersonation (`wreq`, formerly `rquest`; cf.
+curl-impersonate, uTLS) mimics specific Chrome/Safari versions, websockets
+included. Cost: a C dependency, profiles to keep in step with the claimed
+browser version (Chrome 150 inside Electron on the owner's machine).
+
+A different fingerprint alone says little: TLS-inspecting corporate
+proxies, antivirus and VPN clients produce non-browser fingerprints for
+legitimate users all the time. What stands out is a mismatch *within* one
+request (UA says Chrome, TLS says rustls). Whether Slack acts on that is
+unknown; the realistic worst case is a revoked session, which Flek
+recovers from by re-importing.
+
+So Flek aims to be **consistent** with the issuing client first (UA, client
+hints, request shape) and keeps TLS impersonation as an opt-in transport
+(cargo feature on `wreq`) to adopt if sessions start getting revoked.
 
 ## Options kept open
 
