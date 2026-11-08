@@ -4,6 +4,7 @@ pub mod backfill;
 pub mod directory;
 pub mod files;
 pub mod import;
+pub mod live;
 pub mod threads;
 
 use std::time::{SystemTime, UNIX_EPOCH};

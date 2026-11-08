@@ -277,6 +277,66 @@ pub fn mark_deleted(conn: &Connection, conversation_id: &str, ts: &[String]) -> 
     Ok(n)
 }
 
+/// One reaction from a live event. Returns whether the message is stored.
+pub fn set_reaction(
+    conn: &Connection,
+    conversation_id: &str,
+    ts: &str,
+    name: &str,
+    user: &str,
+    on: bool,
+) -> Result<bool> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id = ?1 AND ts = ?2)",
+        params![conversation_id, ts],
+        |r| r.get(0),
+    )?;
+    if exists {
+        let sql = if on {
+            "INSERT OR IGNORE INTO reactions VALUES (?1, ?2, ?3, ?4)"
+        } else {
+            "DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2 AND name = ?3 AND user_id = ?4"
+        };
+        conn.execute(sql, params![conversation_id, ts, name, user])?;
+    }
+    Ok(exists)
+}
+
+/// A live message arrived over a connection that was open before the last
+/// catch-up, so there is no gap: catch-up may start after it next time.
+/// Thread replies advance the thread's fetched marker the same way.
+pub fn advance_markers(
+    conn: &Connection,
+    conversation_id: &str,
+    ts: &str,
+    thread_ts: Option<&str>,
+) -> Result<()> {
+    match thread_ts.filter(|t| *t != ts) {
+        Some(root) => {
+            conn.execute(
+                "UPDATE thread_sync SET latest_reply = ?3 WHERE conversation_id = ?1 AND thread_ts = ?2 AND latest_reply < ?3",
+                params![conversation_id, root, ts],
+            )?;
+        }
+        None => {
+            conn.execute(
+                "UPDATE sync_state SET newest_ts = ?2, updated_at = unixepoch()
+                 WHERE conversation_id = ?1 AND newest_ts IS NOT NULL AND newest_ts < ?2",
+                params![conversation_id, ts],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+pub fn conversation_exists(conn: &Connection, conversation_id: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM conversations WHERE id = ?1)",
+        [conversation_id],
+        |r| r.get(0),
+    )?)
+}
+
 /// Reactions of one message as `(name, count)`, most used first.
 pub fn reactions(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Vec<(String, i64)>> {
     let mut stmt = conn.prepare(
