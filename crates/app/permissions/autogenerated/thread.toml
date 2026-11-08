@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-thread"
+description = "Enables the thread command without any pre-configured scope."
+commands.allow = ["thread"]
+
+[[permission]]
+identifier = "deny-thread"
+description = "Denies the thread command without any pre-configured scope."
+commands.deny = ["thread"]

@@ -264,7 +264,7 @@ pub fn read(app: Option<&Path>, data_root: &Path) -> Result<DesktopProfile> {
     })
 }
 
-fn plist_string(path: &Path, key: &str) -> Option<String> {
+pub(crate) fn plist_string(path: &Path, key: &str) -> Option<String> {
     let value = plist::Value::from_file(path).ok()?;
     value
         .as_dictionary()?

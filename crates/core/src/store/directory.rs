@@ -29,6 +29,29 @@ pub fn upsert_team(
     Ok(())
 }
 
+/// Who the stored session belongs to, as recorded by the last directory
+/// sync; lets the app start offline.
+pub fn stored_identity(conn: &Connection, team_id: &str) -> Result<Option<crate::api::AuthTest>> {
+    Ok(conn
+        .query_row(
+            "SELECT t.url, t.name, u.name, t.id, t.self_user_id FROM teams t
+             JOIN users u ON u.id = t.self_user_id
+             WHERE t.id = ?1",
+            [team_id],
+            |r| {
+                Ok(crate::api::AuthTest {
+                    url: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    team: r.get(1)?,
+                    user: r.get(2)?,
+                    team_id: r.get(3)?,
+                    user_id: r.get(4)?,
+                    enterprise_id: None,
+                })
+            },
+        )
+        .optional()?)
+}
+
 /// Upserts users. Users from other teams (shared channels) get a stub team row.
 pub fn upsert_users(conn: &mut Connection, default_team: &str, users: &[User]) -> Result<()> {
     let tx = conn.transaction()?;

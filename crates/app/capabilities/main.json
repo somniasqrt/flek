@@ -2,6 +2,18 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
   "description": "The main window: Flek's own UI. The sign-in window (Slack's page) gets no IPC at all.",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-status",
+    "allow-progress",
+    "allow-conversations",
+    "allow-messages",
+    "allow-message",
+    "allow-thread",
+    "allow-import-desktop",
+    "allow-sign-in"
+  ]
 }

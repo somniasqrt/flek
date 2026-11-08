@@ -66,6 +66,16 @@ pub enum Error {
 }
 
 impl Error {
+    /// Slack could not be reached or answered with a server error; worth
+    /// retrying later, the session itself may be fine.
+    pub fn is_unreachable(&self) -> bool {
+        match self {
+            Error::Http(e) => e.is_connect() || e.is_timeout() || e.is_request(),
+            Error::HttpStatus(s) => *s >= 500,
+            _ => false,
+        }
+    }
+
     /// The stored session is no longer accepted by Slack.
     pub fn is_auth_error(&self) -> bool {
         matches!(self, Error::Slack { code, .. } if code == "invalid_auth" || code == "token_revoked" || code == "not_authed")

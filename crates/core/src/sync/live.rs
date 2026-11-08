@@ -14,7 +14,8 @@ use crate::Result;
 
 /// What changed in the database (or in the session). Listeners re-read the
 /// database; the bus carries no message content.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum Change {
     /// New or updated message.
     Message {
@@ -44,7 +45,8 @@ pub enum Change {
     Progress(Progress),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "stage", rename_all = "snake_case")]
 pub enum Progress {
     /// Users and conversations.
     Directory,
@@ -63,7 +65,8 @@ pub enum Progress {
     Idle,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
 pub enum ConnectionState {
     Connected,
     /// Lost; retrying after the given delay in seconds.

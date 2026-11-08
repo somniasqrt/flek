@@ -335,6 +335,7 @@ pub struct HistoryRow {
     pub hidden_by_limit: bool,
     /// `:name: count` pairs, most used first.
     pub reactions: Option<String>,
+    pub thread_ts: Option<String>,
 }
 
 const DISPLAY_COLUMNS: &str =
@@ -343,7 +344,8 @@ const DISPLAY_COLUMNS: &str =
     (SELECT group_concat(':' || name || ': ' || n, '  ') FROM (
         SELECT name, COUNT(*) AS n FROM reactions r
         WHERE r.conversation_id = m.conversation_id AND r.ts = m.ts
-        GROUP BY name ORDER BY n DESC, name))
+        GROUP BY name ORDER BY n DESC, name)),
+    m.thread_ts
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -358,6 +360,36 @@ pub fn recent(conn: &Connection, conversation_id: &str, limit: usize) -> Result<
          ) ORDER BY ts"
     );
     query_display(conn, &sql, params![conversation_id, limit as i64])
+}
+
+/// Up to `limit` top-level messages older than `before` (the newest ones
+/// without it), oldest first: one page of the timeline, scrolling back.
+pub fn page(
+    conn: &Connection,
+    conversation_id: &str,
+    before: Option<&str>,
+    limit: usize,
+) -> Result<Vec<HistoryRow>> {
+    let sql = format!(
+        "SELECT * FROM (
+            SELECT {DISPLAY_COLUMNS}
+            WHERE m.conversation_id = ?1 AND m.deleted = 0 AND (?2 IS NULL OR m.ts < ?2)
+              AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
+            ORDER BY m.ts DESC LIMIT ?3
+         ) ORDER BY ts"
+    );
+    query_display(conn, &sql, params![conversation_id, before, limit as i64])
+}
+
+/// One message for display (live updates), deleted ones excluded.
+pub fn message(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Option<HistoryRow>> {
+    let sql = format!(
+        "SELECT {DISPLAY_COLUMNS}
+         WHERE m.conversation_id = ?1 AND m.ts = ?2 AND m.deleted = 0"
+    );
+    Ok(query_display(conn, &sql, params![conversation_id, ts])?
+        .into_iter()
+        .next())
 }
 
 /// A thread: root and all replies, oldest first.
@@ -392,6 +424,7 @@ fn query_display(
                 edited: r.get(6)?,
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
+                thread_ts: r.get(9)?,
             })
         })?
         .collect::<Result<_, _>>()?;

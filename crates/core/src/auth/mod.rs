@@ -5,6 +5,7 @@ pub mod desktop_import;
 pub mod desktop_profile;
 pub mod keychain;
 pub mod origin;
+pub mod webview;
 
 use crate::api::{AuthTest, Client, ClientProfile, DEFAULT_BASE_URL};
 use crate::{Error, Result};
@@ -82,6 +83,18 @@ pub async fn import_and_save(
 /// importing from desktop when nothing is stored. When Slack rejects the
 /// stored session it re-imports once before giving up.
 pub async fn resolve_session(store: &CredentialStore, team: Option<&str>) -> Result<Session> {
+    resume_session(store, None, team).await
+}
+
+/// [`resolve_session`] for the app: when Slack cannot be reached (offline,
+/// server error), the session starts from the stored credentials and the
+/// identity recorded in `db`, so the app opens from cache and the sync engine
+/// connects once the network is back. A revoked session still re-imports.
+pub async fn resume_session(
+    store: &CredentialStore,
+    db: Option<&crate::store::Store>,
+    team: Option<&str>,
+) -> Result<Session> {
     let creds = match pick_team(store, team)? {
         Some(id) => store.load(&id)?,
         None => None,
@@ -105,6 +118,23 @@ pub async fn resolve_session(store: &CredentialStore, team: Option<&str>) -> Res
         Err(e) if e.is_auth_error() => {
             tracing::info!(team_id = %creds.team_id, "stored session rejected, re-importing from Slack desktop");
             session_from_fresh_import(store, Some(&creds.team_id)).await
+        }
+        Err(e) if e.is_unreachable() => {
+            let Some(db) = db else { return Err(e) };
+            let team_id = creds.team_id.clone();
+            let stored = db
+                .read(move |c| crate::store::directory::stored_identity(c, &team_id))
+                .await?;
+            match stored {
+                Some(identity) => {
+                    tracing::info!(error = %e, "Slack unreachable, starting offline");
+                    Ok(Session {
+                        credentials: creds,
+                        identity,
+                    })
+                }
+                None => Err(e),
+            }
         }
         other => other,
     }
