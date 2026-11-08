@@ -56,6 +56,16 @@ impl Client {
         })
     }
 
+    /// `(name, value)` headers for the websocket handshake: the same cookie and
+    /// User-Agent as HTTP calls, plus the web client's Origin.
+    pub(crate) fn ws_headers(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("cookie", format!("d={}", self.cookie.expose())),
+            ("user-agent", DESKTOP_USER_AGENT.to_owned()),
+            ("origin", "https://app.slack.com".to_owned()),
+        ]
+    }
+
     /// No waiting between pages (tests against a mock server).
     pub fn without_pacing(mut self) -> Self {
         self.pacing = false;

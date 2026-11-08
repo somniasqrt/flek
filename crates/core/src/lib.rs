@@ -4,6 +4,7 @@ pub mod api;
 pub mod auth;
 pub mod error;
 pub mod files;
+pub mod rtm;
 pub mod secret;
 pub mod store;
 pub mod sync;

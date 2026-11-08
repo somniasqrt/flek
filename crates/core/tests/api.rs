@@ -136,3 +136,19 @@ async fn gives_up_after_repeated_429() {
     assert!(matches!(err, Error::Slack { ref code, .. } if code == "ratelimited"));
     assert_eq!(server.received_requests().await.unwrap().len(), 4);
 }
+
+#[tokio::test]
+async fn rtm_connect_returns_url() {
+    let server = MockServer::start().await;
+    Mock::given(path("/rtm.connect"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "ok": true, "url": "wss://wss-primary.slack.com/websocket/fake",
+            "team": {"id": "T0FAKE"}, "self": {"id": "U0FAKE"}
+        })))
+        .mount(&server)
+        .await;
+    assert_eq!(
+        client(&server).rtm_connect().await.unwrap().url,
+        "wss://wss-primary.slack.com/websocket/fake"
+    );
+}

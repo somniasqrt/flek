@@ -52,6 +52,9 @@ pub enum Error {
     #[error("SQLite: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
+    #[error("websocket: {0}")]
+    WebSocket(String),
+
     #[error("file download: {0}")]
     File(String),
 
