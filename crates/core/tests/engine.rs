@@ -107,11 +107,19 @@ async fn fast_pass_then_deep_with_priority() {
     );
 
     let mut seen = Vec::new();
+    let mut history = Vec::new();
     while let Ok(change) = rx.try_recv() {
-        if let Change::Progress(Progress::Conversations { current, deep, .. }) = change {
-            seen.push((current, deep));
+        match change {
+            Change::Progress(Progress::Conversations { current, deep, .. }) => {
+                seen.push((current, deep))
+            }
+            Change::History { conversation_id } => history.push(conversation_id),
+            _ => {}
         }
     }
+    // Every pass that wrote messages tells listeners (fast and deep, both channels).
+    history.sort();
+    assert_eq!(history, ["C1", "C1", "C2", "C2"]);
     assert_eq!(
         seen,
         [

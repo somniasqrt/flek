@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import {
   api,
   onChange,
@@ -17,7 +18,9 @@ type Ready = Extract<Status, { phase: "ready" }>;
 const LAST_KEY = "flek.lastConversation";
 
 export default function Workspace(props: { status: Ready }) {
-  const [conversations, setConversations] = createSignal<Conversation[]>([]);
+  // A store reconciled by id: a refresh only touches rows that changed, so
+  // the sidebar does not re-render (and flicker) on every sync step.
+  const [conversations, setConversations] = createStore<Conversation[]>([]);
   const [loaded, setLoaded] = createSignal(false);
   const [selected, setSelected] = createSignal<string | null>(readLast());
   const [progress, setProgress] = createSignal<Progress | null>(null);
@@ -37,7 +40,7 @@ export default function Workspace(props: { status: Ready }) {
 
   const loadConversations = async () => {
     const list = await api.conversations();
-    setConversations(list);
+    setConversations(reconcile(list, { key: "id" }));
     setLoaded(true);
     if (!selected() || !list.some((c) => c.id === selected())) {
       const first = list.find((c) => c.kind === "public_channel" && !c.is_archived) ?? list[0];
@@ -68,6 +71,10 @@ export default function Workspace(props: { status: Ready }) {
         case "read_marker":
           refreshSoon();
           break;
+        case "history":
+          refreshSoon();
+          if (c.data.conversation_id === selected()) setChange(c);
+          break;
         case "message":
         case "message_deleted":
         case "reactions":
@@ -86,14 +93,14 @@ export default function Workspace(props: { status: Ready }) {
     await loadConversations();
   });
 
-  const current = () => conversations().find((c) => c.id === selected()) ?? null;
+  const current = () => conversations.find((c) => c.id === selected()) ?? null;
 
   return (
     <div class="workspace">
       <Sidebar
         team={props.status.team}
         user={props.status.user}
-        conversations={conversations()}
+        conversations={conversations}
         selected={selected()}
         onSelect={select}
       />

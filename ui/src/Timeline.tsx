@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, Show } from "solid-js";
+import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 
 const PAGE = 60;
@@ -8,7 +9,11 @@ const LOAD_MARGIN = 400;
 const GROUP_GAP = 5 * 60;
 
 export default function Timeline(props: { conversation: Conversation; change: Change | null }) {
-  const [rows, setRows] = createSignal<Message[]>([]);
+  // Reconciled by ts: updates touch only the rows that changed, so syncing
+  // never re-renders (and flickers) the whole timeline.
+  const [rows, setRows] = createStore<Message[]>([]);
+  const show = (list: Message[]) => setRows(reconcile(list, { key: "ts" }));
+  const current = () => unwrap(rows).slice();
   const [loading, setLoading] = createSignal(false);
   const [exhausted, setExhausted] = createSignal(false);
   let scroller!: HTMLDivElement;
@@ -23,12 +28,12 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
       () => props.conversation.id,
       async (id) => {
         const gen = ++generation;
-        setRows([]);
+        show([]);
         setExhausted(false);
         setLoading(true);
         const page = await api.messages(id, null, PAGE);
         if (gen !== generation) return;
-        setRows(page);
+        show(page);
         setExhausted(page.length < PAGE);
         setLoading(false);
         toBottom();
@@ -37,13 +42,13 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
   );
 
   const loadOlder = async () => {
-    if (loading() || exhausted() || rows().length === 0) return;
+    if (loading() || exhausted() || rows.length === 0) return;
     const gen = generation;
     setLoading(true);
-    const page = await api.messages(props.conversation.id, rows()[0].ts, PAGE);
+    const page = await api.messages(props.conversation.id, rows[0].ts, PAGE);
     if (gen !== generation) return;
     const before = scroller.scrollHeight;
-    setRows((r) => [...page, ...r]);
+    show([...page, ...current()]);
     setExhausted(page.length < PAGE);
     setLoading(false);
     // Keep what the user is looking at in place.
@@ -54,18 +59,20 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
     on(
       () => props.change,
       async (c) => {
-        if (!c || !("data" in c) || !("ts" in c.data)) return;
+        if (!c || !("data" in c) || !("conversation_id" in c.data)) return;
         if (c.data.conversation_id !== props.conversation.id) return;
+        if (c.type === "history") return refreshNewest();
+        if (!("ts" in c.data)) return;
         const { conversation_id, ts } = c.data;
         if (c.type === "message_deleted") {
-          setRows((r) => r.filter((m) => m.ts !== ts));
+          show(current().filter((m) => m.ts !== ts));
           return;
         }
         const stick = atBottom();
         const m = await api.message(conversation_id, ts);
         if (conversation_id !== props.conversation.id) return;
         if (!m) {
-          setRows((r) => r.filter((x) => x.ts !== ts));
+          show(current().filter((x) => x.ts !== ts));
         } else if (isReplyOnly(m)) {
           // A reply changes its root's reply count.
           const root = await api.message(conversation_id, m.thread_ts!);
@@ -78,14 +85,29 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
     ),
   );
 
-  const upsert = (m: Message) =>
-    setRows((r) => {
-      const i = r.findIndex((x) => x.ts === m.ts);
-      if (i >= 0) return [...r.slice(0, i), m, ...r.slice(i + 1)];
-      // Older than everything loaded: it shows up when scrolling back.
-      if (r.length > 0 && m.ts < r[0].ts) return r;
-      return [...r, m].sort((a, b) => a.ts.localeCompare(b.ts));
-    });
+  const upsert = (m: Message) => {
+    const r = current();
+    const i = r.findIndex((x) => x.ts === m.ts);
+    if (i >= 0) r[i] = m;
+    // Older than everything loaded: it shows up when scrolling back.
+    else if (r.length > 0 && m.ts < r[0].ts) return;
+    else r.push(m);
+    show(r.sort((a, b) => a.ts.localeCompare(b.ts)));
+  };
+
+  /// Sync wrote into this conversation: re-read the newest page and keep the
+  /// older rows already loaded.
+  const refreshNewest = async () => {
+    const id = props.conversation.id;
+    const gen = generation;
+    const stick = atBottom();
+    const page = await api.messages(id, null, PAGE);
+    if (gen !== generation) return;
+    const kept = page.length < PAGE ? [] : current().filter((m) => m.ts < page[0].ts);
+    show([...kept, ...page]);
+    if (page.length < PAGE) setExhausted(true);
+    if (stick) toBottom();
+  };
 
   return (
     <div class="timeline">
@@ -107,15 +129,15 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
         ref={scroller}
         onScroll={() => scroller.scrollTop < LOAD_MARGIN && loadOlder()}
       >
-        <Show when={exhausted() && rows().length > 0}>
+        <Show when={exhausted() && rows.length > 0}>
           <div class="start muted">Start of what Flek has for this conversation</div>
         </Show>
-        <Show when={!loading() && rows().length === 0}>
+        <Show when={!loading() && rows.length === 0}>
           <div class="start muted">No messages yet. They appear here as they sync.</div>
         </Show>
-        <For each={rows()}>
+        <For each={rows}>
           {(m, i) => {
-            const prev = () => rows()[i() - 1];
+            const prev = () => rows[i() - 1];
             const newDay = () => !prev() || dayKey(prev()!.ts) !== dayKey(m.ts);
             const grouped = () =>
               !newDay() &&

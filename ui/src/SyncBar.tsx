@@ -1,7 +1,7 @@
-import { Show } from "solid-js";
 import type { ConnectionState, Progress } from "./api";
 
-/// Thin bar above the timeline while the engine works or the network is gone.
+/// Status line above the timeline. Always the same height, so the timeline
+/// never jumps when syncing starts or stops.
 export default function SyncBar(props: {
   progress: Progress | null;
   connection: ConnectionState | null;
@@ -9,7 +9,7 @@ export default function SyncBar(props: {
   const text = () => {
     if (props.connection?.state === "reconnecting") return "Offline, reconnecting…";
     const p = props.progress;
-    if (!p || p.stage === "idle") return null;
+    if (!p || p.stage === "idle") return "Up to date";
     switch (p.stage) {
       case "directory":
         return "Syncing channels and people…";
@@ -28,17 +28,11 @@ export default function SyncBar(props: {
   };
 
   return (
-    <Show when={text()}>
-      {(t) => (
-        <div class="syncbar" classList={{ offline: props.connection?.state === "reconnecting" }}>
-          <span>{t()}</span>
-          <Show when={fraction() !== null}>
-            <div class="bar">
-              <div class="fill" style={{ width: `${(fraction() ?? 0) * 100}%` }} />
-            </div>
-          </Show>
-        </div>
-      )}
-    </Show>
+    <div class="syncbar" classList={{ offline: props.connection?.state === "reconnecting" }}>
+      <span>{text()}</span>
+      <div class="bar" classList={{ hidden: fraction() === null }}>
+        <div class="fill" style={{ width: `${(fraction() ?? 0) * 100}%` }} />
+      </div>
+    </div>
   );
 }

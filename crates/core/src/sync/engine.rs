@@ -223,6 +223,11 @@ impl Engine {
                 Ok((b, t)) => {
                     stats.messages += b.messages + t.replies;
                     stats.deleted += b.deleted + t.deleted;
+                    if b.messages + t.replies + b.deleted + t.deleted > 0 {
+                        let _ = self.bus.send(Change::History {
+                            conversation_id: id.clone(),
+                        });
+                    }
                 }
                 Err(e) if e.is_auth_error() => return Err(e),
                 Err(e) => {

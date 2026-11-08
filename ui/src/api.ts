@@ -24,6 +24,7 @@ export type Change =
   | { type: "reactions"; data: Ref }
   | { type: "read_marker"; data: { conversation_id: string } }
   | { type: "typing"; data: { conversation_id: string; user_id: string } }
+  | { type: "history"; data: { conversation_id: string } }
   | { type: "directory" }
   | { type: "connection"; data: ConnectionState }
   | { type: "progress"; data: Progress };

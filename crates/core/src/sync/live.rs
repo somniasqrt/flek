@@ -38,6 +38,11 @@ pub enum Change {
         conversation_id: String,
         user_id: String,
     },
+    /// Sync wrote new or changed messages into a conversation (backfill,
+    /// catch-up); listeners re-read what they show of it.
+    History {
+        conversation_id: String,
+    },
     /// Users or conversations changed.
     Directory,
     Connection(ConnectionState),

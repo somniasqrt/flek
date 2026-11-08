@@ -205,6 +205,8 @@ button {
 /* Sync bar */
 .syncbar {
   display: flex;
+  height: 28px;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   padding: 6px 16px;
@@ -228,6 +230,9 @@ button {
   border-radius: 2px;
   background: var(--border);
   overflow: hidden;
+}
+.bar.hidden {
+  visibility: hidden;
 }
 .fill {
   height: 100%;
