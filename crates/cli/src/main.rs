@@ -43,6 +43,14 @@ enum Command {
     Whoami,
     /// Open (create, migrate) the local database and show where it lives.
     Db,
+    /// Fetch from Slack into the local database (for now: users and conversations).
+    Sync,
+    /// List conversations from the local database.
+    Channels {
+        /// Include archived channels.
+        #[arg(long)]
+        archived: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -69,6 +77,8 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
+        Command::Sync => sync(&store, g).await,
+        Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
         Command::Auth(AuthCommand::Logout { all }) => logout(&store, g, all),
@@ -125,6 +135,57 @@ fn db(g: &Global) -> Result<()> {
     } else {
         println!("path    {path}");
         println!("schema  v{version}");
+    }
+    Ok(())
+}
+
+async fn sync(creds: &CredentialStore, g: &Global) -> Result<()> {
+    let session = auth::resolve_session(creds, g.team.as_deref()).await?;
+    let db = open_db(g)?;
+    let client = session.client()?;
+    let stats = flek_core::sync::directory::sync_directory(&client, &db, &session.identity).await?;
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&stats)?);
+    } else {
+        println!(
+            "{}: {} users, {} conversations",
+            session.identity.team, stats.users, stats.conversations
+        );
+    }
+    Ok(())
+}
+
+fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
+    let team = match &g.team {
+        Some(t) => t.clone(),
+        None => creds
+            .list()?
+            .into_iter()
+            .next()
+            .context("no stored team; run `flek auth import`")?,
+    };
+    let db = open_db(g)?;
+    let rows: Vec<_> = db
+        .with_conn(|c| flek_core::store::directory::list_conversations(c, &team))?
+        .into_iter()
+        .filter(|r| archived || !r.is_archived)
+        .collect();
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+    if rows.is_empty() {
+        println!("no conversations stored; run `flek sync`");
+    }
+    for r in rows {
+        let prefix = match r.kind.as_str() {
+            "public_channel" => "#",
+            "private_channel" => "🔒",
+            "mpim" => "👥",
+            _ => "@",
+        };
+        let archived = if r.is_archived { "  (archived)" } else { "" };
+        println!("{prefix} {}{archived}", r.label);
     }
     Ok(())
 }

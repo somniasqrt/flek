@@ -49,7 +49,10 @@ fn file_store_uses_wal_and_reopens_without_remigrating() {
     assert_eq!(store.path(), Some(path.as_path()));
     let mut conn = rusqlite::Connection::open(&path).unwrap();
     assert!(migrations::migrate(&mut conn).unwrap().is_empty());
-    assert_eq!(store.schema_version().unwrap(), 1);
+    assert_eq!(
+        store.schema_version().unwrap(),
+        migrations::latest_version()
+    );
 }
 
 #[test]

@@ -6,7 +6,10 @@ use crate::Result;
 
 /// `(version, sql)`; versions must be increasing. Never edit an applied one,
 /// add a new file instead.
-const MIGRATIONS: &[(u32, &str)] = &[(1, include_str!("migrations/0001_init.sql"))];
+const MIGRATIONS: &[(u32, &str)] = &[
+    (1, include_str!("migrations/0001_init.sql")),
+    (2, include_str!("migrations/0002_conversation_label.sql")),
+];
 
 /// Latest schema version this build knows.
 pub fn latest_version() -> u32 {

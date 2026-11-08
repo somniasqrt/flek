@@ -5,6 +5,7 @@ pub mod auth;
 pub mod error;
 pub mod secret;
 pub mod store;
+pub mod sync;
 
 pub use error::{Error, Result};
 pub use secret::Secret;
