@@ -1,0 +1,10 @@
+[package]
+name = "flek-app"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+# Placeholder: the Tauri 2 shell lands in M3.1.
+
+[lints]
+workspace = true
