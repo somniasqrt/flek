@@ -60,6 +60,9 @@ enum Command {
         /// Re-read the whole history and every thread, merging without loss.
         #[arg(long)]
         full: bool,
+        /// Stay connected and print new messages as they arrive (Ctrl+C to stop).
+        #[arg(long)]
+        follow: bool,
     },
     /// Show recent messages of a conversation from the local database.
     History {
@@ -133,13 +136,19 @@ async fn main() -> Result<()> {
             max_file_size,
             refresh_days,
             full,
+            follow,
         } => {
             let max = (!no_files).then_some(max_file_size);
-            let opts = flek_core::sync::SyncOptions {
+            sync(
+                &store,
+                g,
+                channel.as_deref(),
+                max,
+                refresh_days,
                 full,
-                ..flek_core::sync::SyncOptions::refresh_days(refresh_days)
-            };
-            sync(&store, g, channel.as_deref(), max, &opts).await
+                follow,
+            )
+            .await
         }
         Command::History {
             channel,
@@ -213,109 +222,168 @@ fn db(g: &Global) -> Result<()> {
     Ok(())
 }
 
+/// Runs the sync engine once, or with `follow` until Ctrl+C.
 /// `files`: `None` skips downloads, `Some(mb)` caps the size (0 = no cap).
 async fn sync(
     creds: &CredentialStore,
     g: &Global,
     only: Option<&str>,
     files: Option<u64>,
-    opts: &flek_core::sync::SyncOptions,
+    refresh_days: u32,
+    full: bool,
+    follow: bool,
 ) -> Result<()> {
     use flek_core::store::directory;
-    use flek_core::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
-    use flek_core::sync::threads::sync_threads;
+    use flek_core::sync::engine::{Engine, EngineOptions, Priority};
+    use flek_core::sync::live::{bus, Change, ConnectionState, Progress};
 
     let session = auth::resolve_session(creds, g.team.as_deref()).await?;
     let db = open_db(g)?;
-    let client = session.client()?;
-    let me = &session.identity;
+    let me = session.identity.clone();
 
-    let dir = flek_core::sync::directory::sync_directory(&client, &db, me).await?;
-    eprintln!(
-        "{}: {} users, {} conversations",
-        me.team, dir.users, dir.conversations
-    );
-
-    let team = me.team_id.clone();
-    let mut convs = db.with_conn(|c| directory::list_conversations(c, &team))?;
-    if let Some(q) = only {
-        let found = db
-            .with_conn(|c| directory::find_conversation(c, &team, q))?
-            .with_context(|| format!("no conversation matches {q:?}"))?;
-        convs = vec![found];
-    }
-
-    let mut limiter = RateLimiter::new(HISTORY_INTERVAL);
-    let (mut total, mut deleted, mut failed) = (0usize, 0usize, 0usize);
-    let n = convs.len();
-    let bar = progress_bar(n as u64, "{spinner} [{bar:30}] {pos}/{len} {wide_msg}");
-    for conv in &convs {
-        bar.set_message(conv.label.clone());
-        let result = async {
-            let b = backfill_conversation(&client, &db, &mut limiter, &conv.id, opts).await?;
-            let t = sync_threads(&client, &db, &mut limiter, &conv.id, opts).await?;
-            Ok::<_, flek_core::Error>((b, t))
+    let only = match only {
+        Some(q) => {
+            // The conversation may not be stored yet: fetch the directory first.
+            flek_core::sync::directory::sync_directory(&session.client()?, &db, &me).await?;
+            let team = me.team_id.clone();
+            let found = db
+                .with_conn(|c| directory::find_conversation(c, &team, q))?
+                .with_context(|| format!("no conversation matches {q:?}"))?;
+            Some(vec![found.id])
         }
-        .await;
-        match result {
-            Ok((b, t)) => {
-                total += b.messages + t.replies;
-                deleted += b.deleted + t.deleted;
-                if b.messages + t.replies + b.deleted + t.deleted > 0 {
-                    let mut line = format!("{}: +{} messages", conv.label, b.messages);
-                    if t.threads > 0 {
-                        line.push_str(&format!(", {} threads (+{} replies)", t.threads, t.replies));
-                    }
-                    if b.deleted + t.deleted > 0 {
-                        line.push_str(&format!(", {} deleted", b.deleted + t.deleted));
-                    }
-                    say(&bar, line);
+        None => None,
+    };
+    let files = match files {
+        Some(mb) => Some((
+            flek_core::files::default_cache_dir()?,
+            (mb > 0).then(|| i64::try_from(mb * 1024 * 1024).unwrap_or(i64::MAX)),
+        )),
+        None => None,
+    };
+
+    let bus = bus();
+    let mut events = bus.subscribe();
+    let engine = Engine {
+        client: session.client()?,
+        store: db.clone(),
+        me: me.clone(),
+        bus: bus.clone(),
+        priority: Priority::default(),
+        options: EngineOptions {
+            refresh_days,
+            full,
+            files,
+            only,
+            follow,
+            ..Default::default()
+        },
+    };
+
+    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            let _ = stop_tx.send(true);
+        }
+    });
+
+    let bar = progress_bar(0, "{spinner} [{bar:30}] {pos}/{len} {wide_msg}");
+    let printer = async {
+        loop {
+            let change = match events.recv().await {
+                Ok(c) => c,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(_) => break,
+            };
+            match change {
+                Change::Progress(Progress::Directory) => bar.set_message("users and conversations"),
+                Change::Progress(Progress::Conversations {
+                    done,
+                    total,
+                    current,
+                    deep,
+                }) => {
+                    bar.set_length(total as u64);
+                    bar.set_position(done as u64);
+                    bar.set_message(if deep {
+                        format!("{current} (older history)")
+                    } else {
+                        current
+                    });
                 }
-            }
-            Err(e) if e.is_auth_error() => {
-                bar.abandon();
-                return Err(e.into());
-            }
-            Err(e) => {
-                failed += 1;
-                say(&bar, format!("{}: {e}", conv.label));
+                Change::Progress(Progress::Files { done, total }) => {
+                    bar.set_length(total as u64);
+                    bar.set_position(done as u64);
+                    bar.set_message("files");
+                }
+                Change::Progress(Progress::Idle) => {
+                    bar.finish_and_clear();
+                    if follow {
+                        eprintln!("up to date; listening for new messages (Ctrl+C to stop)");
+                    }
+                }
+                Change::Connection(ConnectionState::Reconnecting { in_secs }) => {
+                    say(&bar, format!("connection lost, reconnecting in {in_secs}s"));
+                }
+                Change::Message {
+                    conversation_id,
+                    ts,
+                } => {
+                    if let Ok(Some(line)) = db.with_conn(|c| live_line(c, &conversation_id, &ts)) {
+                        say(&bar, line);
+                    }
+                }
+                _ => {}
             }
         }
-        bar.inc(1);
-    }
+    };
+
+    let stats = tokio::select! {
+        r = engine.run(stop_rx) => r?,
+        // Only if every sender is gone, which cannot happen while `bus` lives.
+        _ = printer => return Ok(()),
+    };
     bar.finish_and_clear();
 
-    let mut file_stats = None;
-    if let Some(mb) = files {
-        let cache = flek_core::files::default_cache_dir()?;
-        let max = (mb > 0).then(|| i64::try_from(mb * 1024 * 1024).unwrap_or(i64::MAX));
-        let fbar = progress_bar(0, "files [{bar:30}] {pos}/{len}");
-        let stats =
-            flek_core::sync::files::download_files(&client, &db, &cache, max, |done, total| {
-                fbar.set_length(total as u64);
-                fbar.set_position(done as u64);
-            })
-            .await?;
-        fbar.finish_and_clear();
-        eprintln!(
-            "files: {} downloaded, {} already cached, {} failed",
-            stats.downloaded, stats.cached, stats.failed
-        );
-        file_stats = Some(stats);
-    }
-
     if g.json {
-        let out = json!({
-            "users": dir.users, "conversations": dir.conversations, "new_messages": total,
-            "deleted": deleted, "failed": failed, "files": file_stats
-        });
-        println!("{}", serde_json::to_string_pretty(&out)?);
+        println!("{}", serde_json::to_string_pretty(&stats)?);
     } else {
         println!(
-            "done: {total} new messages, {deleted} deleted, {n} conversations, {failed} failed"
+            "done: {} new messages, {} deleted, {} conversations, {} failed, {} files downloaded",
+            stats.messages,
+            stats.deleted,
+            stats.conversations,
+            stats.failed,
+            stats.files_downloaded
         );
     }
     Ok(())
+}
+
+/// `#channel 14:03 Author: text` for a stored message.
+fn live_line(
+    c: &rusqlite::Connection,
+    conversation_id: &str,
+    ts: &str,
+) -> flek_core::Result<Option<String>> {
+    let Some(row) = flek_core::store::messages::thread(c, conversation_id, ts)?
+        .into_iter()
+        .find(|r| r.ts == ts)
+    else {
+        return Ok(None);
+    };
+    let label: String = c
+        .query_row(
+            "SELECT COALESCE(label, name, id) FROM conversations WHERE id = ?1",
+            [conversation_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_else(|_| conversation_id.to_owned());
+    let (_, time) = format_ts(ts);
+    let author = row.author.or(row.user_id).unwrap_or_else(|| "?".into());
+    Ok(Some(format!(
+        "{label} {time} {author}: {}",
+        row.text.replace('\n', " ")
+    )))
 }
 
 /// Progress on stderr; hidden automatically when stderr is not a terminal.
