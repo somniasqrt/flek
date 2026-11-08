@@ -56,6 +56,7 @@ async fn mock(server: &MockServer) {
                 {"id": "G0SEC", "name": "secret", "is_private": true, "is_archived": true},
                 {"id": "D0BOB", "is_im": true, "user": "U0BOB"},
                 {"id": "D0GONE", "is_im": true, "user": "U0UNKNOWN"},
+                {"id": "D0SYS", "is_im": true, "user": "USLACK"},
                 {"id": "G0MP", "name": "mpdm-me--alice--bob-1", "is_mpim": true, "is_private": true}
             ],
             "response_metadata": {"next_cursor": ""}
@@ -136,7 +137,7 @@ async fn syncs_users_and_conversations() {
 
     let stats = sync_directory(&client, &store, &me()).await.unwrap();
     assert_eq!(stats.users, 5);
-    assert_eq!(stats.conversations, 5);
+    assert_eq!(stats.conversations, 6);
 
     store
         .with_conn(|c| {
@@ -171,6 +172,7 @@ async fn syncs_users_and_conversations() {
                     ("G0SEC", "secret"),
                     ("G0MP", "Alice, Bob Builder"),
                     ("D0BOB", "Bob Builder"),
+                    ("D0SYS", "Slack"),
                     ("D0GONE", "U0UNKNOWN"),
                 ]
             );
@@ -188,5 +190,5 @@ async fn syncs_users_and_conversations() {
     let n: i64 = store
         .with_conn(|c| Ok(c.query_row("SELECT COUNT(*) FROM conversations", [], |r| r.get(0))?))
         .unwrap();
-    assert_eq!(n, 5);
+    assert_eq!(n, 6);
 }

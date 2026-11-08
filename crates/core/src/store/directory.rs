@@ -134,7 +134,12 @@ fn conversation_label(c: &Conversation, self_user: &str, users: &UserLabels) -> 
         ConversationKind::Im => c
             .user
             .as_deref()
-            .map(|u| users.by_id.get(u).cloned().unwrap_or_else(|| u.to_owned()))
+            .map(|u| match users.by_id.get(u) {
+                Some(label) => label.clone(),
+                // Slack's system DM; not a real user, so users.list skips it.
+                None if u == "USLACK" => "Slack".to_owned(),
+                None => u.to_owned(),
+            })
             .unwrap_or_else(|| c.id.clone()),
         ConversationKind::Mpim => {
             // Slack names group DMs `mpdm-alice--bob--carol-1`.

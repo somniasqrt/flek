@@ -18,12 +18,12 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 |---|---|
 | done (M0) | Zero-click login: import session from the installed Slack desktop app (macOS Keychain prompt once) |
 | done (M0) | Credentials stored only in macOS Keychain |
-| planned | Backfill of all available history into SQLite |
+| done (M1) | Backfill of all available history into SQLite, resumable, with threads, reactions and files |
 | planned | Live updates over websocket |
 | planned | Channels, DMs, threads, reactions, images, files |
 | planned | Sending messages, replies, reactions, mark as read |
-| planned | Local full-text search including hidden (>90 days) messages |
-| planned | Import of existing JSON archives (e.g. slackdump) |
+| done (M1, CLI) | Local full-text search including hidden (>90 days) messages |
+| done (M1) | Import of existing JSON archives (e.g. slackdump) |
 | planned | "Open in Slack" deep link for anything not supported (polls, slash commands, huddles) |
 
 ## Stack
@@ -54,12 +54,18 @@ Prerequisites: Rust stable, Node 20+, Slack desktop app logged in.
 
 ```bash
 cargo run -p flek-cli -- whoami                 # import session, show team/user
+cargo run -p flek-cli -- sync                   # users, channels, history, threads, files → local DB
+cargo run -p flek-cli -- channels               # conversations with message/unread counts
+cargo run -p flek-cli -- history general        # read a channel offline (--thread <ts> for a thread)
+cargo run -p flek-cli -- search "grades in:#general after:2024-01-01"   # offline full-text search
+cargo run -p flek-cli -- import <path>          # simple JSON archive or Slack export / slackdump
 cargo run -p flek-cli -- auth list              # teams stored in Keychain
 cargo run -p flek-cli -- auth logout            # remove stored session
-cargo run -p flek-cli -- sync                   # backfill + catch up into local DB
-cargo run -p flek-cli -- search "grades sheet"  # local full-text search
-cargo run -p flek-cli -- import <path>          # import an existing JSON archive
 ```
+
+`flek sync` is resumable (Ctrl+C is safe) and re-reads the last 7 days for
+edits, reactions and deletions (`--refresh-days`); `--full` walks everything
+again, `--no-files` skips downloads.
 
 **Desktop app**:
 
