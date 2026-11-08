@@ -48,6 +48,12 @@ enum Command {
         /// Only this conversation (name, #name or id).
         #[arg(long)]
         channel: Option<String>,
+        /// Skip downloading files into the local cache.
+        #[arg(long)]
+        no_files: bool,
+        /// Largest file to download, in MB (0 = no limit).
+        #[arg(long, default_value_t = 100, value_name = "MB")]
+        max_file_size: u64,
     },
     /// Show recent messages of a conversation from the local database.
     History {
@@ -92,7 +98,14 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
-        Command::Sync { channel } => sync(&store, g, channel.as_deref()).await,
+        Command::Sync {
+            channel,
+            no_files,
+            max_file_size,
+        } => {
+            let max = (!no_files).then_some(max_file_size);
+            sync(&store, g, channel.as_deref(), max).await
+        }
         Command::History {
             channel,
             limit,
@@ -159,7 +172,13 @@ fn db(g: &Global) -> Result<()> {
     Ok(())
 }
 
-async fn sync(creds: &CredentialStore, g: &Global, only: Option<&str>) -> Result<()> {
+/// `files`: `None` skips downloads, `Some(mb)` caps the size (0 = no cap).
+async fn sync(
+    creds: &CredentialStore,
+    g: &Global,
+    only: Option<&str>,
+    files: Option<u64>,
+) -> Result<()> {
     use flek_core::store::directory;
     use flek_core::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
     use flek_core::sync::threads::sync_threads;
@@ -216,8 +235,26 @@ async fn sync(creds: &CredentialStore, g: &Global, only: Option<&str>) -> Result
         }
     }
 
+    let mut file_stats = None;
+    if let Some(mb) = files {
+        let cache = flek_core::files::default_cache_dir()?;
+        let max = (mb > 0).then(|| i64::try_from(mb * 1024 * 1024).unwrap_or(i64::MAX));
+        let stats =
+            flek_core::sync::files::download_files(&client, &db, &cache, max, |done, total| {
+                if done % 50 == 0 || done == total {
+                    eprintln!("files: {done}/{total}");
+                }
+            })
+            .await?;
+        eprintln!(
+            "files: {} downloaded, {} already cached, {} failed",
+            stats.downloaded, stats.cached, stats.failed
+        );
+        file_stats = Some(stats);
+    }
+
     if g.json {
-        let out = json!({ "users": dir.users, "conversations": dir.conversations, "new_messages": total, "failed": failed });
+        let out = json!({ "users": dir.users, "conversations": dir.conversations, "new_messages": total, "failed": failed, "files": file_stats });
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
         println!("done: {total} new messages in {n} conversations, {failed} failed");

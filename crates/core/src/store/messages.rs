@@ -2,6 +2,7 @@
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use super::files::{self, FileRow};
 use crate::Result;
 
 /// A message as stored. Built by `sync` from API or live data.
@@ -22,6 +23,8 @@ pub struct MessageRow {
     pub raw_json: String,
     /// `(emoji name, user id)`; replaces the stored set when the row is written.
     pub reactions: Vec<(String, String)>,
+    /// Files attached to the message; replace the stored links likewise.
+    pub files: Vec<FileRow>,
 }
 
 /// Inserts or updates messages of one conversation in a transaction.
@@ -55,6 +58,10 @@ pub fn upsert_messages(
             tx.prepare("DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2")?;
         let mut add_reaction =
             tx.prepare("INSERT OR IGNORE INTO reactions VALUES (?1, ?2, ?3, ?4)")?;
+        let mut clear_files =
+            tx.prepare("DELETE FROM message_files WHERE conversation_id = ?1 AND ts = ?2")?;
+        let mut link_file =
+            tx.prepare("INSERT OR IGNORE INTO message_files VALUES (?1, ?2, ?3)")?;
         for r in rows {
             let written = stmt.execute(params![
                 conversation_id,
@@ -78,6 +85,11 @@ pub fn upsert_messages(
             clear_reactions.execute(params![conversation_id, r.ts])?;
             for (name, user) in &r.reactions {
                 add_reaction.execute(params![conversation_id, r.ts, name, user])?;
+            }
+            clear_files.execute(params![conversation_id, r.ts])?;
+            for f in &r.files {
+                files::upsert_file(&tx, f)?;
+                link_file.execute(params![conversation_id, r.ts, f.id])?;
             }
         }
     }

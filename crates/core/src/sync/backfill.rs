@@ -12,6 +12,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::api::{Client, HistoryQuery, Message};
+use crate::store::files::FileRow;
 use crate::store::messages::{self, MessageRow, SyncState};
 use crate::store::Store;
 use crate::Result;
@@ -167,5 +168,6 @@ pub(crate) fn to_row(m: &Message) -> MessageRow {
             .iter()
             .flat_map(|r| r.users.iter().map(move |u| (r.name.clone(), u.clone())))
             .collect(),
+        files: m.files.iter().filter_map(FileRow::from_slack).collect(),
     }
 }

@@ -125,6 +125,63 @@ impl Client {
     }
 }
 
+impl Client {
+    /// GETs a Slack-hosted file with the session headers into `dest`
+    /// (written to a temp file first, then renamed). Refuses hosts outside
+    /// Slack so the session never leaks, and HTML pages unless `html_ok`
+    /// (Slack answers a broken session with its login page).
+    pub async fn download(&self, url: &str, dest: &std::path::Path, html_ok: bool) -> Result<u64> {
+        let parsed =
+            reqwest::Url::parse(url).map_err(|_| Error::File("invalid file URL".into()))?;
+        let host = parsed.host_str().unwrap_or_default();
+        let api_host = reqwest::Url::parse(&self.base_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_owned))
+            .unwrap_or_default();
+        if !(host == "slack.com" || host.ends_with(".slack.com") || host == api_host) {
+            return Err(Error::File(format!(
+                "refusing to send the session to {host}"
+            )));
+        }
+
+        let mut resp = self
+            .http
+            .get(parsed)
+            .timeout(Duration::from_secs(600))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(Error::HttpStatus(resp.status().as_u16()));
+        }
+        let is_html = resp
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("text/html"));
+        if is_html && !html_ok {
+            return Err(Error::File(
+                "got an HTML page instead of the file (session expired?)".into(),
+            ));
+        }
+
+        let dir = dest
+            .parent()
+            .ok_or_else(|| Error::File("destination has no parent".into()))?;
+        std::fs::create_dir_all(dir)?;
+        let tmp = dest.with_extension("part");
+        let mut out = tokio::fs::File::create(&tmp).await?;
+        let mut written = 0u64;
+        while let Some(chunk) = resp.chunk().await? {
+            tokio::io::AsyncWriteExt::write_all(&mut out, &chunk).await?;
+            written += chunk.len() as u64;
+        }
+        tokio::io::AsyncWriteExt::flush(&mut out).await?;
+        drop(out);
+        std::fs::rename(&tmp, dest)?;
+        Ok(written)
+    }
+}
+
 fn auth_headers(token: &Secret, cookie: &Secret) -> Result<HeaderMap> {
     let invalid = |what: &str| {
         Error::DesktopData(format!(
