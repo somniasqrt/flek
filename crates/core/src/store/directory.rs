@@ -8,16 +8,23 @@ use crate::api::{Conversation, ConversationKind, User};
 use crate::Result;
 
 /// Inserts or updates the team row.
-pub fn upsert_team(conn: &Connection, id: &str, name: &str, url: &str) -> Result<()> {
+pub fn upsert_team(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    url: &str,
+    self_user: &str,
+) -> Result<()> {
     let domain = url
         .trim_start_matches("https://")
         .split('.')
         .next()
         .filter(|d| !d.is_empty());
     conn.execute(
-        "INSERT INTO teams (id, name, domain, url) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, domain = excluded.domain, url = excluded.url",
-        params![id, name, domain, url],
+        "INSERT INTO teams (id, name, domain, url, self_user_id) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET name = excluded.name, domain = excluded.domain,
+            url = excluded.url, self_user_id = excluded.self_user_id",
+        params![id, name, domain, url, self_user],
     )?;
     Ok(())
 }
@@ -162,13 +169,22 @@ pub struct ConversationRow {
     pub is_archived: bool,
     pub topic: Option<String>,
     pub messages: i64,
+    /// Top-level messages from others after Slack's read marker; `None`
+    /// when the marker is unknown.
+    pub unread: Option<i64>,
 }
 
 /// Conversations of a team: channels first, then group DMs and DMs, by label.
 pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
-                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = conversations.id AND m.deleted = 0)
+                (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = conversations.id AND m.deleted = 0),
+                CASE WHEN last_read IS NULL THEN NULL ELSE (
+                    SELECT COUNT(*) FROM messages m
+                    WHERE m.conversation_id = conversations.id AND m.deleted = 0 AND m.ts > last_read
+                      AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
+                      AND m.user_id IS NOT (SELECT self_user_id FROM teams WHERE teams.id = conversations.team_id)
+                ) END
          FROM conversations
          WHERE team_id = ?1
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
@@ -183,6 +199,7 @@ pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<Conver
                 is_archived: r.get(3)?,
                 topic: r.get(4)?,
                 messages: r.get(5)?,
+                unread: r.get(6)?,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -210,4 +227,17 @@ pub fn find_conversation(
     Ok(list_conversations(conn, team_id)?
         .into_iter()
         .find(|r| r.id.eq_ignore_ascii_case(q) || r.label.eq_ignore_ascii_case(q)))
+}
+
+/// Stores Slack's read markers (`client.counts`, later `channel_marked` events).
+pub fn set_read_markers(conn: &mut Connection, markers: &[(String, Option<String>)]) -> Result<()> {
+    let tx = conn.transaction()?;
+    {
+        let mut stmt = tx.prepare("UPDATE conversations SET last_read = ?2 WHERE id = ?1")?;
+        for (id, last_read) in markers {
+            stmt.execute(params![id, last_read])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
 }

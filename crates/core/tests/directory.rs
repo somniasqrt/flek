@@ -64,6 +64,64 @@ async fn mock(server: &MockServer) {
         .await;
 }
 
+async fn mock_counts(server: &MockServer) {
+    Mock::given(path("/client.counts"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "channels": [{"id": "C0GEN", "last_read": "100.000000", "has_unreads": true}],
+            "ims": [{"id": "D0BOB", "last_read": "0000000000.000000"}],
+            "mpims": []
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn unread_counts_from_read_markers() {
+    use flek_core::store::messages::{self, MessageRow};
+
+    let server = MockServer::start().await;
+    mock(&server).await;
+    mock_counts(&server).await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    let store = Store::open_in_memory().unwrap();
+    sync_directory(&client, &store, &me()).await.unwrap();
+
+    let row = |ts: &str, user: &str| MessageRow {
+        ts: ts.into(),
+        user_id: Some(user.into()),
+        text: "x".into(),
+        raw_json: "{}".into(),
+        ..Default::default()
+    };
+    store
+        .with_conn(|c| {
+            // Read up to 100: 50 is read, 150 and 200 are new, 300 is mine.
+            messages::upsert_messages(
+                c,
+                "C0GEN",
+                &[
+                    row("050.000000", "U0BOB"),
+                    row("150.000000", "U0BOB"),
+                    row("200.000000", "U0BOT"),
+                    row("300.000000", "U0ME"),
+                ],
+            )?;
+            let rows = directory::list_conversations(c, "T0FAKE")?;
+            let unread = |id: &str| rows.iter().find(|r| r.id == id).unwrap().unread;
+            assert_eq!(unread("C0GEN"), Some(2));
+            assert_eq!(unread("D0BOB"), Some(0));
+            assert_eq!(unread("G0SEC"), None);
+            Ok(())
+        })
+        .unwrap();
+}
+
 #[tokio::test]
 async fn syncs_users_and_conversations() {
     let server = MockServer::start().await;

@@ -12,6 +12,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (3, include_str!("migrations/0003_threads.sql")),
     (4, include_str!("migrations/0004_author_name.sql")),
     (5, include_str!("migrations/0005_search.sql")),
+    (6, include_str!("migrations/0006_unread.sql")),
 ];
 
 /// Latest schema version this build knows.

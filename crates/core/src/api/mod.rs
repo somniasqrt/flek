@@ -4,6 +4,7 @@ mod auth;
 mod client;
 mod conversations;
 mod history;
+mod internal;
 mod pagination;
 mod users;
 
@@ -11,4 +12,5 @@ pub use auth::AuthTest;
 pub use client::{Client, DEFAULT_BASE_URL};
 pub use conversations::{Conversation, ConversationKind, TextValue};
 pub use history::{Edited, HistoryPage, HistoryQuery, Message, Reaction};
+pub use internal::ReadMarker;
 pub use users::{Profile, User};

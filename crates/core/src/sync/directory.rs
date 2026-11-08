@@ -22,8 +22,9 @@ pub async fn sync_directory(
         me.url.clone(),
         me.user_id.clone(),
     );
+    let me_id = self_user.clone();
     store
-        .call(move |c| directory::upsert_team(c, &team_id, &team, &url))
+        .call(move |c| directory::upsert_team(c, &team_id, &team, &url, &me_id))
         .await?;
 
     let users = client.users_list().await?;
@@ -42,5 +43,16 @@ pub async fn sync_directory(
             directory::upsert_conversations(c, &team_id, &self_user, &convs)
         })
         .await?;
+    // Undocumented; unread counts just stay unknown if it fails.
+    match client.client_counts().await {
+        Ok(markers) => {
+            let markers: Vec<_> = markers.into_iter().map(|m| (m.id, m.last_read)).collect();
+            store
+                .call(move |c| directory::set_read_markers(c, &markers))
+                .await?;
+        }
+        Err(e) if e.is_auth_error() => return Err(e),
+        Err(e) => tracing::warn!(error = %e, "client.counts failed; unread counts unavailable"),
+    }
     Ok(stats)
 }

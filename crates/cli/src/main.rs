@@ -246,9 +246,11 @@ async fn sync(
     }
 
     let mut limiter = RateLimiter::new(HISTORY_INTERVAL);
-    let (mut total, mut failed) = (0usize, 0usize);
+    let (mut total, mut deleted, mut failed) = (0usize, 0usize, 0usize);
     let n = convs.len();
-    for (i, conv) in convs.iter().enumerate() {
+    let bar = progress_bar(n as u64, "{spinner} [{bar:30}] {pos}/{len} {wide_msg}");
+    for conv in &convs {
+        bar.set_message(conv.label.clone());
         let result = async {
             let b = backfill_conversation(&client, &db, &mut limiter, &conv.id, opts).await?;
             let t = sync_threads(&client, &db, &mut limiter, &conv.id, opts).await?;
@@ -258,36 +260,43 @@ async fn sync(
         match result {
             Ok((b, t)) => {
                 total += b.messages + t.replies;
-                if b.messages + t.replies > 0 {
-                    eprintln!(
-                        "[{}/{n}] {}: +{} messages, {} threads (+{} replies)",
-                        i + 1,
-                        conv.label,
-                        b.messages,
-                        t.threads,
-                        t.replies
-                    );
+                deleted += b.deleted + t.deleted;
+                if b.messages + t.replies + b.deleted + t.deleted > 0 {
+                    let mut line = format!("{}: +{} messages", conv.label, b.messages);
+                    if t.threads > 0 {
+                        line.push_str(&format!(", {} threads (+{} replies)", t.threads, t.replies));
+                    }
+                    if b.deleted + t.deleted > 0 {
+                        line.push_str(&format!(", {} deleted", b.deleted + t.deleted));
+                    }
+                    say(&bar, line);
                 }
             }
-            Err(e) if e.is_auth_error() => return Err(e.into()),
+            Err(e) if e.is_auth_error() => {
+                bar.abandon();
+                return Err(e.into());
+            }
             Err(e) => {
                 failed += 1;
-                eprintln!("[{}/{n}] {}: {e}", i + 1, conv.label);
+                say(&bar, format!("{}: {e}", conv.label));
             }
         }
+        bar.inc(1);
     }
+    bar.finish_and_clear();
 
     let mut file_stats = None;
     if let Some(mb) = files {
         let cache = flek_core::files::default_cache_dir()?;
         let max = (mb > 0).then(|| i64::try_from(mb * 1024 * 1024).unwrap_or(i64::MAX));
+        let fbar = progress_bar(0, "files [{bar:30}] {pos}/{len}");
         let stats =
             flek_core::sync::files::download_files(&client, &db, &cache, max, |done, total| {
-                if done % 50 == 0 || done == total {
-                    eprintln!("files: {done}/{total}");
-                }
+                fbar.set_length(total as u64);
+                fbar.set_position(done as u64);
             })
             .await?;
+        fbar.finish_and_clear();
         eprintln!(
             "files: {} downloaded, {} already cached, {} failed",
             stats.downloaded, stats.cached, stats.failed
@@ -296,12 +305,35 @@ async fn sync(
     }
 
     if g.json {
-        let out = json!({ "users": dir.users, "conversations": dir.conversations, "new_messages": total, "failed": failed, "files": file_stats });
+        let out = json!({
+            "users": dir.users, "conversations": dir.conversations, "new_messages": total,
+            "deleted": deleted, "failed": failed, "files": file_stats
+        });
         println!("{}", serde_json::to_string_pretty(&out)?);
     } else {
-        println!("done: {total} new messages in {n} conversations, {failed} failed");
+        println!(
+            "done: {total} new messages, {deleted} deleted, {n} conversations, {failed} failed"
+        );
     }
     Ok(())
+}
+
+/// Progress on stderr; hidden automatically when stderr is not a terminal.
+fn progress_bar(len: u64, template: &str) -> indicatif::ProgressBar {
+    let bar = indicatif::ProgressBar::new(len);
+    if let Ok(style) = indicatif::ProgressStyle::with_template(template) {
+        bar.set_style(style.progress_chars("=> "));
+    }
+    bar
+}
+
+/// A log line that does not tear the progress bar.
+fn say(bar: &indicatif::ProgressBar, line: String) {
+    if bar.is_hidden() {
+        eprintln!("{line}");
+    } else {
+        bar.println(line);
+    }
 }
 
 fn search(
@@ -498,7 +530,14 @@ fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
             _ => "@",
         };
         let archived = if r.is_archived { "  (archived)" } else { "" };
-        println!("{prefix} {}{archived}  {}", r.label, r.messages);
+        let unread = match r.unread {
+            Some(0) | None => String::new(),
+            Some(n) => format!("  ({n} unread)"),
+        };
+        println!(
+            "{prefix} {}{archived}  {} msgs{unread}",
+            r.label, r.messages
+        );
     }
     Ok(())
 }
