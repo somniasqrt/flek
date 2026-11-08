@@ -68,6 +68,18 @@ cargo run -p flek-cli -- auth logout            # remove stored session
 edits, reactions and deletions (`--refresh-days`); `--full` walks everything
 again, `--no-files` skips downloads.
 
+**Keychain prompts during development (macOS).** Keychain remembers "Always
+Allow" per code signature, and every cargo build gets a new ad-hoc one, so
+macOS asks again after each rebuild. Create a self-signed code signing
+certificate once and `cargo run` signs `flek` with it
+(`scripts/macos-runner.sh`):
+
+1. Keychain Access → menu *Keychain Access → Certificate Assistant → Create a Certificate…*
+2. Name `Flek Dev`, Identity Type *Self Signed Root*, Certificate Type *Code Signing* → Create.
+3. Run any `flek` command and click *Always Allow* once per prompt; rebuilds keep the permission.
+
+Another name works via `FLEK_CODESIGN_IDENTITY`.
+
 **Desktop app**:
 
 ```bash

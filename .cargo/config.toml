@@ -1,0 +1,7 @@
+# Sign the flek binary with a stable identity on `cargo run`, so Keychain's
+# "Always Allow" survives rebuilds. See scripts/macos-runner.sh.
+[target.aarch64-apple-darwin]
+runner = "scripts/macos-runner.sh"
+
+[target.x86_64-apple-darwin]
+runner = "scripts/macos-runner.sh"
