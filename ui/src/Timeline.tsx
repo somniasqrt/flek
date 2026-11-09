@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 import { emoji } from "./emoji";
@@ -19,8 +19,6 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
   const show = (list: Message[]) => setRows(reconcile(list, { key: "ts" }));
   const current = () => unwrap(rows).slice();
   const [loading, setLoading] = createSignal(false);
-  // Day of the topmost visible message, once its own separator scrolled away.
-  const [floatingDay, setFloatingDay] = createSignal<string | null>(null);
   const [exhausted, setExhausted] = createSignal(false);
   let scroller!: HTMLDivElement;
   // Bumped on every switch so late pages of the previous conversation are dropped.
@@ -91,26 +89,21 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
     ),
   );
 
-  let scrollFrame = 0;
-  const onScroll = () => {
-    if (scroller.scrollTop < LOAD_MARGIN) loadOlder();
-    if (scrollFrame) return;
-    scrollFrame = requestAnimationFrame(() => {
-      scrollFrame = 0;
-      updateFloatingDay();
-    });
-  };
+  const onScroll = () => scroller.scrollTop < LOAD_MARGIN && loadOlder();
 
-  /// The last day separator above the top edge names the day in view.
-  const updateFloatingDay = () => {
-    const top = scroller.scrollTop;
-    let day: string | null = null;
-    for (const el of scroller.querySelectorAll<HTMLElement>(".day")) {
-      if (el.offsetTop >= top) break;
-      day = el.dataset.day ?? null;
+  // Messages split by day. Day keys are strings, so <For> keeps a day's
+  // section (and its rows) when other days change or older ones load.
+  const byDay = createMemo(() => {
+    const map = new Map<string, Message[]>();
+    for (const m of rows) {
+      const k = dayKey(m.ts);
+      const list = map.get(k);
+      if (list) list.push(m);
+      else map.set(k, [m]);
     }
-    setFloatingDay(day);
-  };
+    return map;
+  });
+  const days = createMemo(() => [...byDay().keys()]);
 
   const upsert = (m: Message) => {
     const r = current();
@@ -152,13 +145,6 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
         </Show>
       </header>
       <div class="scroll-area">
-      <Show when={floatingDay()}>
-        {(d) => (
-          <div class="day floating">
-            <span>{d()}</span>
-          </div>
-        )}
-      </Show>
       <div class="scroller" ref={scroller} onScroll={onScroll}>
         <Show when={exhausted() && rows.length > 0}>
           <div class="start muted">Start of what Flek has for this conversation</div>
@@ -166,64 +152,18 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
         <Show when={!loading() && rows.length === 0}>
           <div class="start muted">No messages yet. They appear here as they sync.</div>
         </Show>
-        <For each={rows}>
-          {(m, i) => {
-            const prev = () => rows[i() - 1];
-            const newDay = () => !prev() || dayKey(prev()!.ts) !== dayKey(m.ts);
-            const grouped = () =>
-              !newDay() &&
-              !!prev() &&
-              prev()!.user_id === m.user_id &&
-              !m.subtype &&
-              parseFloat(m.ts) - parseFloat(prev()!.ts) < GROUP_GAP;
+        <For each={days()}>
+          {(key) => {
+            const items = () => byDay().get(key) ?? [];
             return (
-              <>
-                <Show when={newDay()}>
-                  <div class="day" data-day={dayLabel(m.ts)}>
-                    <span>{dayLabel(m.ts)}</span>
-                  </div>
-                </Show>
-                <article class="msg" classList={{ grouped: grouped() }}>
-                  <div class="gutter">
-                    <Show
-                      when={!grouped()}
-                      fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}
-                    >
-                      <Avatar id={m.user_id} name={author(m)} />
-                    </Show>
-                  </div>
-                  <div class="body">
-                    <Show when={!grouped()}>
-                      <div class="meta">
-                        <span class="author">{author(m)}</span>
-                        <time class="muted">{timeLabel(m.ts)}</time>
-                        <Show when={m.hidden_by_limit}>
-                          <span class="tag" title="Slack hides this message on the Free plan">
-                            from archive
-                          </span>
-                        </Show>
-                      </div>
-                    </Show>
-                    <Show when={m.text.trim()}>
-                      <Rich text={m.text} />
-                    </Show>
-                    <Show when={m.edited}>
-                      <span class="muted edited">(edited)</span>
-                    </Show>
-                    <Show when={m.files.length > 0}>
-                      <Files files={m.files} />
-                    </Show>
-                    <Show when={m.reactions}>
-                      {(r) => <Reactions summary={r()} />}
-                    </Show>
-                    <Show when={m.reply_count > 0}>
-                      <div class="replies">
-                        {m.reply_count} {m.reply_count === 1 ? "reply" : "replies"}
-                      </div>
-                    </Show>
-                  </div>
-                </article>
-              </>
+              // Each day is its own section, so its sticky label only sticks
+              // while that day is on screen (like Slack).
+              <section class="day-section">
+                <div class="day">
+                  <span>{dayLabel(items()[0]?.ts ?? "0")}</span>
+                </div>
+                <For each={items()}>{(m, i) => <MessageRow m={m} prev={items()[i() - 1]} />}</For>
+              </section>
             );
           }}
         </For>
@@ -295,5 +235,57 @@ function Reactions(props: { summary: string }) {
         )}
       </For>
     </div>
+  );
+}
+
+/// One message; `prev` (same day) decides grouping under one author line.
+function MessageRow(props: { m: Message; prev?: Message }) {
+  const m = props.m;
+  const grouped = () =>
+    !!props.prev &&
+    props.prev.user_id === m.user_id &&
+    !m.subtype &&
+    parseFloat(m.ts) - parseFloat(props.prev.ts) < GROUP_GAP;
+  return (
+    <article class="msg" classList={{ grouped: grouped() }}>
+      <div class="gutter">
+        <Show
+          when={!grouped()}
+          fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}
+        >
+          <Avatar id={m.user_id} name={author(m)} />
+        </Show>
+      </div>
+      <div class="body">
+        <Show when={!grouped()}>
+          <div class="meta">
+            <span class="author">{author(m)}</span>
+            <time class="muted">{timeLabel(m.ts)}</time>
+            <Show when={m.hidden_by_limit}>
+              <span class="tag" title="Slack hides this message on the Free plan">
+                from archive
+              </span>
+            </Show>
+          </div>
+        </Show>
+        <Show when={m.text.trim()}>
+          <Rich text={m.text} />
+        </Show>
+        <Show when={m.edited}>
+          <span class="muted edited">(edited)</span>
+        </Show>
+        <Show when={m.files.length > 0}>
+          <Files files={m.files} />
+        </Show>
+        <Show when={m.reactions}>
+          {(r) => <Reactions summary={r()} />}
+        </Show>
+        <Show when={m.reply_count > 0}>
+          <div class="replies">
+            {m.reply_count} {m.reply_count === 1 ? "reply" : "replies"}
+          </div>
+        </Show>
+      </div>
+    </article>
   );
 }
