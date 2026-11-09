@@ -18,11 +18,24 @@ pub const PREVIEW_NAME: &str = "_flek_preview.png";
 /// Where a file lives in the cache: `<cache>/<id>/<name>`. The id directory
 /// dedupes; the original name lets the OS pick the right app to open it.
 pub fn cache_path(cache_dir: &Path, id: &str, name: Option<&str>) -> PathBuf {
+    let dir = id_component(id);
     let name = name
         .map(sanitize)
         .filter(|n| !n.is_empty())
-        .unwrap_or_else(|| id.to_owned());
-    cache_dir.join(sanitize(id)).join(name)
+        .unwrap_or_else(|| dir.clone());
+    cache_dir.join(dir).join(name)
+}
+
+/// The per-id directory name. Slack ids are plain (`F0…`); anything that
+/// sanitizes to nothing (`""`, `.`, `..`) gets a hex name, so it can neither
+/// leave the cache nor share a directory with another file.
+fn id_component(id: &str) -> String {
+    let clean = sanitize(id);
+    if !clean.is_empty() {
+        return clean;
+    }
+    let hex: String = id.bytes().map(|b| format!("{b:02x}")).collect();
+    format!("_{hex}")
 }
 
 fn sanitize(name: &str) -> String {
