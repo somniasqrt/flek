@@ -25,10 +25,16 @@ pub struct Query {
 /// punctuation never breaks the query; `word*` is a prefix search, `"two
 /// words"` a phrase, `-word` excludes.
 pub fn parse(input: &str) -> Result<Query> {
+    // FTS5 cannot take NUL (or other control characters) even inside a
+    // quoted string: they separate words, like whitespace.
+    let input: String = input
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
     let mut q = Query::default();
     let mut include = Vec::new();
     let mut exclude = Vec::new();
-    for token in tokenize(input) {
+    for token in tokenize(&input) {
         let (key, value) = match token.split_once(':') {
             Some((k, v)) if !token.starts_with('"') && !v.is_empty() => (k.to_ascii_lowercase(), v),
             _ => (String::new(), token.as_str()),
