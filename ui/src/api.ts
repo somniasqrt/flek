@@ -85,6 +85,10 @@ export type Message = {
   text: string;
   subtype: string | null;
   reply_count: number;
+  /// Thread roots: distinct repliers, most recent first (up to 4).
+  repliers: string[];
+  /// Thread roots: ts of the newest reply.
+  latest_reply: string | null;
   edited: boolean;
   hidden_by_limit: boolean;
   reactions: string | null;

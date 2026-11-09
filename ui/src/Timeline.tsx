@@ -1,21 +1,20 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
-import Avatar from "./Avatar";
-import { emoji } from "./emoji";
-import Files from "./Files";
 import { Hash, Lock } from "./icons";
-import { people } from "./people";
-import Rich from "./Rich";
-import Unfurls from "./Unfurls";
+import MessageRow from "./MessageRow";
 
 const PAGE = 60;
 /// Load older messages when the top is this close (px).
 const LOAD_MARGIN = 400;
-/// Messages from one author closer than this are grouped (seconds).
-const GROUP_GAP = 5 * 60;
 
-export default function Timeline(props: { conversation: Conversation; change: Change | null }) {
+export default function Timeline(props: {
+  conversation: Conversation;
+  change: Change | null;
+  /// Root ts of the thread open in the side panel.
+  thread: string | null;
+  onThread: (ts: string) => void;
+}) {
   // Reconciled by ts: updates touch only the rows that changed, so syncing
   // never re-renders (and flickers) the whole timeline.
   const [rows, setRows] = createStore<Message[]>([]);
@@ -165,7 +164,14 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
                 <div class="day">
                   <span>{dayLabel(items()[0]?.ts ?? "0")}</span>
                 </div>
-                <For each={items()}>{(m, i) => <MessageRow m={m} prev={items()[i() - 1]} />}</For>
+                <For each={items()}>{(m, i) => (
+                    <MessageRow
+                      m={m}
+                      prev={items()[i() - 1]}
+                      onThread={props.onThread}
+                      active={props.thread === m.ts}
+                    />
+                  )}</For>
               </section>
             );
           }}
@@ -190,86 +196,4 @@ function dayLabel(ts: string): string {
     month: "long",
     year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
   });
-}
-
-const timeLabel = (ts: string) =>
-  tsDate(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-
-const author = (m: Message) =>
-  (m.user_id && people()[m.user_id]) || m.author || m.user_id || "unknown";
-
-/// `:name: count` pairs (core's summary) as chips.
-function Reactions(props: { summary: string }) {
-  const items = () =>
-    [...props.summary.matchAll(/:([^:\s]+(?:::skin-tone-\d)?): (\d+)/g)].map((m) => ({
-      name: m[1],
-      count: m[2],
-    }));
-  return (
-    <div class="reactions">
-      <For each={items()}>
-        {(r) => (
-          <span class="reaction" title={`:${r.name}:`}>
-            <span class="emoji">{emoji(r.name) ?? `:${r.name}:`}</span>
-            <span>{r.count}</span>
-          </span>
-        )}
-      </For>
-    </div>
-  );
-}
-
-/// One message; `prev` (same day) decides grouping under one author line.
-function MessageRow(props: { m: Message; prev?: Message }) {
-  const m = props.m;
-  const grouped = () =>
-    !!props.prev &&
-    props.prev.user_id === m.user_id &&
-    !m.subtype &&
-    parseFloat(m.ts) - parseFloat(props.prev.ts) < GROUP_GAP;
-  return (
-    <article class="msg" classList={{ grouped: grouped() }}>
-      <div class="gutter">
-        <Show
-          when={!grouped()}
-          fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}
-        >
-          <Avatar id={m.user_id} name={author(m)} />
-        </Show>
-      </div>
-      <div class="body">
-        <Show when={!grouped()}>
-          <div class="meta">
-            <span class="author">{author(m)}</span>
-            <time class="muted">{timeLabel(m.ts)}</time>
-            <Show when={m.hidden_by_limit}>
-              <span class="tag" title="Slack hides this message on the Free plan">
-                from archive
-              </span>
-            </Show>
-          </div>
-        </Show>
-        <Show when={m.text.trim()}>
-          <Rich text={m.text} />
-        </Show>
-        <Show when={m.edited}>
-          <span class="muted edited">(edited)</span>
-        </Show>
-        <Show when={m.files.length > 0}>
-          <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts }} />
-        </Show>
-        <Show when={m.unfurls.length > 0}>
-          <Unfurls items={m.unfurls} />
-        </Show>
-        <Show when={m.reactions}>
-          {(r) => <Reactions summary={r()} />}
-        </Show>
-        <Show when={m.reply_count > 0}>
-          <div class="replies">
-            {m.reply_count} {m.reply_count === 1 ? "reply" : "replies"}
-          </div>
-        </Show>
-      </div>
-    </article>
-  );
 }

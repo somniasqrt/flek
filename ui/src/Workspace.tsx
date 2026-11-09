@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
@@ -11,9 +11,10 @@ import {
 } from "./api";
 import { loadPeople } from "./people";
 import Rail from "./Rail";
-import Viewer from "./Viewer";
+import Viewer, { isViewing } from "./Viewer";
 import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
+import Thread from "./Thread";
 import Timeline from "./Timeline";
 
 type Ready = Extract<Status, { phase: "ready" }>;
@@ -102,6 +103,18 @@ export default function Workspace(props: { status: Ready }) {
 
   const current = () => conversations.find((c) => c.id === selected()) ?? null;
 
+  // Root ts of the thread open in the side panel; closed when switching
+  // conversations, or with Esc (unless the viewer is on top).
+  const [thread, setThread] = createSignal<string | null>(null);
+  createEffect(on(selected, () => setThread(null), { defer: true }));
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && thread() && !isViewing()) setThread(null);
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
+
   return (
     <div class="shell">
       {/* The window has no title bar: this strip drags it, under the traffic lights. */}
@@ -132,9 +145,26 @@ export default function Workspace(props: { status: Ready }) {
                 </div>
               }
             >
-              {(c) => <Timeline conversation={c()} change={change()} />}
+              {(c) => (
+                <Timeline
+                  conversation={c()}
+                  change={change()}
+                  thread={thread()}
+                  onThread={setThread}
+                />
+              )}
             </Show>
           </section>
+          <Show when={current() && thread()}>
+            {(ts) => (
+              <Thread
+                conversation={current()!}
+                ts={ts()}
+                change={change()}
+                onClose={() => setThread(null)}
+              />
+            )}
+          </Show>
         </div>
       </div>
       <Viewer />

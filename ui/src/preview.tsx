@@ -1,12 +1,15 @@
 // UI preview without Tauri or Slack: `npm run dev --workspace ui`, then open
 // http://localhost:5173/preview.html. IPC is mocked with made-up data.
+import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
 import { overrideCacheUrl, type Conversation, type FileRef, type Message } from "./api";
 import "./styles.css";
 
-const people: Record<string, string> = { U1: "Olena Koval", U2: "Taras Melnyk", U3: "Me" };
+const people: Record<string, string> = {
+  U1: "Olena Koval", U2: "Taras Melnyk", U3: "Me", U4: "Iryna Bondar", U5: "Andrii Shevchuk",
+};
 const conversations: Conversation[] = [
   { id: "C1", kind: "public_channel", label: "general", is_archived: false, topic: "Announcements", messages: 6, unread: 2, latest_ts: "1762600000.000000", dm_user_id: null },
   { id: "C2", kind: "private_channel", label: "course-project", is_archived: false, topic: null, messages: 0, unread: 0, latest_ts: null, dm_user_id: null },
@@ -19,12 +22,20 @@ const file = (f: Partial<FileRef>): FileRef => ({
 });
 const msg = (ts: number, user: string, text: string, extra: Partial<Message> = {}): Message => ({
   ts: `${ts}.000000`, user_id: user, author: people[user], text, subtype: null, reply_count: 0,
-  edited: false, hidden_by_limit: false, reactions: null, thread_ts: null, files: [], unfurls: [], ...extra,
+  repliers: [], latest_reply: null, edited: false, hidden_by_limit: false, reactions: null, thread_ts: null, files: [], unfurls: [], ...extra,
 });
+// The thread under 1762300120: its last reply a few minutes ago.
+const now = Math.floor(Date.now() / 1000);
+const ROOT = "1762300120.000000";
+const replies: Message[] = [
+  msg(1762300400, "U5", "Will it be the same link as last week?", { thread_ts: ROOT }),
+  msg(1762300700, "U1", "Yes, same Zoom room. I'll also post the recording in #general afterwards :+1:", { thread_ts: ROOT, reactions: ":pray: 2" }),
+  msg(now - 25 * 60, "U4", "Thanks! Could someone share the slides from the previous lecture too?", { thread_ts: ROOT }),
+];
 const messages: Message[] = [
   msg(1762300000, "U1", "# Practice moved online\nHi all :wave: tomorrow's practice is *online*: <https://us06web.zoom.us/j/123456|Join Zoom>\nSlides: <https://docs.google.com/presentation/d/abc/edit>", { reactions: ":+1: 4  :fire: 2" }),
   msg(1762300060, "U1", "Plan:\n- predicates recap\n- test, _half_ the class\n  - variants at 3 times\n1. read chapter 2\n2. try `forall x. P(x)`"),
-  msg(1762300120, "U2", "&gt; Will the recording be on the drive?\nYes, <@U1> said so <!here>. See https://github.com/example/repo and :pink_heart:", { edited: true, reply_count: 3 }),
+  msg(1762300120, "U2", "&gt; Will the recording be on the drive?\nYes, <@U1> said so <!here>. See https://github.com/example/repo and :pink_heart:", { edited: true, reply_count: 3, repliers: ["U4", "U1", "U5"], latest_reply: `${now - 25 * 60}.000000` }),
   msg(1762400000, "U3", "```fn main() {\n    println!(\"hi\");\n}```"),
   msg(1762400030, "U3", "", { files: [file({ id: "F1", name: "calendar.png", mimetype: "image/png", local_path: "/tmp/x.png", width: 1200, height: 800 }), file({ id: "F2", name: "Schedule_Monday stream 70236.pdf", mimetype: "application/pdf", filetype: "pdf", size: 2_400_000, local_path: "/tmp/l.pdf", preview_path: "/tmp/p.png", preview_width: 910, preview_height: 1286 })] }),
   msg(1762400090, "U1", "Variants for the test", { files: [file({ id: "F4", name: "Variants 9 points.pdf", mimetype: "application/pdf", filetype: "pdf", size: 300_000, local_path: "/tmp/v.pdf", preview_path: "/tmp/v.png", preview_width: 910, preview_height: 1286 })] }),
@@ -48,17 +59,32 @@ mockIPC((cmd, args) => {
     case "people":
       return people;
     case "avatars":
-      return { U1: "a1" };
+      return { U1: "a1", U4: "a4" };
     case "pdf_data":
       return Uint8Array.from(pdf, (c) => c.charCodeAt(0)).buffer;
+    // Copies, like real IPC: stores wrap what they get, and __reply below
+    // must not mutate it behind their back.
+    case "thread":
+      return structuredClone(a.ts === ROOT ? [messages.find((m) => m.ts === ROOT), ...replies] : []);
+    case "message":
+      return structuredClone([...messages, ...replies].find((m) => m.ts === a.ts) ?? null);
     case "messages":
-      return a.conversationId === "C1" && !a.before ? messages : [];
-    case "plugin:event|listen":
-      return 1;
+      return structuredClone(a.conversationId === "C1" && !a.before ? messages : []);
     default:
       return null;
   }
-});
+}, { shouldMockEvents: true });
+
+// Simulates a live reply from the sync engine: `__reply()` in the console.
+(window as unknown as { __reply: () => void }).__reply = () => {
+  const ts = Math.floor(Date.now() / 1000);
+  replies.push(msg(ts, "U2", "Sure, here they are.", { thread_ts: ROOT }));
+  const root = messages.find((m) => m.ts === ROOT)!;
+  root.reply_count = replies.length;
+  root.repliers = ["U2", "U4", "U1", "U5"];
+  root.latest_reply = `${ts}.000000`;
+  emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: `${ts}.000000` } });
+};
 
 // Cached images: a placeholder instead of flekfile:// (no app here).
 const avatar =
@@ -79,8 +105,9 @@ const pdf =
   `2 0 obj<</Type/Pages/Kids[${pdfPages.map((n) => `${n} 0 R`).join(" ")}]/Count ${pdfPages.length}>>endobj\n` +
   pdfPages.map(pdfPage).join("") +
   "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+const avatar2 = avatar.replace("%23e8a33d", "%235b8def");
 overrideCacheUrl((path) =>
-  path === "link/a1" ? avatar : placeholder,
+  path === "link/a1" ? avatar : path === "link/a4" ? avatar2 : placeholder,
 );
 
 render(() => <App />, document.getElementById("root")!);
