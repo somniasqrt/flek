@@ -21,3 +21,6 @@ crates/app/gen/
 
 # cargo mutants
 mutants.out*/
+
+# Claude Code agent worktrees
+.claude/worktrees/
