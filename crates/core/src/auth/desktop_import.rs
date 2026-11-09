@@ -106,8 +106,16 @@ pub fn parse_teams(json: &str) -> Result<Vec<TeamSession>> {
         token: Option<String>,
     }
 
-    let config: LocalConfig = serde_json::from_str(json)
-        .map_err(|e| Error::DesktopData(format!("localConfig_v2 is not valid: {e}")))?;
+    // serde's message can quote the offending value, which may be the token:
+    // report only the kind and position of the error.
+    let config: LocalConfig = serde_json::from_str(json).map_err(|e| {
+        Error::DesktopData(format!(
+            "localConfig_v2 is not valid ({:?} error at line {}, column {})",
+            e.classify(),
+            e.line(),
+            e.column()
+        ))
+    })?;
     let teams: Vec<TeamSession> = config
         .teams
         .into_iter()
@@ -173,6 +181,14 @@ mod tests {
         assert_eq!(teams[0].token.expose(), "xoxc-1");
         assert_eq!(teams[1].team_id, "T2");
         assert_eq!(teams[1].url, "https://two.slack.com/");
+    }
+
+    #[test]
+    fn invalid_config_error_does_not_quote_values() {
+        let err = parse_teams(r#"{"teams":{"T1":"xoxc-SECRETVALUE"}}"#).unwrap_err();
+        let shown = format!("{err} {err:?}");
+        assert!(matches!(err, Error::DesktopData(_)));
+        assert!(!shown.contains("SECRETVALUE"), "{shown}");
     }
 
     #[test]
