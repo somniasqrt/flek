@@ -106,6 +106,7 @@ export const api = {
   people: () => invoke<Record<string, string>>("people"),
   avatars: () => invoke<Record<string, string>>("avatars"),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
+  pdfData: (fileId: string) => invoke<ArrayBuffer>("pdf_data", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
 };
 

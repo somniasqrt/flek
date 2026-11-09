@@ -3,7 +3,7 @@
 //!
 //! The UI names files by id, never by path. The handler looks the file up
 //! in the database and serves it only from inside the download cache, and
-//! only images and PDFs (for the viewer) or a preview (a PNG Slack rendered).
+//! only images (a file itself) or its preview (a PNG Slack rendered).
 
 use std::path::{Path, PathBuf};
 
@@ -62,7 +62,7 @@ async fn serve(app: &tauri::AppHandle, path: &str) -> Result<(Vec<u8>, String), 
         (file.preview_path, "image/png".to_owned())
     } else {
         let mime = file.mimetype.unwrap_or_default();
-        if !(mime.starts_with("image/") || mime == "application/pdf") {
+        if !mime.starts_with("image/") {
             return Err(StatusCode::FORBIDDEN);
         }
         (file.local_path, mime)
@@ -107,7 +107,7 @@ fn sniff_image(b: &[u8]) -> Option<&'static str> {
 }
 
 /// `path` resolved, if it lies inside the download cache.
-fn inside_cache(path: &Path) -> Option<PathBuf> {
+pub(crate) fn inside_cache(path: &Path) -> Option<PathBuf> {
     let cache = flek_core::files::default_cache_dir()
         .ok()?
         .canonicalize()

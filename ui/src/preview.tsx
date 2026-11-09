@@ -47,6 +47,8 @@ mockIPC((cmd, args) => {
       return people;
     case "avatars":
       return { U1: "a1" };
+    case "pdf_data":
+      return Uint8Array.from(pdf, (c) => c.charCodeAt(0)).buffer;
     case "messages":
       return a.conversationId === "C1" && !a.before ? messages : [];
     case "plugin:event|listen":
@@ -73,7 +75,7 @@ const pdf =
   "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>endobj\n" +
   pdfPage(3) + pdfPage(4) + "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
 overrideCacheUrl((path) =>
-  path === "F2" ? "data:application/pdf;base64," + btoa(pdf) : path === "link/a1" ? avatar : placeholder,
+  path === "link/a1" ? avatar : placeholder,
 );
 
 render(() => <App />, document.getElementById("root")!);

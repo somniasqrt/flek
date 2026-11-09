@@ -147,6 +147,31 @@ pub async fn open_file(
     app.opener().open_path(path, None::<&str>).map_err(text)
 }
 
+/// Bytes of a cached PDF, for the in-app viewer. Goes over IPC rather than
+/// `fetch(flekfile://…)`: reading a custom-scheme response from the page is
+/// a cross-origin request WebKit refuses (images only display, so they can
+/// keep using the scheme).
+#[tauri::command]
+pub async fn pdf_data(
+    state: State<'_, AppState>,
+    file_id: String,
+) -> CmdResult<tauri::ipc::Response> {
+    let file = state
+        .store
+        .read(move |c| messages::cached_file(c, &file_id))
+        .await
+        .map_err(text)?
+        .ok_or("unknown file")?;
+    if file.mimetype.as_deref() != Some("application/pdf") {
+        return Err("not a PDF".into());
+    }
+    let path = file.local_path.ok_or("the file is not downloaded yet")?;
+    let path = crate::files::inside_cache(std::path::Path::new(&path))
+        .ok_or("the file is outside the cache")?;
+    let bytes = tokio::fs::read(path).await.map_err(text)?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Opens a link from a message in the default browser (never in Flek's
 /// own webview).
 #[tauri::command]

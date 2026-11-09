@@ -80,7 +80,7 @@ function Overlay(props: { v: Viewing }) {
 /// Pages of a PDF, drawn by pdf.js as they scroll into view.
 function Pdf(props: { file: FileRef; onClose: () => void }) {
   const [pages, setPages] = createSignal<{ w: number; h: number }[]>([]);
-  const [failed, setFailed] = createSignal(false);
+  const [failed, setFailed] = createSignal<string | null>(null);
   let stage!: HTMLDivElement;
 
   onMount(async () => {
@@ -100,7 +100,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
         import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
       ]);
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-      const data = await (await fetch(fileUrl(props.file.id))).arrayBuffer();
+      const data = await api.pdfData(props.file.id);
       task = pdfjs.getDocument({ data });
       const doc = await task.promise;
       if (closed) return;
@@ -127,8 +127,8 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
         { root: stage, rootMargin: "800px 0px" },
       );
       stage.querySelectorAll("canvas").forEach((c) => observer!.observe(c));
-    } catch {
-      if (!closed) setFailed(true);
+    } catch (e) {
+      if (!closed) setFailed(String(e));
     }
   });
 
@@ -137,6 +137,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       <Show when={failed()}>
         <div class="viewer-fail">
           <p>Can't show this PDF here.</p>
+          <p class="muted">{failed()}</p>
           <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
             Open in default app
           </button>

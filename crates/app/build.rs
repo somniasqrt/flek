@@ -14,6 +14,7 @@ const COMMANDS: &[&str] = &[
     "people",
     "avatars",
     "open_file",
+    "pdf_data",
     "open_url",
 ];
 

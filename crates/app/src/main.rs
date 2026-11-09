@@ -55,6 +55,7 @@ fn main() {
             commands::people,
             commands::avatars,
             commands::open_file,
+            commands::pdf_data,
             commands::open_url,
         ])
         .setup(move |app| {
