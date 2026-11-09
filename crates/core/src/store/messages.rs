@@ -406,6 +406,8 @@ pub struct HistoryRow {
     pub files: Vec<FileRef>,
     /// Link previews.
     pub unfurls: Vec<super::unfurls::Unfurl>,
+    /// Id the sending client chose; matches an optimistic copy in the UI.
+    pub client_msg_id: Option<String>,
 }
 
 /// A file attached to a message, for display.
@@ -456,7 +458,9 @@ const DISPLAY_COLUMNS: &str =
          WHERE r.conversation_id = m.conversation_id AND r.thread_ts = m.ts AND r.ts != m.ts
            AND r.deleted = 0),
         m.latest_reply)
-    END
+    END,
+    CASE WHEN instr(m.raw_json, 'client_msg_id') > 0 AND json_valid(m.raw_json)
+         THEN json_extract(m.raw_json, '$.client_msg_id') END
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -572,6 +576,7 @@ fn query_display(
                         super::unfurls::from_raw(&raw, &|u| super::unfurls::is_cached(conn, u))
                     })
                     .unwrap_or_default(),
+                client_msg_id: r.get(13)?,
             })
         })?
         .collect::<Result<Vec<HistoryRow>, _>>()?;

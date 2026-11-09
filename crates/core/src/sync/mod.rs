@@ -7,6 +7,7 @@ pub mod files;
 pub mod follow;
 pub mod import;
 pub mod live;
+pub mod send;
 pub mod threads;
 
 use std::time::{SystemTime, UNIX_EPOCH};

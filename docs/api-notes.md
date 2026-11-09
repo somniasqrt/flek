@@ -122,3 +122,28 @@ downloads still add `Authorization: Bearer` (cookie-only not verified).
 Not reproduced: `_x_*` / `fp` / `slack_route` parameters (internal client
 telemetry with values Flek cannot honestly produce), `accept-language`,
 `priority`, the flannel websocket (Flek uses documented `rtm.connect`).
+
+### `chat.postMessage` (sending as the user)
+
+- **Documented:** yes. Not yet captured from Slack desktop, which may use
+  another internal method for its own composer; Flek uses the documented one,
+  shaped like every other call (multipart, token in the body, team host).
+- **Request (fake values):** `channel=C0FAKE`, `text=…`,
+  `client_msg_id=<random UUID v4>`, and for a thread reply `thread_ts=<root>`
+  plus `reply_broadcast=true` for "Also send to #channel". `text` is what
+  the user typed (mrkdwn) with `&`, `<`, `>` escaped as `&amp;`, `&lt;`,
+  `&gt;` (Slack's escaping rules), so `<@U…>` typed by hand is sent literally.
+- **Response:** `{ok, channel, ts, message}`; `message` is the stored message
+  (with `client_msg_id`). Flek fills `thread_ts`, `subtype: thread_broadcast`,
+  `user` and `client_msg_id` from the request when they are missing.
+- **Storage:** the returned message goes through the live-event path
+  (`sync::live::apply`), i.e. an upsert by `(conversation_id, ts)`. The RTM
+  echo of the same message, before or after the response, rewrites the same
+  row; the root's reply count is bumped idempotently (`note_reply`).
+- **Errors:** `channel_not_found`, `not_in_channel`, `is_archived`,
+  `msg_too_long`, `restricted_action*`, auth errors → `Error::Slack { code }`,
+  worded for people by `api::chat::describe_send_error`. `ratelimited` / HTTP
+  429 are retried (`Retry-After`, at most 3 times) by `Client::call`.
+- **Works with `xoxc`:** untested by Flek's tests (wiremock only). Owner's
+  first real test: the self-DM.
+- **Date written:** 2026-11-09.

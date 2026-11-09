@@ -98,6 +98,19 @@ enum Command {
         #[arg(long)]
         channel: Option<String>,
     },
+    /// Send a message as you (Slack mrkdwn; `&`, `<`, `>` are escaped).
+    Send {
+        /// Conversation name, #name, person for a DM, or id.
+        channel: String,
+        /// Message text.
+        text: String,
+        /// Reply in this thread (root ts, as `flek history` prints it).
+        #[arg(long, value_name = "TS")]
+        thread: Option<String>,
+        /// With --thread: also show the reply in the channel.
+        #[arg(long, requires = "thread")]
+        broadcast: bool,
+    },
     /// List conversations from the local database.
     Channels {
         /// Include archived channels.
@@ -161,6 +174,12 @@ async fn main() -> Result<()> {
             recent,
         } => search(&store, g, &query.join(" "), limit, recent),
         Command::Import { path, channel } => import_archive(&store, g, &path, channel.as_deref()),
+        Command::Send {
+            channel,
+            text,
+            thread,
+            broadcast,
+        } => send(&store, g, &channel, text, thread, broadcast).await,
         Command::Channels { archived } => channels(&store, g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
@@ -375,6 +394,56 @@ async fn sync(
             stats.failed,
             stats.files_downloaded
         );
+    }
+    Ok(())
+}
+
+/// Posts one message and stores Slack's copy of it.
+async fn send(
+    creds: &CredentialStore,
+    g: &Global,
+    query: &str,
+    text: String,
+    thread: Option<String>,
+    broadcast: bool,
+) -> Result<()> {
+    use flek_core::store::directory;
+    use flek_core::sync::send::{send, Outgoing};
+
+    let session = auth::resolve_session(creds, g.team.as_deref()).await?;
+    let db = open_db(g)?;
+    let me = session.identity.clone();
+    let client = session.client()?;
+    let find = |db: &Store| db.with_read(|c| directory::find_conversation(c, &me.team_id, query));
+    let conv = match find(&db)? {
+        Some(c) => c,
+        None => {
+            // Not stored yet (new DM, fresh database): fetch the directory.
+            flek_core::sync::directory::sync_directory(&client, &db, &me).await?;
+            find(&db)?.with_context(|| {
+                format!("no conversation matches {query:?}; try `flek channels`")
+            })?
+        }
+    };
+    let sent = send(
+        &client,
+        &db,
+        &me.user_id,
+        Outgoing {
+            conversation_id: conv.id.clone(),
+            text,
+            thread_ts: thread,
+            broadcast,
+            client_msg_id: None,
+        },
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!(flek_core::api::chat::describe_send_error(&e)))
+    .with_context(|| format!("sending to {}", conv.label))?;
+    if g.json {
+        println!("{}", serde_json::to_string_pretty(&sent)?);
+    } else {
+        println!("sent to {} (ts {})", conv.label, sent.ts);
     }
     Ok(())
 }

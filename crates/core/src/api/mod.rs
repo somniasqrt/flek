@@ -1,6 +1,7 @@
 //! Slack Web API client.
 
 mod auth;
+pub mod chat;
 mod client;
 mod conversations;
 mod emoji;
@@ -12,6 +13,7 @@ mod rtm;
 mod users;
 
 pub use auth::AuthTest;
+pub use chat::{PostMessage, Posted};
 pub use client::{Client, DEFAULT_BASE_URL};
 pub use conversations::{Conversation, ConversationKind, TextValue};
 pub use history::{Edited, HistoryPage, HistoryQuery, Message, Reaction};
