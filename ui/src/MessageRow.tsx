@@ -1,7 +1,7 @@
 // One message, as both the timeline and the thread panel show it.
 import { createSignal, For, Show } from "solid-js";
 import { api, tsDate, type Message } from "./api";
-import { AddReaction } from "./icons";
+import { AddReaction, ReplyInThread } from "./icons";
 import MessageMenu from "./MessageMenu";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
@@ -110,6 +110,7 @@ export default function MessageRow(props: {
   /// Briefly highlighted (a search result jumped to).
   flash?: boolean;
 }) {
+  let rowElement!: HTMLElement;
   const m = props.m;
   const [menu, setMenu] = createSignal<{
     x: number;
@@ -139,9 +140,22 @@ export default function MessageRow(props: {
   const copy = async () => {
     setMenu(null);
     try {
-      await navigator.clipboard.writeText(m.text);
+      await navigator.clipboard.writeText(
+        rowElement.querySelector<HTMLElement>(".rich")?.innerText ?? m.text,
+      );
     } catch {
       setError("Could not copy the message");
+    }
+  };
+  const copyLink = async () => {
+    setMenu(null);
+    try {
+      const status = await api.status();
+      if (status.phase !== "ready") throw new Error("Workspace is not ready");
+      const link = `slack://channel?team=${encodeURIComponent(status.team_id)}&id=${encodeURIComponent(props.conversationId)}&message=${encodeURIComponent(m.ts)}`;
+      await navigator.clipboard.writeText(link);
+    } catch {
+      setError("Could not copy the message link");
     }
   };
   const grouped = () =>
@@ -151,6 +165,7 @@ export default function MessageRow(props: {
     parseFloat(m.ts) - parseFloat(props.prev.ts) < GROUP_GAP;
   return (
     <article
+      ref={rowElement}
       class="msg"
       classList={{
         grouped: grouped(),
@@ -187,7 +202,7 @@ export default function MessageRow(props: {
               aria-label="Reply in thread"
               onClick={() => props.onThread?.(m.thread_ts ?? m.ts)}
             >
-              ↩
+              <ReplyInThread />
             </button>
           </Show>
           <button
@@ -210,6 +225,7 @@ export default function MessageRow(props: {
             onReaction={react}
             onClose={() => setMenu(null)}
             onCopy={copy}
+            onCopyLink={copyLink}
             onThread={props.onThread ? () => props.onThread?.(m.thread_ts ?? m.ts) : undefined}
           />
         )}

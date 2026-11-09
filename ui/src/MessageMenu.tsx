@@ -1,8 +1,8 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { usesMacShortcuts } from "./shortcuts";
-import Emoji from "./EmojiView";
-import EmojiPicker, { quickEmoji } from "./EmojiPicker";
+import { primaryModifier, usesMacShortcuts } from "./shortcuts";
+import { AddReaction, ReplyInThread, MessageLink, CopyMessage } from "./icons";
+import EmojiPicker from "./EmojiPicker";
 
 export default function MessageMenu(props: {
   x: number;
@@ -13,6 +13,7 @@ export default function MessageMenu(props: {
   onClose: () => void;
   onThread?: () => void;
   onCopy: () => void;
+  onCopyLink: () => void;
 }) {
   const [picker, setPicker] = createSignal(props.picker);
   const [position, setPosition] = createSignal({ left: props.x, top: props.y });
@@ -27,7 +28,7 @@ export default function MessageMenu(props: {
     const observer = new ResizeObserver(fit);
     observer.observe(panel);
     fit();
-    (panel.querySelector("input, button") as HTMLElement)?.focus();
+    (panel.querySelector(props.picker ? "input" : "button") as HTMLElement)?.focus();
     const dismiss = () => props.onClose();
     window.addEventListener("resize", dismiss);
     window.addEventListener("blur", dismiss);
@@ -44,8 +45,37 @@ export default function MessageMenu(props: {
       e.stopPropagation();
       props.onClose();
     }
+    if ((e.target as HTMLElement).tagName !== "INPUT" && !picker()) {
+      const key = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey ? e.code : "";
+      if (key === "KeyR") {
+        e.preventDefault();
+        setPicker(true);
+        return;
+      }
+      if (key === "KeyT" && props.onThread) {
+        e.preventDefault();
+        props.onThread();
+        props.onClose();
+        return;
+      }
+      if (key === "KeyL") {
+        e.preventDefault();
+        props.onCopyLink();
+        return;
+      }
+      if (primaryModifier(e, usesMacShortcuts()) && e.code === "KeyC") {
+        e.preventDefault();
+        props.onCopy();
+        return;
+      }
+    }
     if (e.key === "Tab") {
-      props.onClose();
+      const controls = [...panel.querySelectorAll<HTMLElement>("input, button:not(:disabled)")];
+      const target = e.shiftKey ? controls.at(-1) : controls[0];
+      if (document.activeElement === (e.shiftKey ? controls[0] : controls.at(-1))) {
+        e.preventDefault();
+        target?.focus();
+      }
       return;
     }
     if (
@@ -74,7 +104,8 @@ export default function MessageMenu(props: {
         <div
           ref={panel}
           class="message-menu"
-          role="dialog"
+          classList={{ "emoji-picker-menu": picker() }}
+          role={picker() ? "dialog" : "menu"}
           aria-label={picker() ? "Choose a reaction" : "Message actions"}
           style={{ left: `${position().left}px`, top: `${position().top}px` }}
           onPointerDown={(e) => e.stopPropagation()}
@@ -85,48 +116,55 @@ export default function MessageMenu(props: {
             when={picker()}
             fallback={
               <>
-                <div class="quick-reactions">
-                  <For each={quickEmoji}>
-                    {(name) => (
-                      <button
-                        type="button"
-                        title={`:${name}:`}
-                        aria-label={`:${name}:`}
-                        aria-pressed={props.own.includes(name)}
-                        onClick={() => props.onReaction(name)}
-                      >
-                        <Emoji name={name} />
-                      </button>
-                    )}
-                  </For>
-                </div>
-                <button class="message-menu-item" type="button" onClick={() => setPicker(true)}>
-                  Add reaction… <span>☺</span>
+                <button
+                  class="message-menu-item"
+                  role="menuitem"
+                  type="button"
+                  onClick={() => setPicker(true)}
+                >
+                  <AddReaction />
+                  <span class="message-menu-label">Add reaction…</span>
+                  <kbd>R</kbd>
                 </button>
                 <Show when={props.onThread}>
                   <button
                     class="message-menu-item"
+                    role="menuitem"
                     type="button"
                     onClick={() => {
                       props.onThread?.();
                       props.onClose();
                     }}
                   >
-                    Reply in thread <span>↩</span>
+                    <ReplyInThread />
+                    <span class="message-menu-label">Reply in thread</span>
+                    <kbd>T</kbd>
                   </button>
                 </Show>
-                <button class="message-menu-item" type="button" onClick={props.onCopy}>
-                  Copy message <span>{usesMacShortcuts() ? "⌘C" : "Ctrl+C"}</span>
+                <div class="message-menu-rule" role="separator" />
+                <button
+                  class="message-menu-item"
+                  role="menuitem"
+                  type="button"
+                  onClick={props.onCopyLink}
+                >
+                  <MessageLink />
+                  <span class="message-menu-label">Copy link</span>
+                  <kbd>L</kbd>
+                </button>
+                <button
+                  class="message-menu-item"
+                  role="menuitem"
+                  type="button"
+                  onClick={props.onCopy}
+                >
+                  <CopyMessage />
+                  <span class="message-menu-label">Copy message</span>
+                  <kbd>{usesMacShortcuts() ? "⌘C" : "Ctrl+C"}</kbd>
                 </button>
               </>
             }
           >
-            <div class="emoji-picker-heading">
-              <strong>React to message</strong>
-              <button type="button" aria-label="Close emoji picker" onClick={props.onClose}>
-                ×
-              </button>
-            </div>
             <EmojiPicker selected={props.own} onPick={props.onReaction} />
           </Show>
         </div>

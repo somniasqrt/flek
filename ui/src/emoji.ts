@@ -1,5 +1,6 @@
 // Slack's emoji names → Unicode. Slack's set is iamcal's emoji-data, which
 // emojibase ships as shortcodes (hexcode → name or names).
+import catalog from "./emoji-catalog.json";
 import iamcal from "emojibase-data/en/shortcodes/iamcal.json";
 
 const byName = new Map<string, string>();
@@ -10,6 +11,10 @@ for (const [hex, names] of Object.entries(iamcal as Record<string, string | stri
   if (points.length === 1 && points[0] < 0x1f000) char += "️";
   for (const n of Array.isArray(names) ? names : [names]) byName.set(n, char);
 }
+
+const tonesByCharacter = new Map(
+  catalog.filter((e) => e.tones).map((e) => [byName.get(e.name), e.tones!]),
+);
 
 const SKIN_TONES: Record<string, string> = {
   "skin-tone-2": "\u{1F3FB}",
@@ -26,7 +31,9 @@ export function emoji(name: string): string | undefined {
   const char = byName.get(base);
   if (!char) return undefined;
   const mod = tone ? SKIN_TONES[tone] : undefined;
-  return mod ? char.replace("️", "") + mod : char;
+  return mod
+    ? (tonesByCharacter.get(char)?.[Number(tone.slice(-1)) - 2] ?? char.replace("️", "") + mod)
+    : char;
 }
 
 export const standardEmojiNames = [...byName.keys()];

@@ -62,3 +62,19 @@ export const AddReaction = (p: { size?: number }) => (
     <path d="M6.5 11.5a3.2 3.2 0 0 0 5.5 0" />
   </Icon>
 );
+
+export const ReplyInThread = (p: { size?: number }) => (
+  <Icon size={p.size ?? 20}>
+    <path d="M16.5 14.5a7.5 7.5 0 1 0-3 2l4 1-1-3ZM6.5 7h7M6.5 10h5" />
+  </Icon>
+);
+export const MessageLink = (p: { size?: number }) => (
+  <Icon size={p.size ?? 20}>
+    <path d="m8 12 4-4M7 13l-1 1a3.5 3.5 0 0 1-5-5l4-4a3.5 3.5 0 0 1 5 0M13 7l1-1a3.5 3.5 0 0 1 5 5l-4 4a3.5 3.5 0 0 1-5 0" />
+  </Icon>
+);
+export const CopyMessage = (p: { size?: number }) => (
+  <Icon size={p.size ?? 20}>
+    <path d="M3 6V3h14v3M10 3v14M7 17h6" />
+  </Icon>
+);

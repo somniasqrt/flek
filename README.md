@@ -92,6 +92,16 @@ cargo tauri dev
 
 On first launch Flek reads your session from the Slack desktop app. macOS asks once for access to the "Slack Safe Storage" Keychain item, allow it.
 
+## Message menu and reactions
+
+Right-click a message for **Add reaction** (R), **Reply in thread** (T),
+**Copy link** (L) or **Copy message** (Command/Ctrl+C). The copied link is a
+Slack deep link; copying it does not open Slack. Shortcuts act while the menu is open.
+
+The emoji picker has category tabs, search by name/description, frequently
+used emoji and a skin-tone preference. Usage and tone are stored locally.
+Arrow keys move between emoji; Enter chooses the first search result.
+
 ## Composer shortcuts
 
 Use **Command** on macOS and **Ctrl** on Windows/Linux. Shortcuts follow
