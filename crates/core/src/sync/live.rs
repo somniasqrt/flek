@@ -109,6 +109,13 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                         return Ok(Applied::NeedsDirectory);
                     }
                     let row = to_row(&message);
+                    // Events can arrive out of order: a late edit (or a
+                    // redelivered message) must not bring back a message
+                    // deleted live. History fetches still may: they are
+                    // Slack's current state. A tombstone update goes through.
+                    if !row.deleted && messages::is_deleted(c, &channel, &row.ts)? {
+                        return Ok(Applied::Ignored);
+                    }
                     // Sync markers are left alone on purpose: after a reconnect a
                     // live message can arrive before catch-up reaches this
                     // conversation, and moving newest_ts past it would skip

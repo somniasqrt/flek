@@ -85,6 +85,11 @@ fn write_messages(
                                         excluded.latest_reply, messages.latest_reply)"
         }
     };
+    // Edits can arrive out of order (live vs. catch-up): the content of the
+    // newest version by `edited.ts` wins, and an unedited version never
+    // replaces an edited one. A hidden stub has nothing worth keeping.
+    let newer = "(messages.hidden_by_limit = 1 OR messages.edited_ts IS NULL
+                  OR excluded.edited_ts >= messages.edited_ts)";
     let tx = conn.transaction()?;
     let mut total = 0;
     {
@@ -94,10 +99,13 @@ fn write_messages(
                  reply_count, latest_reply, edited_ts, deleted, hidden_by_limit, raw_json, author_name)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(conversation_id, ts) DO UPDATE SET
-                {thread_columns}, text = excluded.text, blocks_json = excluded.blocks_json,
-                edited_ts = excluded.edited_ts, deleted = excluded.deleted,
+                {thread_columns},
+                text = CASE WHEN {newer} THEN excluded.text ELSE messages.text END,
+                blocks_json = CASE WHEN {newer} THEN excluded.blocks_json ELSE messages.blocks_json END,
+                edited_ts = CASE WHEN {newer} THEN excluded.edited_ts ELSE messages.edited_ts END,
+                raw_json = CASE WHEN {newer} THEN excluded.raw_json ELSE messages.raw_json END,
+                deleted = excluded.deleted,
                 hidden_by_limit = excluded.hidden_by_limit,
-                raw_json = excluded.raw_json,
                 author_name = COALESCE(excluded.author_name, messages.author_name)
              WHERE {guard}"
         ))?;
@@ -295,6 +303,15 @@ pub fn mark_deleted(conn: &Connection, conversation_id: &str, ts: &[String]) -> 
         n += stmt.execute(params![conversation_id, t])?;
     }
     Ok(n)
+}
+
+/// Whether the message is stored and marked deleted.
+pub fn is_deleted(conn: &Connection, conversation_id: &str, ts: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM messages WHERE conversation_id = ?1 AND ts = ?2 AND deleted = 1)",
+        params![conversation_id, ts],
+        |r| r.get(0),
+    )?)
 }
 
 /// One reaction from a live event. Returns whether the message is stored.
