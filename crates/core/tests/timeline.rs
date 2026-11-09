@@ -144,3 +144,68 @@ fn files_come_with_their_message() {
     let people = store.with_read(|c| directory::people(c, "T1")).unwrap();
     assert_eq!(people.get("U0ME").map(String::as_str), Some("me"));
 }
+
+#[test]
+fn thread_roots_carry_repliers_and_latest_reply() {
+    let store = Store::open_in_memory().unwrap();
+    let row = |ts: &str, user: &str, thread: Option<&str>, replies: i64, raw: &str| MessageRow {
+        ts: ts.into(),
+        user_id: Some(user.into()),
+        thread_ts: thread.map(Into::into),
+        reply_count: replies,
+        raw_json: raw.into(),
+        ..Default::default()
+    };
+    store
+        .with_conn(|c| {
+            c.execute_batch(
+                "INSERT INTO teams (id, name, url, self_user_id) VALUES ('T1', 'Team', 'https://t.slack.com/', 'U1');
+                 INSERT INTO conversations (id, team_id, kind, name) VALUES ('C1', 'T1', 'public_channel', 'general');",
+            )?;
+            let root = Some("100.000000");
+            messages::upsert_messages(
+                c,
+                "C1",
+                &[
+                    row("100.000000", "U1", root, 4, "{}"),
+                    row("110.000000", "U2", root, 0, "{}"),
+                    row("120.000000", "U3", root, 0, "{}"),
+                    row("130.000000", "U2", root, 0, "{}"),
+                    // Deleted replies do not count.
+                    MessageRow {
+                        deleted: true,
+                        ..row("140.000000", "U4", root, 0, "{}")
+                    },
+                    // Replies not synced yet: Slack's own list is used.
+                    row(
+                        "200.000000",
+                        "U1",
+                        Some("200.000000"),
+                        2,
+                        r#"{"reply_users":["U5","U6"]}"#,
+                    ),
+                    row("300.000000", "U1", None, 0, "{}"),
+                ],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let page = store
+        .with_read(|c| messages::page(c, "C1", None, 10))
+        .unwrap();
+    assert_eq!(page.len(), 3);
+    assert_eq!(
+        page[0].repliers,
+        ["U2", "U3"],
+        "distinct, most recent first"
+    );
+    assert_eq!(page[0].latest_reply.as_deref(), Some("130.000000"));
+    assert_eq!(page[1].repliers, ["U5", "U6"]);
+    assert!(page[2].repliers.is_empty() && page[2].latest_reply.is_none());
+
+    let thread = store
+        .with_read(|c| messages::thread(c, "C1", "100.000000"))
+        .unwrap();
+    assert_eq!(thread.len(), 4);
+    assert_eq!(thread[0].repliers, ["U2", "U3"]);
+}

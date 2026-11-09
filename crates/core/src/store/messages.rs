@@ -331,6 +331,11 @@ pub struct HistoryRow {
     pub text: String,
     pub subtype: Option<String>,
     pub reply_count: i64,
+    /// Thread roots: who replied (distinct, most recent first, at most
+    /// [`MAX_REPLIERS`]), from stored replies or Slack's `reply_users`.
+    pub repliers: Vec<String>,
+    /// Thread roots: ts of the newest reply (stored, or as Slack reported it).
+    pub latest_reply: Option<String>,
     pub edited: bool,
     pub hidden_by_limit: bool,
     /// `:name: count` pairs, most used first.
@@ -364,6 +369,11 @@ pub struct FileRef {
     pub preview_height: Option<i64>,
 }
 
+/// How many repliers a thread root lists (Slack shows a few avatars).
+pub const MAX_REPLIERS: usize = 4;
+
+// Repliers and the latest reply are only looked up for thread roots
+// (`reply_count > 0`), through the `messages_thread` index.
 const DISPLAY_COLUMNS: &str =
     "m.ts, m.user_id, COALESCE(u.display_name, u.name, m.author_name), COALESCE(m.text, ''),
     m.subtype, m.reply_count, m.edited_ts IS NOT NULL, m.hidden_by_limit,
@@ -371,7 +381,21 @@ const DISPLAY_COLUMNS: &str =
         SELECT name, COUNT(*) AS n FROM reactions r
         WHERE r.conversation_id = m.conversation_id AND r.ts = m.ts
         GROUP BY name ORDER BY n DESC, name)),
-    m.thread_ts, m.raw_json
+    m.thread_ts, m.raw_json,
+    CASE WHEN m.reply_count > 0 THEN COALESCE(
+        (SELECT group_concat(user_id, ',') FROM (
+            SELECT r.user_id, MAX(r.ts) AS last FROM messages r
+            WHERE r.conversation_id = m.conversation_id AND r.thread_ts = m.ts AND r.ts != m.ts
+              AND r.deleted = 0 AND r.user_id IS NOT NULL
+            GROUP BY r.user_id ORDER BY last DESC LIMIT 4)),
+        (SELECT group_concat(value, ',') FROM json_each(m.raw_json, '$.reply_users')))
+    END,
+    CASE WHEN m.reply_count > 0 THEN COALESCE(
+        (SELECT MAX(r.ts) FROM messages r
+         WHERE r.conversation_id = m.conversation_id AND r.thread_ts = m.ts AND r.ts != m.ts
+           AND r.deleted = 0),
+        m.latest_reply)
+    END
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -465,6 +489,17 @@ fn query_display(
                 text: r.get(3)?,
                 subtype: r.get(4)?,
                 reply_count: r.get(5)?,
+                repliers: r
+                    .get::<_, Option<String>>(11)?
+                    .map(|s| {
+                        s.split(',')
+                            .filter(|u| !u.is_empty())
+                            .take(MAX_REPLIERS)
+                            .map(String::from)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                latest_reply: r.get(12)?,
                 edited: r.get(6)?,
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
