@@ -20,6 +20,7 @@
     "allow-avatars",
     "allow-open-file",
     "allow-pdf-data",
-    "allow-open-url"
+    "allow-open-url",
+    "allow-search"
   ]
 }

@@ -16,6 +16,7 @@ const COMMANDS: &[&str] = &[
     "open_file",
     "pdf_data",
     "open_url",
+    "search",
 ];
 
 fn main() {

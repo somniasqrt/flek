@@ -141,6 +141,7 @@ fn snippet_marks_matches() {
         .unwrap();
     assert_eq!(hits[0].snippet, "Grades sheet <b>draft</b>");
     assert_eq!(hits[0].author.as_deref(), Some("Alice"));
+    assert_eq!(hits[0].user_id.as_deref(), Some("U1"));
 }
 
 #[test]

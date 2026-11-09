@@ -3,6 +3,7 @@
 
 use flek_core::store::directory::{self, ConversationRow};
 use flek_core::store::messages::{self, HistoryRow};
+use flek_core::store::search::{self, Hit, Sort};
 use flek_core::sync::live::Progress;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
@@ -84,6 +85,44 @@ pub async fn thread(
     state
         .store
         .read(move |c| messages::thread(c, &conversation_id, &ts))
+        .await
+        .map_err(text)
+}
+
+/// Most results one search returns.
+const MAX_HITS: usize = 200;
+
+/// Marks around matched terms in snippets: control characters, which never
+/// occur in message text, so the UI can split on them without escaping.
+const MARK_OPEN: &str = "\u{2}";
+const MARK_CLOSE: &str = "\u{3}";
+
+/// Full-text search over the local archive. `query` takes the same filters
+/// as `flek search` (`in:#channel from:@user has:link before:… after:…`).
+#[tauri::command]
+pub async fn search(
+    state: State<'_, AppState>,
+    query: String,
+    recent: bool,
+    limit: usize,
+) -> CmdResult<Vec<Hit>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Vec::new());
+    };
+    // A query error is the user's typo: show the reason, not the layer.
+    let q = search::parse(&query).map_err(|e| match e {
+        flek_core::Error::Store(reason) => reason,
+        e => e.to_string(),
+    })?;
+    let sort = if recent {
+        Sort::Recent
+    } else {
+        Sort::Relevance
+    };
+    let limit = limit.clamp(1, MAX_HITS);
+    state
+        .store
+        .read(move |c| search::search(c, &team, &q, sort, limit, (MARK_OPEN, MARK_CLOSE)))
         .await
         .map_err(text)
 }

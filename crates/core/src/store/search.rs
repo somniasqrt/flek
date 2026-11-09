@@ -141,6 +141,8 @@ pub struct Hit {
     pub conversation: String,
     pub ts: String,
     pub thread_ts: Option<String>,
+    /// Author's user id (for the avatar); `None` for bots and imported messages.
+    pub user_id: Option<String>,
     pub author: Option<String>,
     /// Text around the match with `open`/`close` markers around matched terms.
     pub snippet: String,
@@ -182,7 +184,8 @@ pub fn search(
     };
     let mut sql = format!(
         "SELECT m.conversation_id, COALESCE(c.label, c.name, c.id), m.ts, m.thread_ts,
-                COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit
+                COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit,
+                m.user_id
          FROM messages m
          JOIN conversations c ON c.id = m.conversation_id
          LEFT JOIN users u ON u.id = m.user_id"
@@ -254,6 +257,7 @@ pub fn search(
                 author: r.get(4)?,
                 snippet: r.get(5)?,
                 hidden_by_limit: r.get(6)?,
+                user_id: r.get(7)?,
             })
         })?
         .collect::<Result<_, _>>()?;

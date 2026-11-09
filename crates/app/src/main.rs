@@ -57,6 +57,7 @@ fn main() {
             commands::open_file,
             commands::pdf_data,
             commands::open_url,
+            commands::search,
         ])
         .setup(move |app| {
             let handle = app.handle();
