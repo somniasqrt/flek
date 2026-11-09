@@ -19,6 +19,8 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
   const show = (list: Message[]) => setRows(reconcile(list, { key: "ts" }));
   const current = () => unwrap(rows).slice();
   const [loading, setLoading] = createSignal(false);
+  // Day of the topmost visible message, once its own separator scrolled away.
+  const [floatingDay, setFloatingDay] = createSignal<string | null>(null);
   const [exhausted, setExhausted] = createSignal(false);
   let scroller!: HTMLDivElement;
   // Bumped on every switch so late pages of the previous conversation are dropped.
@@ -89,6 +91,27 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
     ),
   );
 
+  let scrollFrame = 0;
+  const onScroll = () => {
+    if (scroller.scrollTop < LOAD_MARGIN) loadOlder();
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      updateFloatingDay();
+    });
+  };
+
+  /// The last day separator above the top edge names the day in view.
+  const updateFloatingDay = () => {
+    const top = scroller.scrollTop;
+    let day: string | null = null;
+    for (const el of scroller.querySelectorAll<HTMLElement>(".day")) {
+      if (el.offsetTop >= top) break;
+      day = el.dataset.day ?? null;
+    }
+    setFloatingDay(day);
+  };
+
   const upsert = (m: Message) => {
     const r = current();
     const i = r.findIndex((x) => x.ts === m.ts);
@@ -128,11 +151,15 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
           <span class="muted topic">{props.conversation.topic}</span>
         </Show>
       </header>
-      <div
-        class="scroller"
-        ref={scroller}
-        onScroll={() => scroller.scrollTop < LOAD_MARGIN && loadOlder()}
-      >
+      <div class="scroll-area">
+      <Show when={floatingDay()}>
+        {(d) => (
+          <div class="day floating">
+            <span>{d()}</span>
+          </div>
+        )}
+      </Show>
+      <div class="scroller" ref={scroller} onScroll={onScroll}>
         <Show when={exhausted() && rows.length > 0}>
           <div class="start muted">Start of what Flek has for this conversation</div>
         </Show>
@@ -152,7 +179,7 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
             return (
               <>
                 <Show when={newDay()}>
-                  <div class="day">
+                  <div class="day" data-day={dayLabel(m.ts)}>
                     <span>{dayLabel(m.ts)}</span>
                   </div>
                 </Show>
@@ -200,6 +227,7 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
             );
           }}
         </For>
+      </div>
       </div>
     </div>
   );

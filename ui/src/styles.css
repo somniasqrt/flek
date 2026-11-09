@@ -280,8 +280,16 @@ button {
   white-space: nowrap;
   font-size: 13px;
 }
+.scroll-area {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .scroller {
   flex: 1;
+  position: relative;
   overflow-y: auto;
   padding: 8px 0 20px;
 }
@@ -291,13 +299,22 @@ button {
   font-size: 12px;
 }
 .day {
-  position: sticky;
-  top: 0;
-  z-index: 1;
   display: flex;
   justify-content: center;
   margin: 12px 0 4px;
   pointer-events: none;
+}
+/* One floating day label over the top of the timeline. */
+.day.floating {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+}
+.day.floating span {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 .day span {
   background: var(--bg);
