@@ -45,34 +45,38 @@ function Overlay(props: { v: Viewing }) {
     });
   };
   return (
-    <div class="viewer" role="dialog" aria-label={name(f)}>
-      <header class="viewer-bar">
-        <Show when={props.v.from}>
-          {(from) => <Avatar id={from().user_id} name={from().name} size={32} />}
-        </Show>
-        <div class="viewer-title">
-          <div class="viewer-sender">
-            <Show when={props.v.from}>{(from) => <strong>{from().name}</strong>}</Show>
-            <Show when={when()}>{(w) => <span class="muted">{w()}</span>}</Show>
+    // A preview over the dimmed app, like Slack's, below the window's
+    // traffic lights; a click on the dim area closes it.
+    <div class="viewer-backdrop" onClick={(e) => e.target === e.currentTarget && close()}>
+      <div class="viewer" role="dialog" aria-label={name(f)}>
+        <header class="viewer-bar">
+          <Show when={props.v.from}>
+            {(from) => <Avatar id={from().user_id} name={from().name} size={32} />}
+          </Show>
+          <div class="viewer-title">
+            <div class="viewer-sender">
+              <Show when={props.v.from}>{(from) => <strong>{from().name}</strong>}</Show>
+              <Show when={when()}>{(w) => <span class="muted">{w()}</span>}</Show>
+            </div>
+            <div class="viewer-name">{name(f)}</div>
           </div>
-          <div class="viewer-name">{name(f)}</div>
+          <button class="viewer-btn" title="Open in default app" onClick={() => api.openFile(f.id).catch(() => {})}>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
+            </svg>
+          </button>
+          <button class="viewer-btn" title="Close (Esc)" onClick={close}>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </header>
+        {/* A click on the empty stage closes, like Slack's viewer. */}
+        <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
+          <Show when={isPdf(f)} fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}>
+            <Pdf file={f} onClose={close} />
+          </Show>
         </div>
-        <button class="viewer-btn" title="Open in default app" onClick={() => api.openFile(f.id).catch(() => {})}>
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
-          </svg>
-        </button>
-        <button class="viewer-btn" title="Close (Esc)" onClick={close}>
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M5 5l10 10M15 5L5 15" />
-          </svg>
-        </button>
-      </header>
-      {/* A click on the empty stage closes, like Slack's viewer. */}
-      <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
-        <Show when={isPdf(f)} fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}>
-          <Pdf file={f} onClose={close} />
-        </Show>
       </div>
     </div>
   );
