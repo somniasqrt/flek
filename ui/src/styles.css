@@ -22,6 +22,9 @@
   --mention-text: #1264a3;
   --badge: #cd2553;
   --active-msg: #fdf6e3;
+  --mark-bg: rgba(242, 199, 68, 0.4);
+  --flash-bg: #fef6dc;
+  --shadow: 0 0 0 1px rgba(29, 28, 29, 0.13), 0 12px 32px rgba(0, 0, 0, 0.22);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -43,6 +46,9 @@
     --mention-bg: rgba(29, 155, 209, 0.1);
     --mention-text: #1d9bd1;
     --active-msg: rgba(242, 199, 68, 0.1);
+    --mark-bg: rgba(242, 199, 68, 0.38);
+    --flash-bg: rgba(242, 199, 68, 0.12);
+    --shadow: 0 0 0 1px rgba(232, 232, 232, 0.13), 0 12px 32px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -141,12 +147,272 @@ button {
 .topbar {
   flex: none;
   height: 40px;
-  display: flex;
+  /* Equal sides keep the search field centred in the window; the left one
+     leaves room for the traffic lights. */
+  display: grid;
+  grid-template-columns: minmax(80px, 1fr) minmax(200px, 600px) minmax(80px, 1fr);
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 14px 0 90px;
+  column-gap: 12px;
+  padding: 0 14px;
   user-select: none;
   -webkit-user-select: none;
+}
+.topbar-side {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+}
+.topbar-side.end {
+  justify-content: flex-end;
+}
+
+/* Search: a translucent field in the top bar that turns into a panel. */
+.search {
+  position: relative;
+  z-index: 20;
+  height: 28px;
+}
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: text;
+}
+.search-field:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+.search-field input::placeholder {
+  color: rgba(255, 255, 255, 0.8);
+}
+.search-kbd {
+  font: inherit;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+}
+.search.open .search-field {
+  border-radius: 8px 8px 0 0;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  height: 36px;
+  margin-top: -4px;
+  padding: 0 12px;
+}
+.search.open .search-field input::placeholder {
+  color: var(--muted);
+}
+.search-panel {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  right: 0;
+  padding: 4px 0 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  clip-path: inset(0 -40px -40px -40px);
+  overflow: hidden;
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+.search-row:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.search-row:hover .muted,
+.search-row:hover mark {
+  color: inherit;
+}
+.search-row.submit .grow {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-row.quick {
+  font-size: 13px;
+}
+.search-row.quick .snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-author {
+  flex: none;
+  font-weight: 700;
+}
+.quick-where {
+  flex: none;
+}
+.grow {
+  flex: 1;
+}
+.small {
+  font-size: 12px;
+}
+.search-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+}
+.search-filters > .muted {
+  margin-right: 4px;
+}
+.filter {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter:hover {
+  background: var(--hover);
+  border-color: var(--muted);
+}
+.where {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.where .icon {
+  stroke-width: 2;
+}
+mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--mark-bg);
+  color: inherit;
+  font-weight: 700;
+}
+
+/* Search results in the main pane. */
+.search-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-view .conv-header h2 {
+  min-width: 0;
+  gap: 8px;
+}
+.sort {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.sort button {
+  padding: 3px 10px;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sort button + button {
+  border-left: 1px solid var(--border);
+}
+.sort button.on {
+  background: var(--hover);
+  font-weight: 700;
+}
+.conv-header .close {
+  border: 0;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.results {
+  padding: 8px 0 20px;
+}
+.hit {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px 8px;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.hit:hover {
+  background: var(--hover);
+}
+.hit-where {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.hit-where .where {
+  font-weight: 700;
+  color: var(--text);
+}
+.hit-body {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  column-gap: 8px;
+}
+.hit .snippet {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.no-results {
+  max-width: 440px;
+  margin: 60px auto;
+  text-align: center;
+}
+.no-results h3 {
+  margin: 0 0 8px;
+}
+.msg.flash {
+  animation: flash 2.5s ease-out;
+}
+@keyframes flash {
+  0%,
+  60% {
+    background: var(--flash-bg);
+  }
+  100% {
+    background: transparent;
+  }
 }
 .shell-body {
   flex: 1;
@@ -375,7 +641,8 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: 50%;
+  min-width: 0;
+  max-width: 100%;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
   /* Clicks fall through to the drag region. */

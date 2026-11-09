@@ -78,6 +78,8 @@ export default function MessageRow(props: {
   prev?: Message;
   onThread?: (ts: string) => void;
   active?: boolean;
+  /// Briefly highlighted (a search result jumped to).
+  flash?: boolean;
 }) {
   const m = props.m;
   const grouped = () =>
@@ -86,7 +88,11 @@ export default function MessageRow(props: {
     !m.subtype &&
     parseFloat(m.ts) - parseFloat(props.prev.ts) < GROUP_GAP;
   return (
-    <article class="msg" classList={{ grouped: grouped(), active: props.active }}>
+    <article
+      class="msg"
+      classList={{ grouped: grouped(), active: props.active, flash: props.flash }}
+      data-ts={m.ts}
+    >
       <div class="gutter">
         <Show when={!grouped()} fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}>
           <Avatar id={m.user_id} name={author(m)} />

@@ -97,6 +97,19 @@ export type Message = {
   unfurls: Unfurl[];
 };
 
+/// A search result (core `store::search::Hit`). The snippet marks matched
+/// terms with MARK_OPEN … MARK_CLOSE (see snippet.ts).
+export type Hit = {
+  conversation_id: string;
+  conversation: string;
+  ts: string;
+  thread_ts: string | null;
+  user_id: string | null;
+  author: string | null;
+  snippet: string;
+  hidden_by_limit: boolean;
+};
+
 export const api = {
   status: () => invoke<Status>("status"),
   progress: () => invoke<Progress | null>("progress"),
@@ -114,6 +127,8 @@ export const api = {
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
   pdfData: (fileId: string) => invoke<ArrayBuffer>("pdf_data", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  search: (query: string, recent: boolean, limit: number) =>
+    invoke<Hit[]>("search", { query, recent, limit }),
 };
 
 export const onStatus = (f: (s: Status) => void): Promise<UnlistenFn> =>

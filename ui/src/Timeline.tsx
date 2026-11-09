@@ -1,12 +1,17 @@
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 import { Hash, Lock } from "./icons";
 import MessageRow from "./MessageRow";
+import type { Jump } from "./Search";
 
 const PAGE = 60;
 /// Load older messages when the top is this close (px).
 const LOAD_MARGIN = 400;
+/// Revealing an older message loads history in pages this big, at most
+/// REVEAL_PAGES of them (the list is not virtualized yet).
+const REVEAL_PAGE = 500;
+const REVEAL_PAGES = 20;
 
 export default function Timeline(props: {
   conversation: Conversation;
@@ -14,6 +19,8 @@ export default function Timeline(props: {
   /// Root ts of the thread open in the side panel.
   thread: string | null;
   onThread: (ts: string) => void;
+  /// A message to scroll to and highlight (a search result).
+  jump: Jump | null;
 }) {
   // Reconciled by ts: updates touch only the rows that changed, so syncing
   // never re-renders (and flickers) the whole timeline.
@@ -29,10 +36,20 @@ export default function Timeline(props: {
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
   const toBottom = () => requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
 
+  const [flash, setFlash] = createSignal<string | null>(null);
+  let flashTimer: number | undefined;
+  onCleanup(() => window.clearTimeout(flashTimer));
+
   createEffect(
     on(
-      () => props.conversation.id,
-      async (id) => {
+      () => [props.conversation.id, props.jump] as const,
+      async ([id, jump], prev) => {
+        const target = jump && jump.conversation_id === id ? jump : null;
+        // Same conversation, new target: no reload.
+        if (prev && prev[0] === id) {
+          if (target) await reveal(target);
+          return;
+        }
         const gen = ++generation;
         show([]);
         setExhausted(false);
@@ -42,10 +59,35 @@ export default function Timeline(props: {
         show(page);
         setExhausted(page.length < PAGE);
         setLoading(false);
-        toBottom();
+        if (target) await reveal(target);
+        else toBottom();
       },
     ),
   );
+
+  /// Loads older history until the target is in, then centres and briefly
+  /// highlights it. A reply that is only in its thread shows as its root.
+  const reveal = async (t: Jump) => {
+    const gen = generation;
+    const id = props.conversation.id;
+    const oldest = t.thread_ts && t.thread_ts < t.ts ? t.thread_ts : t.ts;
+    setLoading(true);
+    for (let i = 0; i < REVEAL_PAGES && !exhausted() && rows.length > 0 && rows[0].ts > oldest; i++) {
+      const page = await api.messages(id, rows[0].ts, REVEAL_PAGE);
+      if (gen !== generation) return;
+      show([...page, ...current()]);
+      setExhausted(page.length < REVEAL_PAGE);
+    }
+    setLoading(false);
+    const find = (ts: string) =>
+      scroller.querySelector<HTMLElement>(`[data-ts="${CSS.escape(ts)}"]`);
+    const el = find(t.ts) ?? (t.thread_ts ? find(t.thread_ts) : null);
+    if (!el) return toBottom();
+    el.scrollIntoView({ block: "center" });
+    setFlash(el.dataset.ts ?? null);
+    window.clearTimeout(flashTimer);
+    flashTimer = window.setTimeout(() => setFlash(null), 2500);
+  };
 
   const loadOlder = async () => {
     if (loading() || exhausted() || rows.length === 0) return;
@@ -164,14 +206,17 @@ export default function Timeline(props: {
                 <div class="day">
                   <span>{dayLabel(items()[0]?.ts ?? "0")}</span>
                 </div>
-                <For each={items()}>{(m, i) => (
+                <For each={items()}>
+                  {(m, i) => (
                     <MessageRow
                       m={m}
                       prev={items()[i() - 1]}
                       onThread={props.onThread}
                       active={props.thread === m.ts}
+                      flash={flash() === m.ts}
                     />
-                  )}</For>
+                  )}
+                </For>
               </section>
             );
           }}

@@ -4,7 +4,8 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
-import { overrideCacheUrl, type Conversation, type FileRef, type Message } from "./api";
+import { overrideCacheUrl, type Conversation, type FileRef, type Hit, type Message } from "./api";
+import { MARK_CLOSE as C, MARK_OPEN as O } from "./snippet";
 import "./styles.css";
 
 const people: Record<string, string> = {
@@ -47,6 +48,18 @@ const messages: Message[] = [
   msg(1762500000, "U2", "Old one ~gone~ but kept :custom_party:", { hidden_by_limit: true, files: [file({ id: "F3", name: "notes.docx", filetype: "docx", size: 48_000, hidden_by_limit: true })] }),
 ];
 
+// Search: a few fake hits, matched terms marked like core does.
+const hit = (conversation_id: string, conversation: string, ts: number, user: string, snippet: string, extra: Partial<Hit> = {}): Hit => ({
+  conversation_id, conversation, ts: `${ts}.000000`, thread_ts: null, user_id: user, author: people[user], snippet, hidden_by_limit: false, ...extra,
+});
+const hits: Hit[] = [
+  hit("C1", "general", 1762300000, "U1", `Hi all :wave: tomorrow's ${O}practice${C} is *online*: <https://us06web.zoom.us/j/123456|Join Zoom>`),
+  hit("C1", "general", 1762300060, "U1", `Plan: - predicates recap - test, _half_ the class … ${O}practice${C} variants at 3 times`),
+  hit("D1", "Olena Koval", 1762600500, "U1", `Чи буде запис ${O}практики${C} на диску? <@U2> казав, що так`),
+  hit("C2", "course-project", 1755000000, "U2", `Старий звіт з ${O}практики${C}, Slack його вже ховає`, { hidden_by_limit: true }),
+  hit("C1", "general", 1762300200, "U2", `Reply in a thread about the ${O}practice${C} room`, { thread_ts: "1762300120.000000" }),
+];
+
 mockIPC((cmd, args) => {
   const a = args as Record<string, string | null>;
   switch (cmd) {
@@ -70,6 +83,13 @@ mockIPC((cmd, args) => {
       return structuredClone([...messages, ...replies].find((m) => m.ts === a.ts) ?? null);
     case "messages":
       return structuredClone(a.conversationId === "C1" && !a.before ? messages : []);
+    case "search": {
+      const q = String(a.query ?? "");
+      if (q.includes("before:2024-")) throw "bad date \"2024-\", expected YYYY-MM-DD";
+      if (q.includes("nothing")) return [];
+      const list = a.recent ? [...hits].sort((x, y) => y.ts.localeCompare(x.ts)) : hits;
+      return list.slice(0, Number(a.limit ?? 100));
+    }
     default:
       return null;
   }

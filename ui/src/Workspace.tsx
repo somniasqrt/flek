@@ -1,4 +1,4 @@
-import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import { batch, createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
@@ -6,11 +6,13 @@ import {
   type Change,
   type ConnectionState,
   type Conversation,
+  type Hit,
   type Progress,
   type Status,
 } from "./api";
 import { loadPeople } from "./people";
 import Rail from "./Rail";
+import { jumpOf, SearchBar, SearchResults, type Jump } from "./Search";
 import Viewer, { isViewing } from "./Viewer";
 import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
@@ -31,6 +33,10 @@ export default function Workspace(props: { status: Ready }) {
   const [connection, setConnection] = createSignal<ConnectionState | null>(null);
   // Changes for the open conversation, handed to the timeline.
   const [change, setChange] = createSignal<Change | null>(null, { equals: false });
+  // The query whose results fill the main pane, and the message to reveal
+  // after opening a result (a fresh object per click, so it re-triggers).
+  const [searching, setSearching] = createSignal<string | null>(null);
+  const [jump, setJump] = createSignal<Jump | null>(null);
 
   // Counts move with every message; re-read the list at most every 500 ms.
   let refreshTimer: number | undefined;
@@ -53,6 +59,8 @@ export default function Workspace(props: { status: Ready }) {
   };
 
   const select = (id: string) => {
+    setSearching(null);
+    setJump(null);
     setSelected(id);
     try {
       localStorage.setItem(LAST_KEY, id);
@@ -101,6 +109,16 @@ export default function Workspace(props: { status: Ready }) {
     await Promise.all([loadConversations(), loadPeople()]);
   });
 
+  // Batched, so the timeline mounts (or switches) already knowing the target.
+  const openHit = (h: Hit) => {
+    batch(() => {
+      select(h.conversation_id);
+      setJump(jumpOf(h));
+    });
+    // A reply: also open its thread (after the switch, which closes threads).
+    if (h.thread_ts && h.thread_ts !== h.ts) setThread(h.thread_ts);
+  };
+
   const current = () => conversations.find((c) => c.id === selected()) ?? null;
 
   // Root ts of the thread open in the side panel; closed when switching
@@ -119,7 +137,16 @@ export default function Workspace(props: { status: Ready }) {
     <div class="shell">
       {/* The window has no title bar: this strip drags it, under the traffic lights. */}
       <header class="topbar" data-tauri-drag-region>
-        <SyncBar progress={progress()} connection={connection()} />
+        <div class="topbar-side" data-tauri-drag-region />
+        <SearchBar
+          team={props.status.team}
+          conversations={conversations}
+          onSubmit={setSearching}
+          onOpen={openHit}
+        />
+        <div class="topbar-side end" data-tauri-drag-region>
+          <SyncBar progress={progress()} connection={connection()} />
+        </div>
       </header>
       <div class="shell-body">
         <Rail team={props.status.team} userId={props.status.user_id} user={props.status.user} />
@@ -131,6 +158,9 @@ export default function Workspace(props: { status: Ready }) {
             onSelect={select}
           />
           <section class="main">
+            <Show
+              when={searching()}
+              fallback={
             <Show
               when={current()}
               fallback={
@@ -151,6 +181,18 @@ export default function Workspace(props: { status: Ready }) {
                   change={change()}
                   thread={thread()}
                   onThread={setThread}
+                  jump={jump()}
+                />
+              )}
+            </Show>
+              }
+            >
+              {(q) => (
+                <SearchResults
+                  query={q()}
+                  conversations={conversations}
+                  onOpen={openHit}
+                  onClose={() => setSearching(null)}
                 />
               )}
             </Show>
