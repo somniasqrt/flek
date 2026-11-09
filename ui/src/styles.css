@@ -536,10 +536,17 @@ a.chip .label {
 /* Files */
 .files {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   align-items: flex-start;
   gap: 8px;
   margin-top: 6px;
+}
+.file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
 }
 .image {
   padding: 0;
@@ -558,8 +565,8 @@ a.chip .label {
 .file-card {
   display: flex;
   flex-direction: column;
-  min-width: 240px;
-  max-width: 360px;
+  width: 260px;
+  max-width: 100%;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -569,8 +576,7 @@ a.chip .label {
   cursor: pointer;
 }
 .file-card.with-preview {
-  width: 420px;
-  max-width: 100%;
+  width: 320px;
 }
 .file-head {
   display: flex;
@@ -580,7 +586,7 @@ a.chip .label {
 }
 .file-preview {
   display: block;
-  height: 220px;
+  height: 170px;
   border-top: 1px solid var(--border);
   background: #fff;
   overflow: hidden;

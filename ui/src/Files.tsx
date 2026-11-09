@@ -4,8 +4,10 @@ import { For, Show } from "solid-js";
 import { api, fileUrl, type FileRef } from "./api";
 import { canView, openViewer, type Sender } from "./Viewer";
 
-const MAX_W = 360;
-const MAX_H = 280;
+const MAX_W = 480;
+const MAX_H = 360;
+/// Height of a row of several images.
+const ROW_H = 180;
 
 export default function Files(props: { files: FileRef[]; from?: Sender }) {
   const open = (f: FileRef) => {
@@ -13,46 +15,58 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
     else if (f.local_path) api.openFile(f.id).catch(() => {});
     else if (f.permalink) api.openUrl(f.permalink).catch(() => {});
   };
+  // Like Slack: images first, then the other files. One image is shown
+  // large; several sit in a row at one height. A lone PDF gets a card with
+  // the top of its first page; several files are compact cards in a row.
+  const images = () => props.files.filter((f) => isImage(f) && f.local_path);
+  const others = () => props.files.filter((f) => !(isImage(f) && f.local_path));
+  const lone = () => props.files.length === 1;
   return (
     <div class="files">
-      <For each={props.files}>
-        {(f) => (
-          <Show when={isImage(f) && f.local_path} fallback={<Card f={f} onOpen={open} />}>
-            <Image f={f} src={fileUrl(f.id)} onOpen={open} />
-          </Show>
-        )}
-      </For>
+      <Show when={images().length > 0}>
+        <div class="file-row">
+          <For each={images()}>
+            {(f) => <Image f={f} src={fileUrl(f.id)} single={images().length === 1} onOpen={open} />}
+          </For>
+        </div>
+      </Show>
+      <Show when={others().length > 0}>
+        <div class="file-row">
+          <For each={others()}>{(f) => <Card f={f} preview={lone()} onOpen={open} />}</For>
+        </div>
+      </Show>
     </div>
   );
 }
 
 const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/") && !f.hidden_by_limit;
 
-function Image(props: { f: FileRef; src: string; onOpen: (f: FileRef) => void }) {
+function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: FileRef) => void }) {
   // Reserve the final size up front so loading images never shift the timeline.
   const size = () => {
     const w = props.f.width ?? MAX_W;
     const h = props.f.height ?? MAX_H;
-    const k = Math.min(1, MAX_W / w, MAX_H / h);
+    const k = props.single ? Math.min(1, MAX_W / w, MAX_H / h) : Math.min(ROW_H / h, MAX_W / w);
     return { width: `${Math.round(w * k)}px`, height: `${Math.round(h * k)}px` };
   };
   return (
-    <button class="image" style={size()} title={name(props.f)} onClick={() => props.onOpen(props.f)}>
+    <button class="image" style={size()} aria-label={name(props.f)} onClick={() => props.onOpen(props.f)}>
       <img src={props.src} alt={name(props.f)} loading="lazy" />
     </button>
   );
 }
 
-function Card(props: { f: FileRef; onOpen: (f: FileRef) => void }) {
+function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => void }) {
   const f = props.f;
   const available = !f.hidden_by_limit && (!!f.local_path || !!f.permalink);
+  const preview = () => props.preview && !f.hidden_by_limit && !!f.preview_path;
   return (
     <button
       class="file-card"
-      classList={{ "with-preview": !!f.preview_path && !f.hidden_by_limit }}
+      classList={{ "with-preview": preview() }}
       disabled={!available}
       onClick={() => props.onOpen(f)}
-      title={name(f)}
+      aria-label={name(f)}
     >
       <span class="file-head">
         <span class="file-badge" data-kind={kind(f)}>
@@ -63,14 +77,14 @@ function Card(props: { f: FileRef; onOpen: (f: FileRef) => void }) {
           <span class="muted">
             {f.hidden_by_limit
               ? "Hidden by Slack's Free plan"
-              : [kindLabel(f), size(f.size), f.local_path ? null : "not downloaded"]
-                  .filter(Boolean)
-                  .join(" · ")}
+              : f.local_path
+                ? kindLabel(f)
+                : `${kindLabel(f)} · not downloaded`}
           </span>
         </span>
       </span>
-      {/* First page of a PDF / a video frame, rendered by Slack and cached. */}
-      <Show when={!f.hidden_by_limit && f.preview_path}>
+      {/* Top of the first page of a PDF / a video frame, rendered by Slack. */}
+      <Show when={preview()}>
         <span class="file-preview">
           <img src={fileUrl(f.id, true)} alt="" loading="lazy" />
         </span>
@@ -97,10 +111,3 @@ function kind(f: FileRef): string {
 
 const kindLabel = (f: FileRef) =>
   ({ image: "Image", video: "Video", audio: "Audio", pdf: "PDF", archive: "Archive", sheet: "Spreadsheet", slides: "Presentation", doc: "Document", file: "File" })[kind(f)];
-
-function size(bytes: number | null): string | null {
-  if (bytes == null) return null;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
