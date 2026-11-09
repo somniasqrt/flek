@@ -181,6 +181,21 @@ impl Engine {
             {
                 tracing::warn!(error = %e, "link preview images failed");
             }
+            match crate::sync::files::download_avatars(
+                &self.client,
+                &self.store,
+                cache,
+                &self.me.team_id,
+            )
+            .await
+            {
+                // Avatars are part of the directory as the UI sees it.
+                Ok(n) if n > 0 => {
+                    let _ = self.bus.send(Change::Directory);
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "avatars failed"),
+            }
         }
 
         let deep = SyncOptions {

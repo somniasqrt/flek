@@ -10,6 +10,7 @@ import {
   type Status,
 } from "./api";
 import { loadPeople } from "./people";
+import Viewer from "./Viewer";
 import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
 import Timeline from "./Timeline";
@@ -128,6 +129,7 @@ export default function Workspace(props: { status: Ready }) {
           {(c) => <Timeline conversation={c()} change={change()} />}
         </Show>
       </section>
+      <Viewer />
     </div>
   );
 }

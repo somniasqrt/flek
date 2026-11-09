@@ -1,9 +1,9 @@
-//! Link previews: parsed from messages, images cached through the proxy.
+//! Link previews (images cached through the proxy) and avatars.
 
 use flek_core::api::Client;
 use flek_core::store::messages::{self, MessageRow};
-use flek_core::store::{unfurls, Store};
-use flek_core::sync::files::download_link_images;
+use flek_core::store::{directory, unfurls, Store};
+use flek_core::sync::files::{download_avatars, download_link_images};
 use flek_core::Secret;
 use serde_json::json;
 use wiremock::matchers::{path, query_param};
@@ -101,6 +101,80 @@ async fn previews_show_with_cached_images_only() {
     // Nothing left to try: failures are remembered (expect(1) above).
     assert_eq!(
         download_link_images(&client, &store, cache.path(), &proxy)
+            .await
+            .unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
+async fn avatars_of_authors_are_cached() {
+    let server = MockServer::start().await;
+    Mock::given(path("/avatars/u1.png"))
+        .and(|r: &Request| {
+            !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let avatar = |name: &str| {
+        json!({"profile": {"image_72": format!("{}/avatars/{name}.png", server.uri())}}).to_string()
+    };
+    let store = Store::open_in_memory().unwrap();
+    store
+        .with_conn(|c| {
+            c.execute_batch(
+                "INSERT INTO teams (id, name) VALUES ('T1', 'Team');
+                 INSERT INTO conversations (id, team_id, kind, name) VALUES ('C1', 'T1', 'public_channel', 'general');",
+            )?;
+            // U1 wrote something; U2 never shows up, so it is not fetched.
+            for (id, raw) in [("U1", avatar("u1")), ("U2", avatar("u2"))] {
+                c.execute(
+                    "INSERT INTO users (id, team_id, name, raw_json) VALUES (?1, 'T1', ?1, ?2)",
+                    [id, raw.as_str()],
+                )?;
+            }
+            messages::upsert_messages(
+                c,
+                "C1",
+                &[MessageRow {
+                    ts: "1.000000".into(),
+                    user_id: Some("U1".into()),
+                    text: "hi".into(),
+                    raw_json: "{}".into(),
+                    ..Default::default()
+                }],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    assert_eq!(
+        download_avatars(&client, &store, cache.path(), "T1")
+            .await
+            .unwrap(),
+        1
+    );
+    let shown = store.with_read(|c| directory::avatars(c, "T1")).unwrap();
+    assert_eq!(shown.len(), 1);
+    assert_eq!(
+        shown.get("U1"),
+        Some(&unfurls::url_hash(&format!(
+            "{}/avatars/u1.png",
+            server.uri()
+        )))
+    );
+    assert_eq!(
+        download_avatars(&client, &store, cache.path(), "T1")
             .await
             .unwrap(),
         0

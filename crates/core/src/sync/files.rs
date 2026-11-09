@@ -140,6 +140,31 @@ pub async fn download_link_images(
     let urls = store
         .call(|c| crate::store::unfurls::images_to_fetch(c, LINK_IMAGES_PER_PASS))
         .await?;
+    fetch_images(client, store, cache_dir, Some(proxy), urls).await
+}
+
+/// Downloads avatars of the people the timeline shows, straight from Slack's
+/// CDN (public URLs, no session), like the Slack client does.
+pub async fn download_avatars(
+    client: &Client,
+    store: &Store,
+    cache_dir: &Path,
+    team_id: &str,
+) -> Result<usize> {
+    let team = team_id.to_owned();
+    let urls = store
+        .call(move |c| crate::store::directory::avatars_to_fetch(c, &team, LINK_IMAGES_PER_PASS))
+        .await?;
+    fetch_images(client, store, cache_dir, None, urls).await
+}
+
+async fn fetch_images(
+    client: &Client,
+    store: &Store,
+    cache_dir: &Path,
+    proxy: Option<&str>,
+    urls: Vec<String>,
+) -> Result<usize> {
     if urls.is_empty() {
         return Ok(0);
     }
@@ -157,7 +182,7 @@ pub async fn download_link_images(
                 Some(p.to_string_lossy().into_owned())
             }
             Err(e) => {
-                tracing::debug!(error = %e, "link preview image failed");
+                tracing::debug!(error = %e, "image download failed");
                 None
             }
         };

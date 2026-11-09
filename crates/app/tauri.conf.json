@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: flekfile: http://flekfile.localhost; media-src 'self' flekfile: http://flekfile.localhost"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: flekfile: http://flekfile.localhost; media-src 'self' flekfile: http://flekfile.localhost; connect-src 'self' ipc: http://ipc.localhost flekfile: http://flekfile.localhost; font-src 'self' data:"
     }
   },
   "bundle": {

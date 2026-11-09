@@ -1,0 +1,37 @@
+// A person's picture from the cache, or their initials on a colour picked
+// from the user id (stable per person) until it is downloaded.
+import { Show } from "solid-js";
+import { linkImageUrl } from "./api";
+import { avatars } from "./people";
+
+export default function Avatar(props: { id: string | null; name: string; size?: number }) {
+  const initials = () =>
+    props.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]!.toUpperCase())
+      .join("");
+  // FNV-1a: ids that differ in one character still land far apart.
+  const hue = () => {
+    let h = 0x811c9dc5;
+    for (const c of props.id ?? props.name) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
+    return (h >>> 0) % 360;
+  };
+  const image = () => (props.id ? avatars()[props.id] : undefined);
+  const size = () => `${props.size ?? 36}px`;
+  return (
+    <Show
+      when={image()}
+      fallback={
+        <div class="avatar" style={{ "--hue": hue(), width: size(), height: size() }}>
+          {initials()}
+        </div>
+      }
+    >
+      {(hash) => (
+        <img class="avatar" src={linkImageUrl(hash())} alt="" style={{ width: size(), height: size() }} />
+      )}
+    </Show>
+  );
+}

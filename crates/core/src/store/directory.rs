@@ -297,3 +297,47 @@ pub fn conversation_activity(conn: &Connection, team_id: &str) -> Result<Vec<(St
         .collect::<Result<_, _>>()?;
     Ok(rows)
 }
+
+/// Avatar URL Slack shows next to messages (72 px, sharp at 36 px on Retina).
+const AVATAR_URL: &str = "json_extract(u.raw_json, '$.profile.image_72')";
+
+/// `user id → cached avatar` (the hash `flekfile://localhost/link/<hash>`
+/// serves). Users whose avatar is not downloaded yet are left out.
+pub fn avatars(conn: &Connection, team_id: &str) -> Result<HashMap<String, String>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT u.id, {AVATAR_URL} FROM users u WHERE u.team_id = ?1 AND {AVATAR_URL} IS NOT NULL"
+    ))?;
+    let mut out = HashMap::new();
+    let mut rows = stmt.query([team_id])?;
+    while let Some(r) = rows.next()? {
+        let url: String = r.get(1)?;
+        if crate::store::unfurls::is_cached(conn, &url) {
+            out.insert(r.get(0)?, crate::store::unfurls::url_hash(&url));
+        }
+    }
+    Ok(out)
+}
+
+/// Avatars not tried yet, of people the timeline can show: message authors
+/// and DM partners (not the whole directory).
+pub fn avatars_to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT DISTINCT {AVATAR_URL} FROM users u
+         WHERE u.team_id = ?1 AND u.deleted = 0 AND {AVATAR_URL} LIKE 'http%'
+           AND (u.id IN (SELECT user_id FROM messages WHERE user_id IS NOT NULL)
+                OR u.id IN (SELECT dm_user_id FROM conversations WHERE dm_user_id IS NOT NULL))"
+    ))?;
+    let mut known = conn.prepare_cached("SELECT 1 FROM link_images WHERE hash = ?1")?;
+    let mut out = Vec::new();
+    let mut rows = stmt.query([team_id])?;
+    while let Some(r) = rows.next()? {
+        let url: String = r.get(0)?;
+        if !known.exists([crate::store::unfurls::url_hash(&url)])? {
+            out.push(url);
+            if out.len() >= limit {
+                break;
+            }
+        }
+    }
+    Ok(out)
+}

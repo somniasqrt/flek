@@ -115,6 +115,21 @@ pub async fn people(
         .map_err(text)
 }
 
+/// `user id → cached avatar hash` (served at `flekfile://localhost/link/<hash>`).
+#[tauri::command]
+pub async fn avatars(
+    state: State<'_, AppState>,
+) -> CmdResult<std::collections::HashMap<String, String>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Default::default());
+    };
+    state
+        .store
+        .read(move |c| directory::avatars(c, &team))
+        .await
+        .map_err(text)
+}
+
 /// Opens a cached file with its default app. Takes the file id, not a path,
 /// so the UI cannot open arbitrary files.
 #[tauri::command]

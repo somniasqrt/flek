@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
+import Avatar from "./Avatar";
 import { emoji } from "./emoji";
 import Files from "./Files";
 import { people } from "./people";
@@ -196,28 +197,6 @@ const timeLabel = (ts: string) =>
 const author = (m: Message) =>
   (m.user_id && people()[m.user_id]) || m.author || m.user_id || "unknown";
 
-/// Initials on a colour picked from the user id (stable per person).
-function Avatar(props: { id: string | null; name: string }) {
-  const initials = () =>
-    props.name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0]!.toUpperCase())
-      .join("");
-  // FNV-1a: ids that differ in one character still land far apart.
-  const hue = () => {
-    let h = 0x811c9dc5;
-    for (const c of props.id ?? props.name) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
-    return (h >>> 0) % 360;
-  };
-  return (
-    <div class="avatar" style={{ "--hue": hue() }}>
-      {initials()}
-    </div>
-  );
-}
-
 /// `:name: count` pairs (core's summary) as chips.
 function Reactions(props: { summary: string }) {
   const items = () =>
@@ -276,7 +255,7 @@ function MessageRow(props: { m: Message; prev?: Message }) {
           <span class="muted edited">(edited)</span>
         </Show>
         <Show when={m.files.length > 0}>
-          <Files files={m.files} />
+          <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts }} />
         </Show>
         <Show when={m.unfurls.length > 0}>
           <Unfurls items={m.unfurls} />

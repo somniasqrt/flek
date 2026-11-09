@@ -16,6 +16,7 @@
     "allow-import-desktop",
     "allow-sign-in",
     "allow-people",
+    "allow-avatars",
     "allow-open-file",
     "allow-open-url"
   ]

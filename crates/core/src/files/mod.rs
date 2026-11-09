@@ -75,7 +75,7 @@ pub fn link_image_path(cache_dir: &Path, url: &str) -> PathBuf {
 /// client that carries no session (no cookie, no token). Only images are kept.
 pub async fn fetch_link_image(
     http: &reqwest::Client,
-    proxy: &str,
+    proxy: Option<&str>,
     cache_dir: &Path,
     url: &str,
 ) -> Result<PathBuf> {
@@ -83,14 +83,20 @@ pub async fn fetch_link_image(
     if dest.is_file() {
         return Ok(dest);
     }
-    let mut proxied =
-        reqwest::Url::parse(proxy).map_err(|_| Error::File("bad proxy URL".into()))?;
-    proxied
-        .query_pairs_mut()
-        .append_pair("c", "1")
-        .append_pair("o1", "ro")
-        .append_pair("url", url);
-    let resp = http.get(proxied).send().await?;
+    let target = match proxy {
+        Some(proxy) => {
+            let mut proxied =
+                reqwest::Url::parse(proxy).map_err(|_| Error::File("bad proxy URL".into()))?;
+            proxied
+                .query_pairs_mut()
+                .append_pair("c", "1")
+                .append_pair("o1", "ro")
+                .append_pair("url", url);
+            proxied
+        }
+        None => reqwest::Url::parse(url).map_err(|_| Error::File("bad image URL".into()))?,
+    };
+    let resp = http.get(target).send().await?;
     if !resp.status().is_success() {
         return Err(Error::HttpStatus(resp.status().as_u16()));
     }

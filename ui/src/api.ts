@@ -104,6 +104,7 @@ export const api = {
   importDesktop: () => invoke<void>("import_desktop"),
   signIn: () => invoke<void>("sign_in"),
   people: () => invoke<Record<string, string>>("people"),
+  avatars: () => invoke<Record<string, string>>("avatars"),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
 };

@@ -12,6 +12,7 @@ const COMMANDS: &[&str] = &[
     "import_desktop",
     "sign_in",
     "people",
+    "avatars",
     "open_file",
     "open_url",
 ];

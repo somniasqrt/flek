@@ -53,6 +53,7 @@ fn main() {
             commands::import_desktop,
             commands::sign_in,
             commands::people,
+            commands::avatars,
             commands::open_file,
             commands::open_url,
         ])

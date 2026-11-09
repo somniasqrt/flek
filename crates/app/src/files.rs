@@ -3,7 +3,7 @@
 //!
 //! The UI names files by id, never by path. The handler looks the file up
 //! in the database and serves it only from inside the download cache, and
-//! only images (a file itself) or its preview (a PNG Slack rendered).
+//! only images and PDFs (for the viewer) or a preview (a PNG Slack rendered).
 
 use std::path::{Path, PathBuf};
 
@@ -62,7 +62,7 @@ async fn serve(app: &tauri::AppHandle, path: &str) -> Result<(Vec<u8>, String), 
         (file.preview_path, "image/png".to_owned())
     } else {
         let mime = file.mimetype.unwrap_or_default();
-        if !mime.starts_with("image/") {
+        if !(mime.starts_with("image/") || mime == "application/pdf") {
             return Err(StatusCode::FORBIDDEN);
         }
         (file.local_path, mime)
