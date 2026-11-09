@@ -9,6 +9,7 @@ mod files;
 mod login;
 mod state;
 mod tray;
+mod window_size;
 
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tracing_subscriber::EnvFilter;
@@ -66,6 +67,7 @@ fn main() {
         ])
         .setup(move |app| {
             let handle = app.handle();
+            window_size::restore(handle);
             tray::create(handle)?;
             state::forward_changes(handle);
             if hidden {
@@ -80,7 +82,12 @@ fn main() {
             // Closing the window keeps Flek syncing in the menu bar.
             WindowEvent::CloseRequested { api, .. } if window.label() == MAIN => {
                 api.prevent_close();
+                window_size::capture(window);
+                window_size::save(window.app_handle());
                 hide_main(window.app_handle());
+            }
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                window_size::capture(window);
             }
             WindowEvent::Destroyed if window.label() == login::LABEL => {
                 login::closed(window.app_handle());
@@ -95,7 +102,10 @@ fn main() {
         RunEvent::Reopen { .. } => show_main(app),
         // Only "Quit" (with an exit code) ends Flek, not a closed window.
         RunEvent::ExitRequested { api, code, .. } if code.is_none() => api.prevent_exit(),
-        RunEvent::Exit => app.state::<AppState>().stop_engine(),
+        RunEvent::Exit => {
+            window_size::save(app);
+            app.state::<AppState>().stop_engine();
+        }
         _ => {}
     });
 }
