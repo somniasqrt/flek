@@ -52,6 +52,26 @@ const messages: Message[] = [
   msg(1762500000, "U2", "Old one ~gone~ but kept :custom_party:", { hidden_by_limit: true, files: [file({ id: "F3", name: "notes.docx", filetype: "docx", size: 48_000, hidden_by_limit: true })] }),
 ];
 
+// Real-shaped received blocks paired with their mrkdwn fallback for regression QA.
+const receivedText = "<https://us06web.zoom.us/j/123456|Join Zoom> https://example.org/plan <https://example.org/label|Read this> :wave::skin-tone-4: <@U1> *bold underline*";
+messages.push(
+  msg(1762500100, "U2", receivedText, { blocks: [{ type: "rich_text", block_id: "received-fixture", elements: [{ type: "rich_text_section", elements: [
+    { type: "link", url: "https://us06web.zoom.us/j/123456", text: "Join Zoom" },
+    { type: "text", text: " " },
+    { type: "link", url: "https://example.org/plan", text: "https://example.org/plan" },
+    { type: "text", text: " " },
+    { type: "link", url: "https://example.org/label", text: "Read this" },
+    { type: "text", text: " " },
+    { type: "emoji", name: "wave", skin_tone: 4 },
+    { type: "text", text: " " },
+    { type: "user", user_id: "U1" },
+    { type: "text", text: " " },
+    { type: "text", text: "bold underline", style: { bold: true, underline: true } },
+  ] }] }] }),
+  msg(1762500110, "U1", receivedText),
+  msg(1762500120, "U2", "Unsupported element fallback <@U1>", { blocks: [{ type: "rich_text", elements: [{ type: "rich_text_section", elements: [{ type: "channel", channel_id: "C1" }] }] }] }),
+);
+
 // Search: a few fake hits, matched terms marked like core does.
 const hit = (conversation_id: string, conversation: string, ts: number, user: string, snippet: string, extra: Partial<Hit> = {}): Hit => ({
   conversation_id, conversation, ts: `${ts}.000000`, thread_ts: null, user_id: user, author: people[user], snippet, hidden_by_limit: false, ...extra,

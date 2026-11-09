@@ -94,7 +94,7 @@ function node(n: Inline): JSX.Element {
   }
 }
 
-function Link(props: { url: string; label?: Inline[] }) {
+export function Link(props: { url: string; label?: Inline[] }) {
   const info = linkInfo(props.url);
   const open = (e: MouseEvent) => {
     // Never navigate Flek's own window; links go to the browser.

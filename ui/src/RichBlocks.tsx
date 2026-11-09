@@ -1,6 +1,6 @@
 // A deliberately small read-only renderer for the composer's documented rich text.
 import { For, Show, type JSX } from "solid-js";
-import { api } from "./api";
+import { Link } from "./Rich";
 import Emoji from "./EmojiView";
 import { people } from "./people";
 import { safeLink } from "./rich-compose";
@@ -10,6 +10,7 @@ type Node = {
   text?: string;
   url?: string;
   name?: string;
+  skin_tone?: number;
   user_id?: string;
   style?: Record<string, unknown> | string;
   indent?: number;
@@ -46,24 +47,16 @@ function inline(raw: unknown): JSX.Element {
   const n = node(raw);
   let content: JSX.Element;
   if (n.type === "user")
-    return <span class="mention">@{people()[text(n.user_id)] ?? text(n.user_id)}</span>;
-  if (n.type === "emoji") return <Emoji name={text(n.name)} inText />;
-  if (n.type === "link") {
+    content = <span class="mention">@{people()[text(n.user_id)] ?? text(n.user_id)}</span>;
+  else if (n.type === "emoji") {
+    const name = text(n.name);
+    const tone = n.skin_tone;
+    content = <Emoji name={typeof tone === "number" && Number.isInteger(tone) && tone >= 2 && tone <= 6 && !name.includes("::skin-tone-") ? `${name}::skin-tone-${tone}` : name} inText />;
+  }
+  else if (n.type === "link") {
     const url = text(n.url);
-    content = safeLink(url) ? (
-      <a
-        class="link"
-        href={url}
-        onClick={(e) => {
-          e.preventDefault();
-          api.openUrl(url).catch(() => {});
-        }}
-      >
-        {text(n.text) || url}
-      </a>
-    ) : (
-      text(n.text) || url
-    );
+    const label = text(n.text);
+    content = safeLink(url) ? <Link url={url} label={label && label !== url ? [{ t: "text", v: label }] : undefined} /> : label || url;
   } else content = text(n.text);
   // Wrap from the inside out; never interpret stored text as HTML.
   const style = n.style && typeof n.style === "object" ? n.style : {};
