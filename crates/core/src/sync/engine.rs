@@ -21,7 +21,7 @@ use tokio::sync::watch;
 use crate::api::{AuthTest, Client};
 use crate::store::{directory, Store};
 use crate::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
-use crate::sync::directory::sync_directory;
+use crate::sync::directory::{sync_custom_emoji, sync_directory, EMOJI_MAX_AGE};
 use crate::sync::files::download_files;
 use crate::sync::follow::{follow, FollowConfig};
 use crate::sync::live::{Bus, Change, Progress};
@@ -138,6 +138,13 @@ impl Engine {
         let o = &self.options;
         self.progress(Progress::Directory);
         sync_directory(&self.client, &self.store, &self.me).await?;
+        // Custom emoji change rarely: once per start, then daily.
+        let max_age = if first {
+            std::time::Duration::ZERO
+        } else {
+            EMOJI_MAX_AGE
+        };
+        sync_custom_emoji(&self.client, &self.store, &self.me.team_id, max_age).await?;
         let _ = self.bus.send(Change::Directory);
 
         let team = self.me.team_id.clone();
@@ -181,20 +188,24 @@ impl Engine {
             {
                 tracing::warn!(error = %e, "link preview images failed");
             }
-            match crate::sync::files::download_avatars(
-                &self.client,
-                &self.store,
-                cache,
-                &self.me.team_id,
-            )
-            .await
-            {
-                // Avatars are part of the directory as the UI sees it.
-                Ok(n) if n > 0 => {
-                    let _ = self.bus.send(Change::Directory);
-                }
-                Ok(_) => {}
-                Err(e) => tracing::warn!(error = %e, "avatars failed"),
+            let team = &self.me.team_id;
+            let avatars =
+                crate::sync::files::download_avatars(&self.client, &self.store, cache, team)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(error = %e, "avatars failed");
+                        0
+                    });
+            let emoji =
+                crate::sync::files::download_custom_emoji(&self.client, &self.store, cache, team)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(error = %e, "custom emoji images failed");
+                        0
+                    });
+            // Avatars and emoji are part of the directory as the UI sees it.
+            if avatars + emoji > 0 {
+                let _ = self.bus.send(Change::Directory);
             }
         }
 

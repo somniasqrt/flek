@@ -18,6 +18,7 @@
     "allow-sign-in",
     "allow-people",
     "allow-avatars",
+    "allow-custom-emoji",
     "allow-open-file",
     "allow-pdf-data",
     "allow-open-url",

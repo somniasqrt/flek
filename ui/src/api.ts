@@ -110,6 +110,13 @@ export type Hit = {
   hidden_by_limit: boolean;
 };
 
+/// Workspace emoji (core `store::emoji::CustomEmoji`): `name → cached image
+/// hash` (custom aliases resolved) and `name → standard emoji name`.
+export type CustomEmoji = {
+  images: Record<string, string>;
+  aliases: Record<string, string>;
+};
+
 export const api = {
   status: () => invoke<Status>("status"),
   progress: () => invoke<Progress | null>("progress"),
@@ -124,6 +131,7 @@ export const api = {
   signIn: () => invoke<void>("sign_in"),
   people: () => invoke<Record<string, string>>("people"),
   avatars: () => invoke<Record<string, string>>("avatars"),
+  customEmoji: () => invoke<CustomEmoji>("custom_emoji"),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
   pdfData: (fileId: string) => invoke<ArrayBuffer>("pdf_data", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),

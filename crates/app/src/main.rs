@@ -54,6 +54,7 @@ fn main() {
             commands::sign_in,
             commands::people,
             commands::avatars,
+            commands::custom_emoji,
             commands::open_file,
             commands::pdf_data,
             commands::open_url,

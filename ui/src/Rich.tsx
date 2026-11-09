@@ -3,7 +3,7 @@
 import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { api } from "./api";
-import { emoji } from "./emoji";
+import Emoji from "./EmojiView";
 import { linkInfo, shortUrl, type LinkKind } from "./links";
 import { parse, type Block, type Inline } from "./mrkdwn";
 import { people } from "./people";
@@ -81,16 +81,8 @@ function node(n: Inline): JSX.Element {
       return <span class="mention">#{n.label ?? n.id}</span>;
     case "special":
       return <span class="mention special">{n.v}</span>;
-    case "emoji": {
-      const char = emoji(n.name);
-      return char ? (
-        <span class="emoji" title={`:${n.name}:`}>
-          {char}
-        </span>
-      ) : (
-        <span class="emoji custom">:{n.name}:</span>
-      );
-    }
+    case "emoji":
+      return <Emoji name={n.name} inText />;
     case "link":
       return <Link url={n.url} label={n.label} />;
   }

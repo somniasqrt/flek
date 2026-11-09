@@ -2,6 +2,7 @@
 //! (reader connections, so they never wait for the sync engine).
 
 use flek_core::store::directory::{self, ConversationRow};
+use flek_core::store::emoji;
 use flek_core::store::messages::{self, HistoryRow};
 use flek_core::store::search::{self, Hit, Sort};
 use flek_core::sync::live::Progress;
@@ -165,6 +166,20 @@ pub async fn avatars(
     state
         .store
         .read(move |c| directory::avatars(c, &team))
+        .await
+        .map_err(text)
+}
+
+/// Workspace emoji: `name → cached image hash` (served at
+/// `flekfile://localhost/link/<hash>`) and aliases of standard emoji.
+#[tauri::command]
+pub async fn custom_emoji(state: State<'_, AppState>) -> CmdResult<emoji::CustomEmoji> {
+    let Some(team) = state.team_id() else {
+        return Ok(Default::default());
+    };
+    state
+        .store
+        .read(move |c| emoji::custom_emoji(c, &team))
         .await
         .map_err(text)
 }

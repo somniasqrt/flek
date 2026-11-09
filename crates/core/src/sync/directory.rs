@@ -56,3 +56,42 @@ pub async fn sync_directory(
     }
     Ok(stats)
 }
+
+/// How often the custom emoji list is refreshed while the app runs.
+pub const EMOJI_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Fetches `emoji.list` unless it was stored less than `max_age` ago (zero
+/// forces it, e.g. once per start). Returns whether it was fetched. Any error
+/// but an auth one is logged: emoji then stay as `:name:` text.
+pub async fn sync_custom_emoji(
+    client: &Client,
+    store: &Store,
+    team_id: &str,
+    max_age: std::time::Duration,
+) -> Result<bool> {
+    let team = team_id.to_owned();
+    let last = store
+        .call(move |c| crate::store::emoji::synced_at(c, &team))
+        .await?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    if !max_age.is_zero() && last.is_some_and(|t| now - t < max_age.as_secs() as i64) {
+        return Ok(false);
+    }
+    match client.emoji_list().await {
+        Ok(list) => {
+            tracing::info!(count = list.len(), "fetched custom emoji");
+            let team = team_id.to_owned();
+            store
+                .call(move |c| crate::store::emoji::replace(c, &team, &list))
+                .await?;
+            Ok(true)
+        }
+        Err(e) if e.is_auth_error() => Err(e),
+        Err(e) => {
+            tracing::warn!(error = %e, "emoji.list failed; custom emoji stay as text");
+            Ok(false)
+        }
+    }
+}

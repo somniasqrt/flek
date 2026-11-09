@@ -2,7 +2,7 @@
 import { createSignal, For, Show } from "solid-js";
 import { tsDate, type Message } from "./api";
 import Avatar from "./Avatar";
-import { emoji } from "./emoji";
+import Emoji from "./EmojiView";
 import Files from "./Files";
 import { people } from "./people";
 import Rich from "./Rich";
@@ -36,7 +36,7 @@ function Reactions(props: { summary: string }) {
       <For each={items()}>
         {(r) => (
           <span class="reaction" title={`:${r.name}:`}>
-            <span class="emoji">{emoji(r.name) ?? `:${r.name}:`}</span>
+            <Emoji name={r.name} />
             <span>{r.count}</span>
           </span>
         )}

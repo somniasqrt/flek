@@ -13,6 +13,7 @@ const COMMANDS: &[&str] = &[
     "sign_in",
     "people",
     "avatars",
+    "custom_emoji",
     "open_file",
     "pdf_data",
     "open_url",

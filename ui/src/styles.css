@@ -912,6 +912,20 @@ time {
   font-size: 12px;
   color: var(--muted);
 }
+/* Workspace emoji: cached images, sized like a glyph of the line. */
+.emoji-img {
+  display: inline-block;
+  height: 1.35em;
+  width: auto;
+  max-width: 4em;
+  vertical-align: -0.3em;
+  object-fit: contain;
+}
+.emoji-img.reaction-img {
+  height: 16px;
+  max-width: 48px;
+  vertical-align: middle;
+}
 
 /* Links */
 a.link {

@@ -158,6 +158,24 @@ pub async fn download_avatars(
     fetch_images(client, store, cache_dir, None, urls).await
 }
 
+/// Custom emoji images to fetch in one pass at most.
+const EMOJI_PER_PASS: usize = 100;
+
+/// Downloads images of the custom emoji stored messages and reactions use
+/// (never the whole list), from Slack's emoji CDN: public URLs, no session.
+pub async fn download_custom_emoji(
+    client: &Client,
+    store: &Store,
+    cache_dir: &Path,
+    team_id: &str,
+) -> Result<usize> {
+    let team = team_id.to_owned();
+    let urls = store
+        .call(move |c| crate::store::emoji::to_fetch(c, &team, EMOJI_PER_PASS))
+        .await?;
+    fetch_images(client, store, cache_dir, None, urls).await
+}
+
 async fn fetch_images(
     client: &Client,
     store: &Store,

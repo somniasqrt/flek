@@ -45,6 +45,7 @@ const messages: Message[] = [
     { service: "YouTube", title: "Lecture 5: predicates", title_link: "https://www.youtube.com/watch?v=abc", text: null, author: null, footer: null, url: "https://www.youtube.com/watch?v=abc", color: null, image: "yt", image_width: 480, image_height: 360, thumb: false, icon: "ic", video: true, fields: [] },
     { service: "Example Org", title: "Course plan 2026", title_link: "https://example.org/plan", text: "Topics, deadlines and *grading* for the autumn term.", author: null, footer: null, url: "https://example.org/plan", color: "#36a64f", image: "th", image_width: 80, image_height: 80, thumb: true, icon: null, video: false, fields: [] },
   ] }),
+  msg(1762450100, "U5", "Shipping it :shipit: :yes::skin-tone-4: and a :custom_party: with :not_cached:", { reactions: ":custom_party: 3  :+1::skin-tone-3: 1  :gdocs: 2  :zoom: 1" }),
   msg(1762500000, "U2", "Old one ~gone~ but kept :custom_party:", { hidden_by_limit: true, files: [file({ id: "F3", name: "notes.docx", filetype: "docx", size: 48_000, hidden_by_limit: true })] }),
 ];
 
@@ -73,6 +74,8 @@ mockIPC((cmd, args) => {
       return people;
     case "avatars":
       return { U1: "a1", U4: "a4" };
+    case "custom_emoji":
+      return { images: { custom_party: "e1", shipit: "e2", gdocs: "e2" }, aliases: { yes: "thumbsup" } };
     case "pdf_data":
       return Uint8Array.from(pdf, (c) => c.charCodeAt(0)).buffer;
     // Copies, like real IPC: stores wrap what they get, and __reply below
@@ -126,8 +129,19 @@ const pdf =
   pdfPages.map(pdfPage).join("") +
   "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
 const avatar2 = avatar.replace("%23e8a33d", "%235b8def");
-overrideCacheUrl((path) =>
-  path === "link/a1" ? avatar : path === "link/a4" ? avatar2 : placeholder,
-);
+// Custom emoji: a small party hat and a square badge.
+const emojiParty =
+  "data:image/svg+xml," +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><path d="M32 4 54 58H10Z" fill="#d94fa0"/><circle cx="32" cy="6" r="6" fill="#f5c400"/><path d="M20 34h24M15 46h34" stroke="#fff" stroke-width="5"/></svg>');
+const emojiBadge =
+  "data:image/svg+xml," +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect x="4" y="4" width="56" height="56" rx="12" fill="#2f8f5b"/><path d="M18 33l10 10 18-22" stroke="#fff" stroke-width="7" fill="none"/></svg>');
+const cached: Record<string, string> = {
+  "link/a1": avatar,
+  "link/a4": avatar2,
+  "link/e1": emojiParty,
+  "link/e2": emojiBadge,
+};
+overrideCacheUrl((path) => cached[path] ?? placeholder);
 
 render(() => <App />, document.getElementById("root")!);

@@ -3,6 +3,7 @@
 mod auth;
 mod client;
 mod conversations;
+mod emoji;
 mod history;
 mod internal;
 mod pagination;
