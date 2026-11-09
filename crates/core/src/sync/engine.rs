@@ -43,6 +43,8 @@ pub struct EngineOptions {
     pub follow_config: FollowConfig,
     /// Spacing of history/replies requests (tests set zero).
     pub history_interval: std::time::Duration,
+    /// Image proxy for link previews (tests point it at a mock server).
+    pub image_proxy: Option<String>,
 }
 
 impl Default for EngineOptions {
@@ -55,6 +57,7 @@ impl Default for EngineOptions {
             follow: false,
             follow_config: FollowConfig::default(),
             history_interval: HISTORY_INTERVAL,
+            image_proxy: None,
         }
     }
 }
@@ -168,6 +171,16 @@ impl Engine {
             })
             .await?;
             stats.files_downloaded = f.downloaded;
+            let proxy = o
+                .image_proxy
+                .as_deref()
+                .unwrap_or(crate::files::IMAGE_PROXY);
+            if let Err(e) =
+                crate::sync::files::download_link_images(&self.client, &self.store, cache, proxy)
+                    .await
+            {
+                tracing::warn!(error = %e, "link preview images failed");
+            }
         }
 
         let deep = SyncOptions {

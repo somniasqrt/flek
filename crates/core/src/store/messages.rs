@@ -338,6 +338,8 @@ pub struct HistoryRow {
     pub thread_ts: Option<String>,
     /// Files attached to the message.
     pub files: Vec<FileRef>,
+    /// Link previews.
+    pub unfurls: Vec<super::unfurls::Unfurl>,
 }
 
 /// A file attached to a message, for display.
@@ -369,7 +371,7 @@ const DISPLAY_COLUMNS: &str =
         SELECT name, COUNT(*) AS n FROM reactions r
         WHERE r.conversation_id = m.conversation_id AND r.ts = m.ts
         GROUP BY name ORDER BY n DESC, name)),
-    m.thread_ts
+    m.thread_ts, m.raw_json
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -468,6 +470,12 @@ fn query_display(
                 reactions: r.get(8)?,
                 thread_ts: r.get(9)?,
                 files: Vec::new(),
+                unfurls: r
+                    .get::<_, Option<String>>(10)?
+                    .map(|raw| {
+                        super::unfurls::from_raw(&raw, &|u| super::unfurls::is_cached(conn, u))
+                    })
+                    .unwrap_or_default(),
             })
         })?
         .collect::<Result<Vec<HistoryRow>, _>>()?;

@@ -5,6 +5,7 @@ import { emoji } from "./emoji";
 import Files from "./Files";
 import { people } from "./people";
 import Rich from "./Rich";
+import Unfurls from "./Unfurls";
 
 const PAGE = 60;
 /// Load older messages when the top is this close (px).
@@ -276,6 +277,9 @@ function MessageRow(props: { m: Message; prev?: Message }) {
         </Show>
         <Show when={m.files.length > 0}>
           <Files files={m.files} />
+        </Show>
+        <Show when={m.unfurls.length > 0}>
+          <Unfurls items={m.unfurls} />
         </Show>
         <Show when={m.reactions}>
           {(r) => <Reactions summary={r()} />}

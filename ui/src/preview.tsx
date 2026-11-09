@@ -3,7 +3,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
-import { overrideFileUrl, type Conversation, type FileRef, type Message } from "./api";
+import { overrideCacheUrl, type Conversation, type FileRef, type Message } from "./api";
 import "./styles.css";
 
 const people: Record<string, string> = { U1: "Olena Koval", U2: "Taras Melnyk", U3: "Me" };
@@ -19,7 +19,7 @@ const file = (f: Partial<FileRef>): FileRef => ({
 });
 const msg = (ts: number, user: string, text: string, extra: Partial<Message> = {}): Message => ({
   ts: `${ts}.000000`, user_id: user, author: people[user], text, subtype: null, reply_count: 0,
-  edited: false, hidden_by_limit: false, reactions: null, thread_ts: null, files: [], ...extra,
+  edited: false, hidden_by_limit: false, reactions: null, thread_ts: null, files: [], unfurls: [], ...extra,
 });
 const messages: Message[] = [
   msg(1762300000, "U1", "# Practice moved online\nHi all :wave: tomorrow's practice is *online*: <https://us06web.zoom.us/j/123456|Join Zoom>\nSlides: <https://docs.google.com/presentation/d/abc/edit>", { reactions: ":+1: 4  :fire: 2" }),
@@ -27,6 +27,10 @@ const messages: Message[] = [
   msg(1762300120, "U2", "&gt; Will the recording be on the drive?\nYes, <@U1> said so <!here>. See https://github.com/example/repo and :pink_heart:", { edited: true, reply_count: 3 }),
   msg(1762400000, "U3", "```fn main() {\n    println!(\"hi\");\n}```"),
   msg(1762400030, "U3", "", { files: [file({ id: "F1", name: "calendar.png", mimetype: "image/png", local_path: "/tmp/x.png", width: 1200, height: 800 }), file({ id: "F2", name: "Schedule_Monday stream 70236.pdf", mimetype: "application/pdf", filetype: "pdf", size: 2_400_000, local_path: "/tmp/l.pdf", preview_path: "/tmp/p.png", preview_width: 910, preview_height: 1286 })] }),
+  msg(1762450000, "U1", "Lecture recording: https://www.youtube.com/watch?v=abc and the plan https://example.org/plan", { unfurls: [
+    { service: "YouTube", title: "Lecture 5: predicates", title_link: "https://www.youtube.com/watch?v=abc", text: null, author: null, footer: null, url: "https://www.youtube.com/watch?v=abc", color: null, image: "yt", image_width: 480, image_height: 360, thumb: false, icon: "ic", video: true, fields: [] },
+    { service: "Example Org", title: "Course plan 2026", title_link: "https://example.org/plan", text: "Topics, deadlines and *grading* for the autumn term.", author: null, footer: null, url: "https://example.org/plan", color: "#36a64f", image: "th", image_width: 80, image_height: 80, thumb: true, icon: null, video: false, fields: [] },
+  ] }),
   msg(1762500000, "U2", "Old one ~gone~ but kept :custom_party:", { hidden_by_limit: true, files: [file({ id: "F3", name: "notes.docx", filetype: "docx", size: 48_000, hidden_by_limit: true })] }),
 ];
 
@@ -56,6 +60,6 @@ const placeholder =
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#8fb3e8"/><text x="50%" y="50%" font-size="80" text-anchor="middle" fill="#fff" font-family="sans-serif">image</text></svg>',
   );
-overrideFileUrl(() => placeholder);
+overrideCacheUrl(() => placeholder);
 
 render(() => <App />, document.getElementById("root")!);

@@ -1,43 +1,53 @@
 :root {
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 14px;
+  font-size: 15px;
+  line-height: 1.4667;
   --bg: #ffffff;
-  --text: #1d1c1f;
-  --muted: #6b6a70;
-  --border: #e4e3e8;
-  --side-bg: #f3f2f6;
-  --side-active: #3a52d6;
+  --text: #1d1c1d;
+  --muted: #616061;
+  --border: #e2e2e2;
+  --rule: #dddddd;
+  --side-bg: #f5f4f6;
+  --side-text: #5e5d60;
+  --side-active: #1164a3;
   --side-active-text: #ffffff;
-  --accent: #3a52d6;
-  --hover: rgba(0, 0, 0, 0.05);
+  --accent: #1164a3;
+  --link: #1264a3;
+  --hover: #f8f8f8;
   --tag: #e8f4f1;
   --tag-text: #24725f;
   --error: #b3261e;
   --warn-bg: #fff4d6;
-  --code-bg: #f6f6f8;
-  --code-text: #c0306a;
-  --mention-bg: rgba(58, 82, 214, 0.1);
-  --rule: #d6d5dc;
+  --code-bg: #f8f8f8;
+  --code-border: #dddddd;
+  --code-text: #e01e5a;
+  --mention-bg: rgba(29, 155, 209, 0.1);
+  --mention-text: #1264a3;
+  --badge: #cd2553;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1b1f;
-    --text: #e8e7ec;
-    --muted: #9b9aa3;
-    --border: #2e2e35;
-    --side-bg: #141418;
-    --side-active: #4a62e6;
-    --hover: rgba(255, 255, 255, 0.06);
+    --bg: #1a1d21;
+    --text: #d1d2d3;
+    --muted: #ababad;
+    --border: #35373b;
+    --rule: #35373b;
+    --side-bg: #19171d;
+    --side-text: #b9babd;
+    --side-active: #1164a3;
+    --accent: #1d9bd1;
+    --link: #1d9bd1;
+    --hover: #222529;
     --tag: #1f3a33;
     --tag-text: #8fd6c1;
     --error: #ff8a80;
     --warn-bg: #3a3220;
-    --code-bg: #232329;
-    --code-text: #f28fb4;
-    --mention-bg: rgba(110, 130, 240, 0.18);
-    --rule: #3d3d46;
-    --accent: #7d92ff;
+    --code-bg: rgba(232, 232, 232, 0.04);
+    --code-border: rgba(232, 232, 232, 0.13);
+    --code-text: #e8912d;
+    --mention-bg: rgba(29, 155, 209, 0.1);
+    --mention-text: #1d9bd1;
   }
 }
 
@@ -145,8 +155,8 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .team {
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 800;
+  font-size: 18px;
 }
 .me {
   font-size: 12px;
@@ -169,15 +179,16 @@ button {
 .conv {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 10px;
   border: 0;
   border-radius: 6px;
   background: none;
   text-align: left;
   cursor: pointer;
-  color: var(--muted);
+  color: var(--side-text);
 }
 .conv:hover {
   background: var(--hover);
@@ -203,7 +214,7 @@ button {
   white-space: nowrap;
 }
 .badge {
-  background: #d93b3b;
+  background: var(--badge);
   color: #fff;
   border-radius: 9px;
   padding: 0 6px;
@@ -274,7 +285,8 @@ button {
 }
 .conv-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
+  font-weight: 800;
 }
 .topic {
   overflow: hidden;
@@ -339,8 +351,8 @@ button {
 .msg {
   display: grid;
   grid-template-columns: 36px 1fr;
-  column-gap: 10px;
-  padding: 6px 20px 4px;
+  column-gap: 8px;
+  padding: 8px 20px 6px;
 }
 .msg.grouped {
   padding-top: 1px;
@@ -354,7 +366,7 @@ button {
 .avatar {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 6px;
   display: grid;
   place-items: center;
   font-size: 13px;
@@ -383,7 +395,7 @@ button {
   gap: 8px;
 }
 .author {
-  font-weight: 700;
+  font-weight: 900;
 }
 time {
   font-size: 12px;
@@ -401,7 +413,7 @@ time {
 
 /* Message text */
 .rich {
-  line-height: 1.46;
+  line-height: 1.4667;
   overflow-wrap: anywhere;
 }
 .rich p {
@@ -441,9 +453,9 @@ time {
 .rich code,
 .rich pre {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12.5px;
+  font-size: 12px;
   background: var(--code-bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--code-border);
   border-radius: 4px;
 }
 .rich code {
@@ -456,11 +468,10 @@ time {
   white-space: pre-wrap;
 }
 .mention {
-  padding: 0 3px;
-  border-radius: 4px;
+  padding: 0 2px;
+  border-radius: 3px;
   background: var(--mention-bg);
-  color: var(--accent);
-  font-weight: 600;
+  color: var(--mention-text);
 }
 .emoji {
   font-size: 1.15em;
@@ -473,7 +484,7 @@ time {
 
 /* Links */
 a.link {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: none;
 }
 a.link:hover {
@@ -628,6 +639,96 @@ a.chip .label {
   white-space: nowrap;
 }
 
+/* Link previews */
+.unfurl {
+  display: flex;
+  gap: 12px;
+  max-width: 560px;
+  margin-top: 6px;
+  padding: 2px 0 2px 12px;
+  border-left: 4px solid var(--bar, var(--rule));
+  border-radius: 2px;
+}
+.unfurl-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.unfurl-site {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.unfurl-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+}
+.unfurl-title {
+  font-weight: 700;
+  color: var(--link);
+  text-decoration: none;
+}
+.unfurl-title:hover {
+  text-decoration: underline;
+}
+.unfurl-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  margin-top: 2px;
+}
+.unfurl-field-name {
+  font-weight: 700;
+  font-size: 13px;
+}
+.unfurl-image {
+  position: relative;
+  margin-top: 6px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--code-bg);
+  cursor: pointer;
+}
+.unfurl-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.unfurl-image .play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+.unfurl-image .play svg {
+  width: 22px;
+  height: 22px;
+  fill: #fff;
+}
+.unfurl-thumb {
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.unfurl-footer {
+  font-size: 12px;
+}
+
 /* Reactions and replies */
 .reactions {
   display: flex;
@@ -646,8 +747,8 @@ a.chip .label {
   font-size: 12px;
 }
 .replies {
-  font-size: 12px;
-  color: var(--accent);
-  font-weight: 600;
+  font-size: 13px;
+  color: var(--link);
+  font-weight: 700;
   margin-top: 4px;
 }

@@ -57,6 +57,25 @@ export type FileRef = {
   preview_height: number | null;
 };
 
+export type Unfurl = {
+  service: string | null;
+  title: string | null;
+  title_link: string | null;
+  text: string | null;
+  author: string | null;
+  footer: string | null;
+  url: string | null;
+  color: string | null;
+  /// Hash of a cached image (see linkImageUrl).
+  image: string | null;
+  image_width: number | null;
+  image_height: number | null;
+  thumb: boolean;
+  icon: string | null;
+  video: boolean;
+  fields: [string, string][];
+};
+
 export type Message = {
   ts: string;
   user_id: string | null;
@@ -69,6 +88,7 @@ export type Message = {
   reactions: string | null;
   thread_ts: string | null;
   files: FileRef[];
+  unfurls: Unfurl[];
 };
 
 export const api = {
@@ -100,16 +120,19 @@ export const isReplyOnly = (m: Message) =>
 
 export const tsDate = (ts: string) => new Date(parseFloat(ts) * 1000);
 
-/// URL of a cached file (or its preview) served by the app's `flekfile`
-/// protocol (crates/app/src/files.rs). WebView2 maps custom schemes to http.
-let fileUrlImpl = (id: string, preview: boolean) =>
-  (navigator.userAgent.includes("Windows") ? "http://flekfile.localhost/" : "flekfile://localhost/") +
-  encodeURIComponent(id) +
-  (preview ? "/preview" : "");
+/// URL of something the app's `flekfile` protocol serves
+/// (crates/app/src/files.rs). WebView2 maps custom schemes to http.
+let cacheUrl = (path: string) =>
+  (navigator.userAgent.includes("Windows") ? "http://flekfile.localhost/" : "flekfile://localhost/") + path;
 
-export const fileUrl = (id: string, preview = false) => fileUrlImpl(id, preview);
+/// A cached file, or its preview (first page of a PDF, a video frame).
+export const fileUrl = (id: string, preview = false) =>
+  cacheUrl(encodeURIComponent(id) + (preview ? "/preview" : ""));
+
+/// A cached link-preview image.
+export const linkImageUrl = (hash: string) => cacheUrl("link/" + encodeURIComponent(hash));
 
 /// For preview.html, which runs without the app.
-export function overrideFileUrl(f: (id: string, preview: boolean) => string) {
-  fileUrlImpl = f;
+export function overrideCacheUrl(f: (path: string) => string) {
+  cacheUrl = f;
 }

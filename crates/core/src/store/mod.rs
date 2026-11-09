@@ -5,6 +5,7 @@ pub mod files;
 pub mod messages;
 pub mod migrations;
 pub mod search;
+pub mod unfurls;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

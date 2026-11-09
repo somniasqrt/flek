@@ -125,6 +125,49 @@ pub async fn download_files(
     Ok(stats)
 }
 
+/// Link-preview images to fetch in one pass at most.
+const LINK_IMAGES_PER_PASS: usize = 300;
+
+/// Caches the images of link previews through Slack's image proxy, paced
+/// like files. Uses a client without the session: these are public images.
+/// A failed image is recorded and not retried. Returns how many were fetched.
+pub async fn download_link_images(
+    client: &Client,
+    store: &Store,
+    cache_dir: &Path,
+    proxy: &str,
+) -> Result<usize> {
+    let urls = store
+        .call(|c| crate::store::unfurls::images_to_fetch(c, LINK_IMAGES_PER_PASS))
+        .await?;
+    if urls.is_empty() {
+        return Ok(0);
+    }
+    let http = reqwest::Client::builder()
+        .user_agent(client.profile().user_agent.clone())
+        .timeout(Duration::from_secs(30))
+        .build()?;
+    let mut bucket = TokenBucket::for_files();
+    let mut fetched = 0;
+    for url in urls {
+        bucket.acquire().await;
+        let path = match files::fetch_link_image(&http, proxy, cache_dir, &url).await {
+            Ok(p) => {
+                fetched += 1;
+                Some(p.to_string_lossy().into_owned())
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "link preview image failed");
+                None
+            }
+        };
+        store
+            .call(move |c| crate::store::unfurls::set_image(c, &url, path.as_deref()))
+            .await?;
+    }
+    Ok(fetched)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
