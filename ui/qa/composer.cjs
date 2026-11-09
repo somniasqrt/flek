@@ -63,7 +63,17 @@ const assert=require('node:assert/strict');
  const event=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:500,clientY:500});el.dispatchEvent(event);return event.defaultPrevented;
  });
  assert.equal(prevented,before);
- if(!before) { await row.evaluate(el=>{getSelection().removeAllRanges();el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:500,clientY:500}));}); await page.getByRole('menu').waitFor(); }
+ if(!before) {
+ assert.equal(await page.getByRole('menu').count(),0);
+ const other=page.locator('[data-ts="1762500100.000000"]');
+ const unrelated=await other.evaluate(el=>{
+ const event=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:500,clientY:500});el.dispatchEvent(event);return event.defaultPrevented;
+ });
+ assert.equal(unrelated,true); await page.getByRole('menu').waitFor();
+ await page.keyboard.press('Escape');
+ const collapsed=await row.evaluate(el=>{getSelection().removeAllRanges();const event=new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:500,clientY:500});el.dispatchEvent(event);return event.defaultPrevented;});
+ assert.equal(collapsed,true); await page.getByRole('menu').waitFor();
+ }
  }
  await page.screenshot({path:`/tmp/flek-regressions/${mode}-${before?'before':'after'}.png`});
  console.log(`${mode}: ${before?'regression reproduced':'passed'}`);

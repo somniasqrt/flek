@@ -175,7 +175,18 @@ export default function MessageRow(props: {
         failed: m.pending === "failed",
       }}
       data-ts={m.ts}
-      onContextMenu={(e) => openMenu(e)}
+      onContextMenu={(e) => {
+        const selection = window.getSelection();
+        if (selection?.toString()) {
+          for (let i = 0; i < selection.rangeCount; i++) {
+            if (selection.getRangeAt(i).intersectsNode(e.currentTarget)) {
+              setMenu(null);
+              return; // Let the native menu copy the selected text.
+            }
+          }
+        }
+        openMenu(e);
+      }}
       onKeyDown={(e) => {
         if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
           e.preventDefault();
