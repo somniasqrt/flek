@@ -38,6 +38,8 @@ export type Conversation = {
   messages: number;
   unread: number | null;
   latest_ts: string | null;
+  /// The other person of a DM, for their avatar.
+  dm_user_id: string | null;
 };
 
 export type FileRef = {

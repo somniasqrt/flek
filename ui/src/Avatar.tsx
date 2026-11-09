@@ -19,18 +19,25 @@ export default function Avatar(props: { id: string | null; name: string; size?: 
     return (h >>> 0) % 360;
   };
   const image = () => (props.id ? avatars()[props.id] : undefined);
-  const size = () => `${props.size ?? 36}px`;
+  const px = () => props.size ?? 36;
+  // Rounded square like Slack's, scaled with the size.
+  const box = () => ({
+    width: `${px()}px`,
+    height: `${px()}px`,
+    "border-radius": `${Math.round(px() / 6)}px`,
+    "font-size": `${Math.round(px() * 0.36)}px`,
+  });
   return (
     <Show
       when={image()}
       fallback={
-        <div class="avatar" style={{ "--hue": hue(), width: size(), height: size() }}>
+        <div class="avatar" style={{ "--hue": hue(), ...box() }}>
           {initials()}
         </div>
       }
     >
       {(hash) => (
-        <img class="avatar" src={linkImageUrl(hash())} alt="" style={{ width: size(), height: size() }} />
+        <img class="avatar" src={linkImageUrl(hash())} alt="" style={box()} />
       )}
     </Show>
   );

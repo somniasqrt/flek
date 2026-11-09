@@ -202,6 +202,8 @@ pub struct ConversationRow {
     pub unread: Option<i64>,
     /// Newest stored message, for ordering by activity.
     pub latest_ts: Option<String>,
+    /// The other person of a DM, for their avatar.
+    pub dm_user_id: Option<String>,
 }
 
 /// Conversations of a team: channels first, then group DMs and DMs, by label.
@@ -209,7 +211,7 @@ pub struct ConversationRow {
 pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
-                message_count, unread_count, latest_ts
+                message_count, unread_count, latest_ts, dm_user_id
          FROM conversations
          WHERE team_id = ?1
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
@@ -226,6 +228,7 @@ pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<Conver
                 messages: r.get(5)?,
                 unread: r.get(6)?,
                 latest_ts: r.get(7)?,
+                dm_user_id: r.get(8)?,
             })
         })?
         .collect::<Result<_, _>>()?;

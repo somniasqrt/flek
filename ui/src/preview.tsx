@@ -8,9 +8,9 @@ import "./styles.css";
 
 const people: Record<string, string> = { U1: "Olena Koval", U2: "Taras Melnyk", U3: "Me" };
 const conversations: Conversation[] = [
-  { id: "C1", kind: "public_channel", label: "general", is_archived: false, topic: "Announcements", messages: 6, unread: 2, latest_ts: "1762600000.000000" },
-  { id: "C2", kind: "private_channel", label: "course-project", is_archived: false, topic: null, messages: 0, unread: 0, latest_ts: null },
-  { id: "D1", kind: "im", label: "Olena Koval", is_archived: false, topic: null, messages: 1, unread: 1, latest_ts: "1762600500.000000" },
+  { id: "C1", kind: "public_channel", label: "general", is_archived: false, topic: "Announcements", messages: 6, unread: 2, latest_ts: "1762600000.000000", dm_user_id: null },
+  { id: "C2", kind: "private_channel", label: "course-project", is_archived: false, topic: null, messages: 0, unread: 0, latest_ts: null, dm_user_id: null },
+  { id: "D1", kind: "im", label: "Olena Koval", is_archived: false, topic: null, messages: 1, unread: 1, latest_ts: "1762600500.000000", dm_user_id: "U1" },
 ];
 const file = (f: Partial<FileRef>): FileRef => ({
   id: "F", name: null, title: null, mimetype: null, filetype: null, size: null, local_path: null,

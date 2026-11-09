@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import type { Conversation } from "./api";
+import Avatar from "./Avatar";
 
 /// Channels by name, then direct messages by latest activity.
 export default function Sidebar(props: {
@@ -27,9 +28,16 @@ export default function Sidebar(props: {
         onClick={() => props.onSelect(p.c.id)}
         title={p.c.topic ?? p.c.label}
       >
-        <span class="prefix">
-          {p.c.kind === "public_channel" ? "#" : p.c.kind === "private_channel" ? "🔒" : "●"}
-        </span>
+        <Show
+          when={p.c.kind === "im"}
+          fallback={
+            <span class="prefix">
+              {p.c.kind === "public_channel" ? "#" : p.c.kind === "private_channel" ? "🔒" : "●"}
+            </span>
+          }
+        >
+          <Avatar id={p.c.dm_user_id} name={p.c.label} size={20} />
+        </Show>
         <span class="name">{p.c.label}</span>
         <Show when={(p.c.unread ?? 0) > 0 && (p.c.kind === "im" || p.c.kind === "mpim")}>
           <span class="badge">{p.c.unread}</span>
