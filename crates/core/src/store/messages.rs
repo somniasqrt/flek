@@ -305,6 +305,30 @@ pub fn mark_deleted(conn: &Connection, conversation_id: &str, ts: &[String]) -> 
     Ok(n)
 }
 
+/// Counts a reply that arrived live on its stored root. Idempotent: the
+/// count only grows for a reply newer than the root's `latest_reply`, and
+/// never drops below the replies actually stored. A later `message_replied`
+/// or history fetch writes Slack's own count over it.
+pub fn note_reply(
+    conn: &Connection,
+    conversation_id: &str,
+    thread_ts: &str,
+    reply_ts: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET
+            reply_count = MAX(
+                CASE WHEN COALESCE(latest_reply, '') < ?3 THEN reply_count + 1 ELSE reply_count END,
+                (SELECT COUNT(*) FROM messages r
+                 WHERE r.conversation_id = ?1 AND r.thread_ts = ?2 AND r.ts != ?2 AND r.deleted = 0)),
+            latest_reply = MAX(COALESCE(latest_reply, ''), ?3),
+            thread_ts = COALESCE(thread_ts, ts)
+         WHERE conversation_id = ?1 AND ts = ?2",
+        params![conversation_id, thread_ts, reply_ts],
+    )?;
+    Ok(())
+}
+
 /// Whether the message is stored and marked deleted.
 pub fn is_deleted(conn: &Connection, conversation_id: &str, ts: &str) -> Result<bool> {
     Ok(conn.query_row(

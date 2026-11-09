@@ -102,6 +102,7 @@ pub enum Applied {
 pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
     store
         .call(move |c| {
+            let posted = matches!(event, Event::Message { .. });
             Ok(match event {
                 Event::Message { channel, message }
                 | Event::MessageChanged { channel, message } => {
@@ -121,6 +122,13 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     // conversation, and moving newest_ts past it would skip
                     // whatever was sent while we were offline.
                     messages::upsert_messages(c, &channel, std::slice::from_ref(&row))?;
+                    // Slack does not reliably send message_replied over RTM:
+                    // count a new reply on its root right away.
+                    if let Some(root) = row.thread_ts.as_deref().filter(|t| *t != row.ts) {
+                        if posted {
+                            messages::note_reply(c, &channel, root, &row.ts)?;
+                        }
+                    }
                     Applied::Changed(Change::Message {
                         conversation_id: channel,
                         ts: row.ts,
