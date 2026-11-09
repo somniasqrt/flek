@@ -72,9 +72,20 @@ impl Message {
             && !non_empty(&self.blocks)
             && !non_empty(&self.attachments)
             && self.files.is_empty()
-            && self.subtype.is_none();
+            && self.subtype.as_deref().is_none_or(carries_user_content);
         file_hidden || empty
     }
+}
+
+/// Subtypes whose messages always carry what a person (or bot) wrote, so an
+/// empty version of one is content-stripped, not legitimately empty. Other
+/// subtypes (`tombstone`, `huddle_thread`, system notices…) may be empty for
+/// real and are taken as they come.
+fn carries_user_content(subtype: &str) -> bool {
+    matches!(
+        subtype,
+        "thread_broadcast" | "reply_broadcast" | "bot_message" | "me_message" | "file_share"
+    )
 }
 
 #[derive(Debug, Clone, Default)]
@@ -168,4 +179,36 @@ fn parse_page(raw: Value) -> Result<HistoryPage> {
             .map(|m| m.next_cursor)
             .filter(|c| !c.is_empty()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn hidden(v: Value) -> bool {
+        serde_json::from_value::<Message>(v)
+            .unwrap()
+            .is_hidden_by_limit()
+    }
+
+    #[test]
+    fn empty_content_subtypes_are_hidden_but_tombstones_are_not() {
+        assert!(hidden(json!({"ts": "1.0", "text": ""})));
+        assert!(hidden(
+            json!({"ts": "1.0", "text": "", "subtype": "thread_broadcast"})
+        ));
+        assert!(hidden(
+            json!({"ts": "1.0", "text": " ", "subtype": "bot_message"})
+        ));
+        assert!(!hidden(
+            json!({"ts": "1.0", "text": "", "subtype": "tombstone"})
+        ));
+        assert!(!hidden(
+            json!({"ts": "1.0", "text": "", "subtype": "huddle_thread"})
+        ));
+        assert!(!hidden(
+            json!({"ts": "1.0", "text": "hi", "subtype": "thread_broadcast"})
+        ));
+    }
 }
