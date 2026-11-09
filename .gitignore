@@ -18,3 +18,6 @@ node_modules/
 # Frontend build and Tauri generated files
 ui/dist/
 crates/app/gen/
+
+# cargo mutants
+mutants.out*/
