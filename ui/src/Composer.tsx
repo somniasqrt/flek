@@ -268,7 +268,16 @@ export default function Composer(props: {
     if (e.key === "Enter" && !e.altKey) {
       e.preventDefault();
       if (!e.shiftKey && (!modEnter() || primaryModifier(e, mac))) submit();
-      else exec("insertLineBreak");
+      else {
+        const selection = window.getSelection();
+        const anchor = selection?.anchorNode;
+        const element = anchor instanceof Element ? anchor : anchor?.parentElement;
+        const item = element?.closest("li");
+        // WebKit's paragraph command splits a list item and exits an empty one.
+        // Keep the current keyboard selection before exec restores the saved range.
+        if (selection?.rangeCount) savedRange = selection.getRangeAt(0).cloneRange();
+        exec(item && editor.contains(item) ? "insertParagraph" : "insertLineBreak");
+      }
     }
   };
   createEffect(
