@@ -203,3 +203,41 @@ async fn download_retries_after_429() {
         .unwrap();
     assert_eq!(std::fs::read_to_string(dest).unwrap(), "ok");
 }
+
+#[test]
+fn files_of_messages_stored_before_m1_6_are_recovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("flek.db");
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        flek_core::store::migrations::migrate_to(&mut conn, 9).unwrap();
+        let raw = json!({"ts": "1.000000", "files": [
+            {"id": "F1", "name": "shot.png", "mimetype": "image/png", "filetype": "png",
+             "size": 10, "url_private": "https://files.example/F1", "mode": "hosted",
+             "original_w": 800, "original_h": 600},
+            {"id": "F2", "mode": "hidden_by_limit"},
+            {"mode": "tombstone"}
+        ]})
+        .to_string();
+        conn.execute_batch(
+            "INSERT INTO teams (id, name) VALUES ('T1', 'Team');
+             INSERT INTO conversations (id, team_id, kind, name) VALUES ('C1', 'T1', 'public_channel', 'general');",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (conversation_id, ts, text, raw_json) VALUES ('C1', '1.000000', '', ?1)",
+            [raw],
+        )
+        .unwrap();
+    }
+    let store = Store::open(&path).unwrap();
+    let page = store
+        .with_read(|c| flek_core::store::messages::page(c, "C1", None, 10))
+        .unwrap();
+    let files = &page[0].files;
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].id, "F1");
+    assert_eq!(files[0].mimetype.as_deref(), Some("image/png"));
+    assert_eq!((files[0].width, files[0].height), (Some(800), Some(600)));
+    assert!(files[1].hidden_by_limit);
+}
