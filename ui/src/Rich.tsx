@@ -13,6 +13,11 @@ export default function Rich(props: { text: string; blocks?: unknown }) {
   return <Show when={hasRichBlocks(props.blocks)} fallback={<div class="rich">{blocks(parse(props.text))}</div>}><RichBlocks blocks={props.blocks} /></Show>;
 }
 
+/// Render an already parsed tree without interpreting decoded website text as HTML.
+export function ParsedRich(props: { blocks: Block[] }) {
+  return <div class="rich">{blocks(props.blocks)}</div>;
+}
+
 function blocks(list: Block[]): JSX.Element {
   return (
     <For each={list}>

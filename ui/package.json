@@ -11,6 +11,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
     "emojibase-data": "^18.0.0",
+    "entities": "6.0.1",
     "pdfjs-dist": "6.4.299",
     "solid-js": "^1.9.18"
   },
