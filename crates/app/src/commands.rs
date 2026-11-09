@@ -6,6 +6,7 @@ use flek_core::store::emoji;
 use flek_core::store::messages::{self, HistoryRow};
 use flek_core::store::search::{self, Hit, Sort};
 use flek_core::sync::live::Progress;
+use flek_core::sync::send::{self, Outgoing, Sent};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
@@ -263,4 +264,35 @@ pub fn open_url(app: AppHandle, url: String) -> CmdResult<()> {
     app.opener()
         .open_url(parsed.as_str(), None::<&str>)
         .map_err(text)
+}
+
+/// Sends a message as the user. Slack's copy is written to the database and
+/// announced like any other change; the UI shows it from there and matches
+/// it to its optimistic copy by `client_msg_id`.
+#[tauri::command]
+pub async fn send_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    text: String,
+    thread_ts: Option<String>,
+    broadcast: Option<bool>,
+    client_msg_id: Option<String>,
+) -> CmdResult<Sent> {
+    let (Some(client), Status::Ready { user_id, .. }) = (state.client(), state.status()) else {
+        return Err("not signed in to Slack".into());
+    };
+    let out = Outgoing {
+        conversation_id,
+        text,
+        thread_ts,
+        broadcast: broadcast.unwrap_or(false),
+        client_msg_id,
+    };
+    let sent = send::send(&client, &state.store, &user_id, out)
+        .await
+        .map_err(|e| flek_core::api::chat::describe_send_error(&e))?;
+    if let Some(change) = sent.change.clone() {
+        let _ = state.bus.send(change);
+    }
+    Ok(sent)
 }

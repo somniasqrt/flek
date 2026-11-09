@@ -1,7 +1,9 @@
 //! What the app holds: the database, the credential store, the change bus,
 //! and the background sync engine. Everything real lives in `flek-core`.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+use flek_core::api::Client;
 
 use flek_core::auth::{self, CredentialStore, Session};
 use flek_core::store::Store;
@@ -53,6 +55,8 @@ pub struct AppState {
     /// User agent of the session's client, for public image fetches.
     user_agent: Mutex<Option<String>>,
     engine_stop: Mutex<Option<watch::Sender<bool>>>,
+    /// Client of the ready session, for writes (sending messages).
+    client: Mutex<Option<Arc<Client>>>,
 }
 
 impl AppState {
@@ -67,6 +71,7 @@ impl AppState {
             connection: Mutex::new(None),
             user_agent: Mutex::new(None),
             engine_stop: Mutex::new(None),
+            client: Mutex::new(None),
         }
     }
 
@@ -101,6 +106,11 @@ impl AppState {
             .ok()
             .and_then(|u| u.clone())
             .unwrap_or_else(|| flek_core::api::ClientProfile::detect().user_agent)
+    }
+
+    /// Client of the ready session.
+    pub fn client(&self) -> Option<Arc<Client>> {
+        self.client.lock().ok().and_then(|c| c.clone())
     }
 
     /// Stops the sync engine (quit, or before a new session starts).
@@ -251,6 +261,9 @@ pub fn start(app: &AppHandle, session: Session) {
     };
     if let Ok(mut ua) = state.user_agent.lock() {
         *ua = Some(client.profile().user_agent.clone());
+    }
+    if let (Ok(mut slot), Ok(c)) = (state.client.lock(), session.client()) {
+        *slot = Some(Arc::new(c));
     }
     let files = flek_core::files::default_cache_dir()
         .ok()

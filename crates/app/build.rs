@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "pdf_data",
     "open_url",
     "search",
+    "send_message",
 ];
 
 fn main() {

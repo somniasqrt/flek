@@ -24,6 +24,7 @@
     "allow-open-file",
     "allow-pdf-data",
     "allow-open-url",
-    "allow-search"
+    "allow-search",
+    "allow-send-message"
   ]
 }

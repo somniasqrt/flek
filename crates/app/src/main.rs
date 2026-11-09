@@ -61,6 +61,7 @@ fn main() {
             commands::pdf_data,
             commands::open_url,
             commands::search,
+            commands::send_message,
         ])
         .setup(move |app| {
             let handle = app.handle();
