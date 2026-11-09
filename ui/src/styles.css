@@ -424,7 +424,7 @@ mark {
   min-width: 0;
   display: grid;
   /* Third column: the thread panel, when open. */
-  grid-template-columns: 268px minmax(0, 1fr) auto;
+  grid-template-columns: var(--sidebar-width, 268px) minmax(0, 1fr) auto;
   margin: 0 6px 6px 0;
   border: 1px solid var(--chrome-line);
   border-radius: 8px;
@@ -1272,7 +1272,8 @@ a.chip .label {
 
 /* Thread side panel */
 .thread-panel {
-  width: 400px;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   display: flex;
@@ -2268,4 +2269,81 @@ a.chip .label {
 .quick-reactions button[aria-pressed="true"] {
   background: var(--mention-bg);
   border-color: var(--accent);
+}
+
+/* Splitter hit areas straddle the borders without taking space from the panes. */
+.sidebar-pane,
+.detail-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.sidebar-pane > .sidebar {
+  height: 100%;
+  min-width: 0;
+}
+.detail-pane {
+  width: var(--detail-width, 400px);
+}
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 12;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.resize-handle-left {
+  right: -4px;
+}
+.resize-handle-right {
+  left: -4px;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms;
+}
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle.dragging::after {
+  background: #1d9bd1;
+}
+body.resizing-panels,
+body.resizing-panels * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* Composer actions follow the pane width, including while a splitter moves. */
+.main,
+.detail-pane {
+  container-type: inline-size;
+}
+@container (max-width: 520px) {
+  .composer-bar > span:has(.compose-future) {
+    display: none;
+  }
+  .composer-bar .compose-future {
+    display: none;
+  }
+}
+@container (max-width: 300px) {
+  .composer {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .composer-bar > span,
+  .composer-bar > .composer-format-divider {
+    display: none;
+  }
+  .composer-bar > .compose-tool[aria-label="Toggle formatting"] {
+    display: none;
+  }
 }

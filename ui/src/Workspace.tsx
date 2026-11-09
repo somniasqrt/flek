@@ -1,4 +1,13 @@
-import { batch, createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import {
+  batch,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  Show,
+} from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
   api,
@@ -21,6 +30,16 @@ import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
 import Thread from "./Thread";
 import Timeline from "./Timeline";
+import ResizeHandle from "./ResizeHandle";
+import {
+  DEFAULT_SIDEBAR,
+  DEFAULT_DETAIL,
+  MIN_SIDEBAR,
+  MIN_DETAIL,
+  panelSizes,
+  readPanelSize,
+  savePanelSize,
+} from "./panel-sizes";
 
 type Ready = Extract<Status, { phase: "ready" }>;
 
@@ -143,6 +162,23 @@ export default function Workspace(props: { status: Ready }) {
     onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
+  const SIDEBAR_KEY = "flek.sidebarWidth";
+  const DETAIL_KEY = "flek.detailWidth";
+  const [sidebarWidth, setSidebarWidth] = createSignal(readPanelSize(SIDEBAR_KEY, DEFAULT_SIDEBAR));
+  const [detailWidth, setDetailWidth] = createSignal(readPanelSize(DETAIL_KEY, DEFAULT_DETAIL));
+  const [frameWidth, setFrameWidth] = createSignal(window.innerWidth - 78);
+  const detailOpen = () => !!(profileUser() || (current() && thread()));
+  const sizes = createMemo(() =>
+    panelSizes(frameWidth(), sidebarWidth(), detailWidth(), detailOpen()),
+  );
+  let frame!: HTMLDivElement;
+  onMount(() => {
+    const observer = new ResizeObserver(() => setFrameWidth(frame.clientWidth));
+    observer.observe(frame);
+    setFrameWidth(frame.clientWidth);
+    onCleanup(() => observer.disconnect());
+  });
+
   return (
     <div class="shell">
       {/* The window has no title bar: this strip drags it, under the traffic lights. */}
@@ -160,41 +196,61 @@ export default function Workspace(props: { status: Ready }) {
       </header>
       <div class="shell-body">
         <Rail team={props.status.team} userId={props.status.user_id} user={props.status.user} />
-        <div class="frame">
-          <Sidebar
-            team={props.status.team}
-            conversations={conversations}
-            selected={selected()}
-            onSelect={select}
-          />
+        <div
+          class="frame"
+          ref={frame}
+          style={{
+            "--sidebar-width": `${sizes().sidebar}px`,
+            "--detail-width": `${sizes().detail}px`,
+          }}
+        >
+          <div class="sidebar-pane" id="conversation-sidebar">
+            <Sidebar
+              team={props.status.team}
+              conversations={conversations}
+              selected={selected()}
+              onSelect={select}
+            />
+            <ResizeHandle
+              side="left"
+              label="Resize sidebar"
+              controls="conversation-sidebar"
+              value={sizes().sidebar}
+              min={MIN_SIDEBAR}
+              max={sizes().sidebarMax}
+              initial={DEFAULT_SIDEBAR}
+              onResize={setSidebarWidth}
+              onCommit={() => savePanelSize(SIDEBAR_KEY, sidebarWidth())}
+            />
+          </div>
           <section class="main">
             <Show
               when={searching()}
               fallback={
-            <Show
-              when={current()}
-              fallback={
-                <div class="empty">
-                  <Show when={loaded()} fallback={<div class="spinner" />}>
-                    <h2>Syncing messages</h2>
-                    <p class="muted">
-                      Channels appear here as soon as they are fetched. Flek keeps syncing in the
-                      menu bar even when this window is closed.
-                    </p>
-                  </Show>
-                </div>
-              }
-            >
-              {(c) => (
-                <Timeline
-                  conversation={c()}
-                  change={change()}
-                  thread={thread()}
-                  onThread={setThread}
-                  jump={jump()}
-                />
-              )}
-            </Show>
+                <Show
+                  when={current()}
+                  fallback={
+                    <div class="empty">
+                      <Show when={loaded()} fallback={<div class="spinner" />}>
+                        <h2>Syncing messages</h2>
+                        <p class="muted">
+                          Channels appear here as soon as they are fetched. Flek keeps syncing in
+                          the menu bar even when this window is closed.
+                        </p>
+                      </Show>
+                    </div>
+                  }
+                >
+                  {(c) => (
+                    <Timeline
+                      conversation={c()}
+                      change={change()}
+                      thread={thread()}
+                      onThread={setThread}
+                      jump={jump()}
+                    />
+                  )}
+                </Show>
               }
             >
               {(q) => (
@@ -207,18 +263,33 @@ export default function Workspace(props: { status: Ready }) {
               )}
             </Show>
           </section>
-          <Show when={current() && thread()}>
-            {(ts) => (
-              <Thread
-                conversation={current()!}
-                ts={ts()}
-                change={change()}
-                onClose={() => setThread(null)}
+          <Show when={detailOpen()}>
+            <div class="detail-pane" id="conversation-detail">
+              <ResizeHandle
+                side="right"
+                label="Resize details panel"
+                controls="conversation-detail"
+                value={sizes().detail}
+                min={MIN_DETAIL}
+                max={sizes().detailMax}
+                initial={DEFAULT_DETAIL}
+                onResize={setDetailWidth}
+                onCommit={() => savePanelSize(DETAIL_KEY, detailWidth())}
               />
-            )}
-          </Show>
-          <Show when={profileUser()}>
-            {(id) => <ProfilePanel userId={id()} onClose={closeProfile} onOpen={select} />}
+              <Show when={current() && thread()}>
+                {(ts) => (
+                  <Thread
+                    conversation={current()!}
+                    ts={ts()}
+                    change={change()}
+                    onClose={() => setThread(null)}
+                  />
+                )}
+              </Show>
+              <Show when={profileUser()}>
+                {(id) => <ProfilePanel userId={id()} onClose={closeProfile} onOpen={select} />}
+              </Show>
+            </div>
           </Show>
         </div>
       </div>
