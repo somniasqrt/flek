@@ -252,7 +252,7 @@ export default function MessageRow(props: {
           </div>
         </Show>
         <Show when={m.text.trim()}>
-          <Rich text={m.text} />
+          <Rich text={m.text} blocks={m.blocks} />
         </Show>
         <Show when={m.edited}>
           <span class="muted edited">(edited)</span>

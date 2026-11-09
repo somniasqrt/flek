@@ -431,6 +431,7 @@ async fn send(
         &me.user_id,
         Outgoing {
             conversation_id: conv.id.clone(),
+            blocks: None,
             text,
             thread_ts: thread,
             broadcast,

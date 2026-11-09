@@ -15,8 +15,9 @@ use crate::Result;
 #[derive(Debug, Clone, Default)]
 pub struct Outgoing {
     pub conversation_id: String,
-    /// As typed (mrkdwn); escaped on the way out.
+    /// As typed (mrkdwn), or the rich editor's plain fallback; escaped on the way out.
     pub text: String,
+    pub blocks: Option<Vec<serde_json::Value>>,
     pub thread_ts: Option<String>,
     pub broadcast: bool,
     /// Chosen by the UI for its optimistic copy; generated when absent.
@@ -46,6 +47,7 @@ pub async fn send(client: &Client, store: &Store, me: &str, out: Outgoing) -> Re
         .chat_post_message(&PostMessage {
             channel: out.conversation_id.clone(),
             text: out.text,
+            blocks: out.blocks,
             thread_ts: out.thread_ts.filter(|t| !t.is_empty()),
             reply_broadcast: out.broadcast,
             client_msg_id: client_msg_id.clone(),

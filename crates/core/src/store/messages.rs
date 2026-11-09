@@ -403,6 +403,7 @@ pub struct HistoryRow {
     pub reactions: Option<String>,
     /// Emoji names the workspace owner reacted with.
     pub own_reactions: Vec<String>,
+    pub blocks: Option<serde_json::Value>,
     pub thread_ts: Option<String>,
     /// Files attached to the message.
     pub files: Vec<FileRef>,
@@ -462,7 +463,7 @@ const DISPLAY_COLUMNS: &str =
         m.latest_reply)
     END,
     CASE WHEN instr(m.raw_json, 'client_msg_id') > 0 AND json_valid(m.raw_json)
-         THEN json_extract(m.raw_json, '$.client_msg_id') END
+         THEN json_extract(m.raw_json, '$.client_msg_id') END, m.blocks_json
     FROM messages m LEFT JOIN users u ON u.id = m.user_id";
 
 /// The latest `limit` top-level messages (thread replies excluded, broadcasts
@@ -571,6 +572,9 @@ fn query_display(
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
                 own_reactions: Vec::new(),
+                blocks: r
+                    .get::<_, Option<String>>(14)?
+                    .and_then(|s| serde_json::from_str(&s).ok()),
                 thread_ts: r.get(9)?,
                 files: Vec::new(),
                 unfurls: r

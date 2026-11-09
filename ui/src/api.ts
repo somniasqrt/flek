@@ -93,6 +93,7 @@ export type Message = {
   hidden_by_limit: boolean;
   reactions: string | null;
   own_reactions?: string[];
+  blocks?: unknown;
   thread_ts: string | null;
   files: FileRef[];
   unfurls: Unfurl[];
@@ -187,7 +188,8 @@ export const api = {
     threadTs: string | null,
     broadcast: boolean,
     clientMsgId: string,
-  ) => invoke<Sent>("send_message", { conversationId, text, threadTs, broadcast, clientMsgId }),
+    blocks?: unknown[],
+  ) => invoke<Sent>("send_message", { conversationId, text, threadTs, broadcast, clientMsgId, blocks }),
 };
 
 export const onStatus = (f: (s: Status) => void): Promise<UnlistenFn> =>

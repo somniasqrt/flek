@@ -6,12 +6,14 @@ use serde_json::Value;
 use super::{Client, Message};
 use crate::{Error, Result};
 
-/// A message to send. `text` is what the user typed (Slack mrkdwn);
+/// A message to send. `text` is Slack mrkdwn or a plain fallback for `blocks`;
 /// [`Client::chat_post_message`] escapes `&`, `<` and `>` itself.
 #[derive(Debug, Clone, Default)]
 pub struct PostMessage {
     pub channel: String,
     pub text: String,
+    /// Optional structured rich text from the app composer.
+    pub blocks: Option<Vec<Value>>,
     /// Root ts: reply in that thread.
     pub thread_ts: Option<String>,
     /// A thread reply also shown in the channel ("Also send to #channel").
@@ -46,6 +48,10 @@ impl Client {
             ("text", text.as_str()),
             ("client_msg_id", m.client_msg_id.as_str()),
         ];
+        let blocks = m.blocks.as_ref().map(serde_json::to_string).transpose()?;
+        if let Some(blocks) = blocks.as_deref() {
+            params.push(("blocks", blocks));
+        }
         if let Some(t) = m.thread_ts.as_deref() {
             params.push(("thread_ts", t));
             if m.reply_broadcast {
@@ -69,6 +75,10 @@ impl Client {
             obj.entry("ts").or_insert_with(|| raw.ts.clone().into());
             obj.entry("type").or_insert_with(|| "message".into());
             obj.entry("text").or_insert_with(|| text.clone().into());
+            if let Some(blocks) = &m.blocks {
+                obj.entry("blocks")
+                    .or_insert_with(|| Value::Array(blocks.clone()));
+            }
             obj.entry("client_msg_id")
                 .or_insert_with(|| m.client_msg_id.clone().into());
             if let Some(t) = &m.thread_ts {

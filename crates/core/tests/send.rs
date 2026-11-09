@@ -362,3 +362,29 @@ async fn live_echo_before_the_response_does_not_duplicate() {
     assert_eq!(count(&store, "1700000002.000300"), 1);
     assert_eq!(reply_count(&store), 1);
 }
+
+#[tokio::test]
+async fn rich_text_blocks_travel_with_plain_fallback_and_survive_storage() {
+    let server = MockServer::start().await;
+    let blocks = json!([{"type":"rich_text","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"underlined <text>","style":{"underline":true,"bold":true}}]}]}]);
+    post_mock()
+        .and(field("blocks", serde_json::to_string(&blocks).unwrap()))
+        .and(field("text", "underlined &lt;text&gt;"))
+        // A server response without blocks still retains what we sent.
+        .respond_with(posted(
+            "1700000001.000200",
+            "underlined &lt;text&gt;",
+            json!({}),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let store = store();
+    let mut out = outgoing("underlined <text>");
+    out.blocks = Some(blocks.as_array().unwrap().clone());
+    send(&client(&server), &store, ME, out).await.unwrap();
+    assert_eq!(
+        row(&store, "1700000001.000200").unwrap().blocks,
+        Some(blocks)
+    );
+}

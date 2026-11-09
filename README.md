@@ -92,6 +92,31 @@ cargo tauri dev
 
 On first launch Flek reads your session from the Slack desktop app. macOS asks once for access to the "Slack Safe Storage" Keychain item, allow it.
 
+## Composer shortcuts
+
+Use **Command** on macOS and **Ctrl** on Windows/Linux. Shortcuts follow
+physical keys, so they also work with Ukrainian keyboard layouts. Button
+tooltips show the platform's shortcut.
+
+| Action | Shortcut (Mod = Command/Ctrl) |
+|---|---|
+| Bold / italic / underline | Mod+B / Mod+I / Mod+U |
+| Strikethrough | Mod+Shift+X |
+| Insert link | Mod+K |
+| Numbered / bulleted list | Mod+Shift+7 / Mod+Shift+8 |
+| Quote | Mod+Shift+9 |
+| Inline code / code block | Mod+Shift+C / Mod+Shift+J |
+| Clear formatting | Mod+\ |
+| Toggle formatting toolbar | Mod+Shift+F |
+| Emoji picker | Mod+Shift+E |
+| Undo / redo | Mod+Z / Mod+Shift+Z (also Ctrl+Y on Windows/Linux) |
+| Send / new line | Enter / Shift+Enter |
+
+The arrow beside Send switches Enter to a new line and Mod+Enter to send.
+Formatting, emoji and mention pickers work in channels and threads; drafts
+keep their formatting. File upload, video/audio clips and canvases are not
+available from the composer yet.
+
 ## Safety
 
 - Tokens and cookies live only in macOS Keychain, never in files, logs or the database.

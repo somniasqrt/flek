@@ -7,6 +7,7 @@ import Avatar from "./Avatar";
 import { Hash, Lock, People, Search } from "./icons";
 import { emoji } from "./emoji";
 import { people } from "./people";
+import { primaryModifier, usesMacShortcuts } from "./shortcuts";
 import { pieces, readable } from "./snippet";
 
 /// Where a result lives: the message, or its thread root for a reply that is
@@ -32,6 +33,7 @@ export function SearchBar(props: {
   onSubmit: (query: string) => void;
   onOpen: (hit: Hit) => void;
 }) {
+  const mac = usesMacShortcuts();
   const [query, setQuery] = createSignal("");
   const [open, setOpen] = createSignal(false);
   const [quick, setQuick] = createSignal<Hit[]>([]);
@@ -41,7 +43,7 @@ export function SearchBar(props: {
   // ⌘F focuses the field from anywhere (⌘K stays free for a quick switcher).
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+      if (primaryModifier(e, mac) && !e.shiftKey && !e.altKey && !e.isComposing && e.code === "KeyF") {
         e.preventDefault();
         input.focus();
         input.select();
@@ -114,7 +116,7 @@ export function SearchBar(props: {
           onKeyDown={onKey}
         />
         <Show when={!open()}>
-          <kbd class="search-kbd">⌘F</kbd>
+          <kbd class="search-kbd">{mac ? "⌘F" : "Ctrl+F"}</kbd>
         </Show>
       </label>
       <Show when={open()}>

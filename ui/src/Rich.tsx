@@ -3,13 +3,14 @@
 import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { api } from "./api";
+import RichBlocks, { hasRichBlocks } from "./RichBlocks";
 import Emoji from "./EmojiView";
 import { linkInfo, shortUrl, type LinkKind } from "./links";
 import { parse, type Block, type Inline } from "./mrkdwn";
 import { people } from "./people";
 
-export default function Rich(props: { text: string }) {
-  return <div class="rich">{blocks(parse(props.text))}</div>;
+export default function Rich(props: { text: string; blocks?: unknown }) {
+  return <Show when={hasRichBlocks(props.blocks)} fallback={<div class="rich">{blocks(parse(props.text))}</div>}><RichBlocks blocks={props.blocks} /></Show>;
 }
 
 function blocks(list: Block[]): JSX.Element {

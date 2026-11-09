@@ -97,6 +97,7 @@ async function sendMessage(a: Record<string, unknown>) {
   const m = msg(0, "U3", esc, {
     ts,
     client_msg_id: String(a.clientMsgId),
+    blocks: a.blocks ? JSON.parse(JSON.stringify(a.blocks)) : undefined,
     thread_ts: threadTs,
     subtype: threadTs && a.broadcast ? "thread_broadcast" : null,
   });

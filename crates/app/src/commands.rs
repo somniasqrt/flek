@@ -277,12 +277,14 @@ pub async fn send_message(
     thread_ts: Option<String>,
     broadcast: Option<bool>,
     client_msg_id: Option<String>,
+    blocks: Option<Vec<serde_json::Value>>,
 ) -> CmdResult<Sent> {
     let (Some(client), Status::Ready { user_id, .. }) = (state.client(), state.status()) else {
         return Err("not signed in to Slack".into());
     };
     let out = Outgoing {
         conversation_id,
+        blocks,
         text,
         thread_ts,
         broadcast: broadcast.unwrap_or(false),

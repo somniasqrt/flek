@@ -163,3 +163,19 @@ telemetry with values Flek cannot honestly produce), `accept-language`,
 - **Works with `xoxc`:** not live-tested; verified against wiremock only.
   No real Slack actions are run by the agent.
 - **Date written:** 2026-11-09.
+
+### Rich-text composer payloads
+
+- The app sends documented `rich_text` blocks alongside a plain-text fallback
+  using `chat.postMessage`'s `blocks` parameter. The CLI still sends mrkdwn text.
+- Supported elements: sections, ordered/bulleted lists, quotes, preformatted
+  blocks; text with bold/italic/underline/strike/code styles, links and user mentions.
+- Typed or pasted HTML is never forwarded. Paste is plain text; editor DOM is
+  converted to structured elements, and restored drafts are sanitized.
+- The fallback remains searchable in SQLite. `blocks_json` is exposed to the
+  UI for rich-text display; unknown block types keep the existing mrkdwn fallback.
+- References: [rich text](https://docs.slack.dev/reference/block-kit/blocks/rich-text-block/),
+  [text styles](https://docs.slack.dev/reference/block-kit/block-elements/text-element/),
+  [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/).
+- Verified with synthetic UI data and mock HTTP only; no live Slack calls.
+- Date written: 2026-11-09.

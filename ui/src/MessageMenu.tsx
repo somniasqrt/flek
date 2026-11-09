@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { usesMacShortcuts } from "./shortcuts";
 import Emoji from "./EmojiView";
 import EmojiPicker, { quickEmoji } from "./EmojiPicker";
 
@@ -115,7 +116,7 @@ export default function MessageMenu(props: {
                   </button>
                 </Show>
                 <button class="message-menu-item" type="button" onClick={props.onCopy}>
-                  Copy message <span>⌘C</span>
+                  Copy message <span>{usesMacShortcuts() ? "⌘C" : "Ctrl+C"}</span>
                 </button>
               </>
             }

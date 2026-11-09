@@ -3,6 +3,7 @@
 // client_msg_id, or by ts once Slack answered) shows up in a list.
 import { createStore, produce } from "solid-js/store";
 import { api, type Message } from "./api";
+import type { RichBlock } from "./rich-compose";
 import { escapeText, newClientMsgId, nowTs } from "./compose";
 
 type Entry = {
@@ -12,6 +13,7 @@ type Entry = {
   thread_ts: string | null;
   broadcast: boolean;
   text: string;
+  blocks?: RichBlock[];
   /// Where it sits in a list until the stored copy replaces it.
   ts: string;
   state: "sending" | "failed" | "sent";
@@ -31,7 +33,7 @@ export const setMe = (id: string) => (me = id);
 const SENT_TTL_MS = 120_000;
 
 /// Queues `text` (as typed) for sending and returns its client id.
-export function send(conversationId: string, text: string, threadTs: string | null, broadcast: boolean) {
+export function send(conversationId: string, text: string, threadTs: string | null, broadcast: boolean, blocks?: RichBlock[]) {
   const now = Date.now();
   const entry: Entry = {
     client_msg_id: newClientMsgId(),
@@ -39,6 +41,7 @@ export function send(conversationId: string, text: string, threadTs: string | nu
     thread_ts: threadTs,
     broadcast: !!threadTs && broadcast,
     text,
+    blocks,
     ts: nowTs(now),
     state: "sending",
   };
@@ -65,7 +68,7 @@ async function deliver(id: string) {
   });
   try {
     // The same client id on a retry, so it stays one message.
-    const sent = await api.sendMessage(e.conversation_id, e.text, e.thread_ts, e.broadcast, id);
+    const sent = await api.sendMessage(e.conversation_id, e.text, e.thread_ts, e.broadcast, id, e.blocks);
     update(id, (x) => {
       x.state = "sent";
       x.sent_ts = sent.ts;
@@ -101,6 +104,7 @@ export function pendingFor(conversationId: string, threadTs: string | null, stor
       user_id: me,
       author: null,
       text: escapeText(e.text),
+      blocks: e.blocks,
       subtype: e.broadcast ? "thread_broadcast" : null,
       reply_count: 0,
       repliers: [],
