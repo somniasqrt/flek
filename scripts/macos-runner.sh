@@ -1,21 +1,27 @@
 #!/bin/sh
 # Cargo runner on macOS (see .cargo/config.toml).
 #
-# Keychain ties "Always Allow" to a binary's code signature. Every cargo
-# build is ad-hoc signed with a new hash, so macOS asks again after each
-# rebuild. Signing the `flek` binary with a stable certificate keeps one
-# identity across rebuilds: allow once, never asked again.
+# Keychain remembers "Always Allow" per signing identity, but for code
+# without an Apple team id it pins the exact binary (its cdhash): every
+# rebuild asks again. Signing with an "Apple Development" certificate (free
+# with any Apple ID in Xcode → Settings → Accounts → Manage Certificates)
+# puts a team id in the signature, and the permission then survives rebuilds.
 #
-# Identity: $FLEK_CODESIGN_IDENTITY, default "Flek Dev" (a self-signed code
-# signing certificate, see README). Without it the binary runs unsigned.
+# Identity: $FLEK_CODESIGN_IDENTITY if set; else the first valid "Apple
+# Development" certificate; else "Flek Dev" (self-signed: works, but asks
+# after each rebuild). Without any, the binary runs unsigned.
 bin="$1"
-id="${FLEK_CODESIGN_IDENTITY:-Flek Dev}"
 case "$(basename "$bin")" in
   flek|flek-app)
-    # No -v: a self-signed certificate is "not trusted", which codesign and
-    # Keychain do not care about; the designated requirement (identifier +
-    # certificate leaf) is what stays stable across rebuilds.
-    if security find-identity -p codesigning 2>/dev/null | grep -q "\"$id\""; then
+    id="$FLEK_CODESIGN_IDENTITY"
+    if [ -z "$id" ]; then
+      id=$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk '/"Apple Development: /{print $2; exit}')
+    fi
+    if [ -z "$id" ] && security find-identity -p codesigning 2>/dev/null | grep -q '"Flek Dev"'; then
+      id="Flek Dev"
+    fi
+    if [ -n "$id" ]; then
       codesign --force --sign "$id" --identifier "dev.flek.cli" "$bin" 2>/dev/null \
         || echo "warning: codesign with \"$id\" failed; Keychain may ask again" >&2
     fi
