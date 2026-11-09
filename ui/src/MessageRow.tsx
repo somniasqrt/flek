@@ -5,6 +5,7 @@ import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
 import Files from "./Files";
 import { people } from "./people";
+import { openProfile } from "./profile";
 import Rich from "./Rich";
 import { relativeTime } from "./time";
 import Unfurls from "./Unfurls";
@@ -95,13 +96,30 @@ export default function MessageRow(props: {
     >
       <div class="gutter">
         <Show when={!grouped()} fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}>
-          <Avatar id={m.user_id} name={author(m)} />
+          <Show when={m.user_id} fallback={<Avatar id={m.user_id} name={author(m)} />}>
+            {(id) => (
+              <button
+                class="avatar-button"
+                type="button"
+                title={`View ${author(m)}'s profile`}
+                onClick={() => openProfile(id())}
+              >
+                <Avatar id={id()} name={author(m)} />
+              </button>
+            )}
+          </Show>
         </Show>
       </div>
       <div class="body">
         <Show when={!grouped()}>
           <div class="meta">
-            <span class="author">{author(m)}</span>
+            <Show when={m.user_id} fallback={<span class="author">{author(m)}</span>}>
+              {(id) => (
+                <button class="author author-button" type="button" onClick={() => openProfile(id())}>
+                  {author(m)}
+                </button>
+              )}
+            </Show>
             <time class="muted">{timeLabel(m.ts)}</time>
             <Show when={m.hidden_by_limit}>
               <span class="tag" title="Slack hides this message on the Free plan">

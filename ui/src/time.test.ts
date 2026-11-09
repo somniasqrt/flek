@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { relativeTime } from "./time.ts";
+import { localTime, relativeTime } from "./time.ts";
 
 test("last reply labels", () => {
   const now = new Date(2026, 10, 9, 15, 30);
@@ -13,4 +13,13 @@ test("last reply labels", () => {
   assert.equal(at(2026, 10, 6, 12, 0), "3 days ago");
   assert.equal(at(2026, 8, 1, 12, 0), "2 months ago");
   assert.equal(at(2024, 9, 1, 12, 0), "2 years ago");
+});
+
+test("local time of a person", () => {
+  const now = new Date(Date.UTC(2026, 10, 9, 15, 10));
+  assert.equal(localTime(now, "Europe/Kyiv", 7200, "en-US"), "5:10 PM");
+  // The zone wins over a stale offset; a bad zone falls back to the offset.
+  assert.equal(localTime(now, "America/New_York", 0, "en-US"), "10:10 AM");
+  assert.equal(localTime(now, "Not/AZone", -3600, "en-US"), "2:10 PM");
+  assert.equal(localTime(now, null, null, "en-US"), null);
 });

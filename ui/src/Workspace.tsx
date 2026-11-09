@@ -11,6 +11,8 @@ import {
   type Status,
 } from "./api";
 import { loadPeople } from "./people";
+import { closeProfile, profileUser } from "./profile";
+import ProfilePanel from "./ProfilePanel";
 import Rail from "./Rail";
 import { jumpOf, SearchBar, SearchResults, type Jump } from "./Search";
 import Viewer, { isViewing } from "./Viewer";
@@ -125,9 +127,15 @@ export default function Workspace(props: { status: Ready }) {
   // conversations, or with Esc (unless the viewer is on top).
   const [thread, setThread] = createSignal<string | null>(null);
   createEffect(on(selected, () => setThread(null), { defer: true }));
+  // The thread and profile panels share the right pane: opening one closes
+  // the other.
+  createEffect(on(thread, (t) => t && closeProfile(), { defer: true }));
+  createEffect(on(profileUser, (u) => u && setThread(null), { defer: true }));
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && thread() && !isViewing()) setThread(null);
+      if (e.key !== "Escape" || isViewing()) return;
+      if (profileUser()) closeProfile();
+      else if (thread()) setThread(null);
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -206,6 +214,9 @@ export default function Workspace(props: { status: Ready }) {
                 onClose={() => setThread(null)}
               />
             )}
+          </Show>
+          <Show when={profileUser()}>
+            {(id) => <ProfilePanel userId={id()} onClose={closeProfile} onOpen={select} />}
           </Show>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
-import { overrideCacheUrl, type Conversation, type FileRef, type Hit, type Message } from "./api";
+import { overrideCacheUrl, type Conversation, type FileRef, type Hit, type Message, type Profile } from "./api";
 import { MARK_CLOSE as C, MARK_OPEN as O } from "./snippet";
 import "./styles.css";
 
@@ -61,7 +61,25 @@ const hits: Hit[] = [
   hit("C1", "general", 1762300200, "U2", `Reply in a thread about the ${O}practice${C} room`, { thread_ts: "1762300120.000000" }),
 ];
 
-mockIPC((cmd, args) => {
+// Profiles: made-up people (fake email), one with a DM and one without.
+const profile = (id: string, extra: Partial<Profile>): Profile => ({
+  id, name: people[id].toLowerCase().replace(" ", "."), real_name: people[id], display_name: null,
+  title: null, email: null, phone: null, pronouns: null, status_text: null, status_emoji: null,
+  tz: null, tz_label: null, tz_offset: null, is_bot: false, deleted: false, avatar: null,
+  photo: null, has_photo: false, dm_conversation_id: null, ...extra,
+});
+const profiles: Record<string, Profile> = {
+  U1: profile("U1", {
+    title: "Доцент кафедри математичної логіки", email: "olena.koval@example.edu",
+    phone: "+380 00 000 0000", tz: "Europe/Kyiv", tz_label: "Eastern European Time",
+    tz_offset: 7200, avatar: "a1", has_photo: true, dm_conversation_id: "D1",
+    status_text: "On a lecture", status_emoji: ":books:",
+  }),
+  U2: profile("U2", { title: "професор", tz: "America/New_York", tz_label: "Eastern Standard Time", tz_offset: -18000 }),
+  U4: profile("U4", { display_name: "iryna", pronouns: "she/her", tz_offset: 3600, avatar: "a4" }),
+};
+
+mockIPC(async (cmd, args) => {
   const a = args as Record<string, string | null>;
   switch (cmd) {
     case "status":
@@ -76,6 +94,12 @@ mockIPC((cmd, args) => {
       return { U1: "a1", U4: "a4" };
     case "custom_emoji":
       return { images: { custom_party: "e1", shipit: "e2", gdocs: "e2" }, aliases: { yes: "thumbsup" } };
+    case "profile":
+      return structuredClone(profiles[String(a.userId)] ?? null);
+    case "profile_photo":
+      // The large photo takes a moment, like a real download.
+      await new Promise((r) => setTimeout(r, 600));
+      return profiles[String(a.userId)]?.has_photo ? "big1" : null;
     case "pdf_data":
       return Uint8Array.from(pdf, (c) => c.charCodeAt(0)).buffer;
     // Copies, like real IPC: stores wrap what they get, and __reply below
@@ -129,6 +153,9 @@ const pdf =
   pdfPages.map(pdfPage).join("") +
   "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
 const avatar2 = avatar.replace("%23e8a33d", "%235b8def");
+const bigPhoto =
+  "data:image/svg+xml," +
+  encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f2c14e"/><stop offset="1" stop-color="#d9822b"/></linearGradient></defs><rect width="512" height="512" fill="url(#g)"/><circle cx="256" cy="200" r="96" fill="#fff" opacity="0.92"/><rect x="96" y="330" width="320" height="260" rx="140" fill="#fff" opacity="0.92"/></svg>');
 // Custom emoji: a small party hat and a square badge.
 const emojiParty =
   "data:image/svg+xml," +
@@ -141,6 +168,7 @@ const cached: Record<string, string> = {
   "link/a4": avatar2,
   "link/e1": emojiParty,
   "link/e2": emojiBadge,
+  "link/big1": bigPhoto,
 };
 overrideCacheUrl((path) => cached[path] ?? placeholder);
 

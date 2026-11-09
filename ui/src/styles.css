@@ -1510,3 +1510,162 @@ a.chip .label {
 .viewer .spinner {
   margin: auto;
 }
+
+/* Names and avatars open the profile panel */
+.avatar-button,
+.author-button {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.avatar-button {
+  display: block;
+  border-radius: 8px;
+}
+.author-button {
+  font-size: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+.author-button:hover {
+  text-decoration: underline;
+}
+.avatar-button:focus-visible,
+.author-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Profile side panel (shares the thread panel's frame) */
+.profile-body {
+  padding: 20px 20px 28px;
+}
+.profile-photo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.profile-photo img,
+.profile-photo .avatar {
+  width: 240px;
+  height: 240px;
+  border-radius: 12px !important;
+  object-fit: cover;
+}
+.profile-photo img {
+  background: var(--rule);
+}
+.profile-names {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.profile-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.profile-pronouns {
+  font-size: 15px;
+  font-weight: 400;
+}
+.profile-tag {
+  font-weight: 600;
+}
+.profile-handle {
+  margin-top: 2px;
+}
+.profile-title {
+  margin-top: 4px;
+  font-size: 16px;
+}
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.profile-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.profile-icon {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.profile-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+.profile-button-wrap {
+  display: inline-flex;
+}
+.profile-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+.profile-button:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--muted);
+}
+.profile-button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.profile-contact {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.profile-contact h4 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.profile-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.profile-row .profile-icon {
+  margin-top: 4px;
+  color: var(--muted);
+}
+.profile-row a {
+  color: var(--link);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.profile-row a:hover {
+  text-decoration: underline;
+}
+.profile-label {
+  font-size: 13px;
+}
+.profile-selectable {
+  user-select: text;
+}
+.profile-missing {
+  text-align: center;
+}

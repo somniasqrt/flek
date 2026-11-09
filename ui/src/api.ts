@@ -117,6 +117,35 @@ export type CustomEmoji = {
   aliases: Record<string, string>;
 };
 
+/// A person, for the profile panel (core `store::directory::Profile`).
+/// Email and phone are personal data: shown, never logged.
+export type Profile = {
+  id: string;
+  name: string;
+  real_name: string | null;
+  display_name: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  pronouns: string | null;
+  status_text: string | null;
+  status_emoji: string | null;
+  /// IANA zone, e.g. "Europe/Kyiv".
+  tz: string | null;
+  tz_label: string | null;
+  /// Seconds east of UTC.
+  tz_offset: number | null;
+  is_bot: boolean;
+  deleted: boolean;
+  /// Cached 72 px avatar hash (see linkImageUrl).
+  avatar: string | null;
+  /// Cached large photo hash, if fetched already.
+  photo: string | null;
+  has_photo: boolean;
+  /// The DM with this person, if Flek has it.
+  dm_conversation_id: string | null;
+};
+
 export const api = {
   status: () => invoke<Status>("status"),
   progress: () => invoke<Progress | null>("progress"),
@@ -132,6 +161,9 @@ export const api = {
   people: () => invoke<Record<string, string>>("people"),
   avatars: () => invoke<Record<string, string>>("avatars"),
   customEmoji: () => invoke<CustomEmoji>("custom_emoji"),
+  profile: (userId: string) => invoke<Profile | null>("profile", { userId }),
+  /// Fetches the large photo if missing; its cache hash (see linkImageUrl).
+  profilePhoto: (userId: string) => invoke<string | null>("profile_photo", { userId }),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
   pdfData: (fileId: string) => invoke<ArrayBuffer>("pdf_data", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),

@@ -22,3 +22,26 @@ export function relativeTime(date: Date, now: Date, locale?: string): string {
   if (months < 12) return rtf.format(-Math.max(1, months), "month");
   return rtf.format(-Math.floor(months / 12), "year");
 }
+
+/// A person's wall-clock time ("5:10 PM"): from their IANA zone, else from
+/// the UTC offset Slack recorded (seconds east), else `null`.
+export function localTime(
+  now: Date,
+  tz: string | null,
+  offset: number | null,
+  locale?: string,
+): string | null {
+  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  if (tz) {
+    try {
+      return now.toLocaleTimeString(locale, { ...opts, timeZone: tz });
+    } catch {
+      // Unknown zone name: fall back to the offset.
+    }
+  }
+  if (offset === null || !Number.isFinite(offset)) return null;
+  return new Date(now.getTime() + offset * 1000).toLocaleTimeString(locale, {
+    ...opts,
+    timeZone: "UTC",
+  });
+}
