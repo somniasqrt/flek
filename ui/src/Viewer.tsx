@@ -77,20 +77,23 @@ function Overlay(props: { v: Viewing }) {
   );
 }
 
-/// Pages of a PDF, drawn by pdf.js as they scroll into view.
+/// Pages of a PDF, drawn by pdf.js as they scroll into view, with a strip
+/// of page thumbnails on the left.
 function Pdf(props: { file: FileRef; onClose: () => void }) {
   const [pages, setPages] = createSignal<{ w: number; h: number }[]>([]);
   const [failed, setFailed] = createSignal<string | null>(null);
+  const [current, setCurrent] = createSignal(1);
   let stage!: HTMLDivElement;
+  let strip: HTMLDivElement | undefined;
 
   onMount(async () => {
     // Registered before the first await, so closing mid-load still cleans up.
     let task: import("pdfjs-dist").PDFDocumentLoadingTask | undefined;
-    let observer: IntersectionObserver | undefined;
+    const observers: IntersectionObserver[] = [];
     let closed = false;
     onCleanup(() => {
       closed = true;
-      observer?.disconnect();
+      observers.forEach((o) => o.disconnect());
       task?.destroy();
     });
     try {
@@ -112,49 +115,93 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       if (closed) return;
       setPages(sizes);
 
-      const pdf = doc;
-      const drawn = new Set<number>();
-      observer = new IntersectionObserver(
-        (entries) => {
-          for (const e of entries) {
-            const canvas = e.target as HTMLCanvasElement;
-            const n = Number(canvas.dataset.page);
-            if (!e.isIntersecting || drawn.has(n)) continue;
-            drawn.add(n);
-            draw(pdf, n, canvas).catch(() => drawn.delete(n));
-          }
-        },
-        { root: stage, rootMargin: "800px 0px" },
-      );
-      stage.querySelectorAll("canvas").forEach((c) => observer!.observe(c));
+      // Pages and thumbnails are drawn once each, when they come near view.
+      const lazy = (root: HTMLElement) => {
+        const drawn = new Set<Element>();
+        const o = new IntersectionObserver(
+          (entries) => {
+            for (const e of entries) {
+              if (!e.isIntersecting || drawn.has(e.target)) continue;
+              drawn.add(e.target);
+              const canvas = e.target as HTMLCanvasElement;
+              draw(doc, Number(canvas.dataset.page), canvas).catch(() => drawn.delete(canvas));
+            }
+          },
+          { root, rootMargin: "800px 0px" },
+        );
+        root.querySelectorAll("canvas").forEach((c) => o.observe(c));
+        observers.push(o);
+      };
+      lazy(stage);
+      if (strip) lazy(strip);
     } catch (e) {
       if (!closed) setFailed(String(e));
     }
   });
 
+  // The current page: the last one whose top is above the upper third.
+  const onScroll = () => {
+    const mark = stage.scrollTop + stage.clientHeight / 3;
+    let n = 1;
+    for (const c of stage.querySelectorAll<HTMLCanvasElement>("canvas")) {
+      if (c.offsetTop > mark) break;
+      n = Number(c.dataset.page);
+    }
+    if (n !== current()) {
+      setCurrent(n);
+      strip?.querySelector(`[data-thumb="${n}"]`)?.scrollIntoView({ block: "nearest" });
+    }
+  };
+  const go = (n: number) =>
+    stage.querySelector(`canvas[data-page="${n}"]`)?.scrollIntoView({ block: "start" });
+
   return (
-    <div class="viewer-pdf" ref={stage} onClick={(e) => e.target === e.currentTarget && props.onClose()}>
-      <Show when={failed()}>
-        <div class="viewer-fail">
-          <p>Can't show this PDF here.</p>
-          <p class="muted">{failed()}</p>
-          <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
-            Open in default app
-          </button>
+    <div class="viewer-doc">
+      <Show when={pages().length > 1}>
+        <div class="viewer-thumbs" ref={strip}>
+          <For each={pages()}>
+            {(p, i) => (
+              <button
+                class="viewer-thumb"
+                classList={{ current: current() === i() + 1 }}
+                data-thumb={i() + 1}
+                onClick={() => go(i() + 1)}
+              >
+                <canvas data-page={i() + 1} style={{ "aspect-ratio": `${p.w} / ${p.h}` }} />
+                <span>{i() + 1}</span>
+              </button>
+            )}
+          </For>
         </div>
       </Show>
-      <Show when={!failed() && pages().length === 0}>
-        <div class="spinner" />
-      </Show>
-      <For each={pages()}>
-        {(p, i) => (
-          <canvas
-            class="viewer-page"
-            data-page={i() + 1}
-            style={{ "aspect-ratio": `${p.w} / ${p.h}` }}
-          />
-        )}
-      </For>
+      <div
+        class="viewer-pdf"
+        ref={stage}
+        onScroll={onScroll}
+        onClick={(e) => e.target === e.currentTarget && props.onClose()}
+      >
+        <Show when={failed()}>
+          <div class="viewer-fail">
+            <p>Can't show this PDF here.</p>
+            <p class="muted">{failed()}</p>
+            <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
+              Open in default app
+            </button>
+          </div>
+        </Show>
+        <Show when={!failed() && pages().length === 0}>
+          <div class="spinner" />
+        </Show>
+        <For each={pages()}>
+          {(p, i) => (
+            <canvas
+              class="viewer-page"
+              data-page={i() + 1}
+              style={{ "aspect-ratio": `${p.w} / ${p.h}` }}
+            />
+          )}
+        </For>
+      </div>
     </div>
   );
 }

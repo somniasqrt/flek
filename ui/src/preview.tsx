@@ -67,13 +67,16 @@ const placeholder =
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#8fb3e8"/><text x="50%" y="50%" font-size="80" text-anchor="middle" fill="#fff" font-family="sans-serif">image</text></svg>',
   );
-// A two-page PDF for the viewer (pdf.js rebuilds the missing xref table).
+// A five-page PDF for the viewer (pdf.js rebuilds the missing xref table).
 const pdfPage = (n: number) =>
-  `${n} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 9 0 R>>>>/Contents ${n + 2} 0 R>>endobj\n` +
-  `${n + 2} 0 obj<</Length 60>>stream\nBT /F1 36 Tf 72 740 Td (Sample page ${n - 2}) Tj ET\nendstream endobj\n`;
+  `${n} 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]/Resources<</Font<</F1 9 0 R>>>>/Contents ${n + 10} 0 R>>endobj\n` +
+  `${n + 10} 0 obj<</Length 60>>stream\nBT /F1 36 Tf 72 740 Td (Sample page ${n - 2}) Tj ET\nendstream endobj\n`;
+const pdfPages = [3, 4, 5, 6, 7];
 const pdf =
-  "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R 4 0 R]/Count 2>>endobj\n" +
-  pdfPage(3) + pdfPage(4) + "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
+  "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+  `2 0 obj<</Type/Pages/Kids[${pdfPages.map((n) => `${n} 0 R`).join(" ")}]/Count ${pdfPages.length}>>endobj\n` +
+  pdfPages.map(pdfPage).join("") +
+  "9 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
 overrideCacheUrl((path) =>
   path === "link/a1" ? avatar : placeholder,
 );

@@ -842,18 +842,64 @@ a.chip .label {
   border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
-.viewer-pdf {
+.viewer-doc {
   align-self: stretch;
   flex: 1;
+  min-width: 0;
+  display: flex;
+  margin: -24px;
+}
+.viewer-thumbs {
+  flex: none;
+  width: 168px;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+.viewer-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #ababad;
+  font-size: 12px;
+  cursor: pointer;
+}
+.viewer-thumb canvas {
+  width: 100%;
+  background: #fff;
+  border-radius: 2px;
+  outline: 3px solid transparent;
+  outline-offset: 2px;
+}
+.viewer-thumb:hover canvas {
+  outline-color: rgba(255, 255, 255, 0.25);
+}
+.viewer-thumb.current canvas {
+  outline-color: #1d9bd1;
+}
+.viewer-thumb.current {
+  color: #e8e8e8;
+}
+.viewer-pdf {
+  position: relative;
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  margin: -24px;
   padding: 24px;
 }
 .viewer-page {
+  scroll-margin-top: 16px;
   width: min(860px, 100%);
   flex: none;
   background: #fff;
