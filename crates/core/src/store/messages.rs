@@ -68,6 +68,23 @@ fn write_messages(
         Mode::Sync => "excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
         Mode::Import => "excluded.hidden_by_limit = 0 AND messages.hidden_by_limit = 1",
     };
+    // An archive only knows the content. What Slack still reports about a
+    // hidden stub (thread, replies, author, reactions) stays.
+    let thread_columns = match mode {
+        Mode::Sync => {
+            "thread_ts = excluded.thread_ts, user_id = excluded.user_id,
+                subtype = excluded.subtype, reply_count = excluded.reply_count,
+                latest_reply = excluded.latest_reply"
+        }
+        Mode::Import => {
+            "thread_ts = COALESCE(excluded.thread_ts, messages.thread_ts),
+                user_id = COALESCE(excluded.user_id, messages.user_id),
+                subtype = COALESCE(excluded.subtype, messages.subtype),
+                reply_count = MAX(excluded.reply_count, messages.reply_count),
+                latest_reply = COALESCE(MAX(excluded.latest_reply, messages.latest_reply),
+                                        excluded.latest_reply, messages.latest_reply)"
+        }
+    };
     let tx = conn.transaction()?;
     let mut total = 0;
     {
@@ -77,10 +94,7 @@ fn write_messages(
                  reply_count, latest_reply, edited_ts, deleted, hidden_by_limit, raw_json, author_name)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(conversation_id, ts) DO UPDATE SET
-                thread_ts = excluded.thread_ts, user_id = excluded.user_id,
-                subtype = excluded.subtype, text = excluded.text,
-                blocks_json = excluded.blocks_json, reply_count = excluded.reply_count,
-                latest_reply = excluded.latest_reply,
+                {thread_columns}, text = excluded.text, blocks_json = excluded.blocks_json,
                 edited_ts = excluded.edited_ts, deleted = excluded.deleted,
                 hidden_by_limit = excluded.hidden_by_limit,
                 raw_json = excluded.raw_json,
@@ -117,9 +131,15 @@ fn write_messages(
                 continue;
             }
             total += 1;
-            clear_reactions.execute(params![conversation_id, r.ts])?;
+            // Sync carries Slack's full set; an archive adds to what is stored.
+            if mode == Mode::Sync {
+                clear_reactions.execute(params![conversation_id, r.ts])?;
+            }
             for (name, user) in &r.reactions {
                 add_reaction.execute(params![conversation_id, r.ts, name, user])?;
+            }
+            if mode == Mode::Import && r.files.is_empty() {
+                continue;
             }
             clear_files.execute(params![conversation_id, r.ts])?;
             for f in &r.files {
