@@ -27,12 +27,34 @@ export const safeLink = (url: string) => {
   }
 };
 
+// Split URLs without a DOM; keep punctuation in the surrounding text.
+export function linkify(text: string, style: TextStyle = {}): RichInline[] {
+  const styled = Object.keys(style).length ? { style } : {};
+  const plain = (text: string): RichInline => ({ type: "text", text, ...styled });
+  if (style.code) return text ? [plain(text)] : [];
+  const out: RichInline[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(/https?:\/\/[^\s<>]+/gi)) {
+    let url = match[0];
+    while (/[.,;:!?) ]$/.test(url)) {
+      if (url.endsWith(")") && [...url].filter(c => c === "(").length >= [...url].filter(c => c === ")").length) break;
+      url = url.slice(0, -1);
+    }
+    if (!safeLink(url)) continue;
+    if (match.index! > cursor) out.push(plain(text.slice(cursor, match.index)));
+    out.push({ type: "link", url, ...styled });
+    cursor = match.index! + url.length;
+  }
+  if (cursor < text.length) out.push(plain(text.slice(cursor)));
+  return out;
+}
+
 function inline(nodes: Iterable<Node>, style: TextStyle = {}): RichInline[] {
   const out: RichInline[] = [];
   for (const node of nodes) {
     if (node.nodeType === 3) {
       const text = (node.textContent ?? "").replace(/\u200b/g, "").replace(/\u00a0/g, " ");
-      if (text) out.push({ type: "text", text, ...(Object.keys(style).length ? { style } : {}) });
+      if (text) out.push(...linkify(text, style));
       continue;
     }
     if (!(node instanceof HTMLElement)) continue;
