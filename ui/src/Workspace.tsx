@@ -10,6 +10,7 @@ import {
   type Progress,
   type Status,
 } from "./api";
+import { setMe } from "./outbox";
 import { loadPeople } from "./people";
 import { closeProfile, profileUser } from "./profile";
 import ProfilePanel from "./ProfilePanel";
@@ -28,6 +29,7 @@ const LAST_KEY = "flek.lastConversation";
 export default function Workspace(props: { status: Ready }) {
   // A store reconciled by id: a refresh only touches rows that changed, so
   // the sidebar does not re-render (and flicker) on every sync step.
+  setMe(props.status.user_id);
   const [conversations, setConversations] = createStore<Conversation[]>([]);
   const [loaded, setLoaded] = createSignal(false);
   const [selected, setSelected] = createSignal<string | null>(readLast());

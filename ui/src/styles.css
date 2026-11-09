@@ -1669,3 +1669,159 @@ a.chip .label {
 .profile-missing {
   text-align: center;
 }
+
+/* Composer (bottom of a conversation and of a thread) */
+:root {
+  --composer-border: #c4c4c4;
+  --composer-focus: #868686;
+  --send-bg: #007a5a;
+  --send-text: #ffffff;
+  --send-disabled: #dddddd;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --composer-border: #565856;
+    --composer-focus: #8b8c8d;
+    --send-bg: #007a5a;
+    --send-text: #ffffff;
+    --send-disabled: #3b3d41;
+  }
+}
+.composer {
+  flex: none;
+  padding: 0 20px 20px;
+}
+.thread-panel .composer {
+  padding: 0 16px 16px;
+}
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--composer-border);
+  border-radius: 8px;
+  background: var(--bg);
+  cursor: text;
+}
+.composer-box:focus-within {
+  border-color: var(--composer-focus);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  max-height: 40vh;
+  padding: 11px 12px 4px;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4667;
+}
+.composer textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 6px 6px 12px;
+  cursor: default;
+}
+.composer-broadcast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-broadcast input {
+  margin: 0;
+  accent-color: var(--send-bg);
+}
+.composer-hint {
+  margin-left: auto;
+  font-size: 12px;
+  white-space: nowrap;
+  visibility: hidden;
+}
+.composer-hint.shown {
+  visibility: visible;
+}
+.thread-panel .composer-hint {
+  display: none;
+}
+.composer-send {
+  flex: none;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: var(--send-bg);
+  color: var(--send-text);
+  cursor: pointer;
+}
+.composer-hint + .composer-send {
+  margin-left: 0;
+}
+.thread-panel .composer-hint + .composer-send {
+  margin-left: auto;
+}
+.composer-send svg {
+  fill: currentColor;
+}
+.composer-send:disabled {
+  background: transparent;
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+.composer-send:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+/* An optimistic copy: muted while sending, flagged when it failed. */
+.msg.sending .body > :not(.meta) {
+  opacity: 0.5;
+}
+.msg.failed .body > :not(.meta):not(.send-failed) {
+  opacity: 0.6;
+}
+.send-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--error);
+}
+.send-failed button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: 13px;
+  cursor: pointer;
+}
+.send-failed button:hover {
+  text-decoration: underline;
+}
+.send-reason {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}

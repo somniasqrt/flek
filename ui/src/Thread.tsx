@@ -1,9 +1,11 @@
 // Right-side thread panel: the root, a "N replies" rule, then the replies.
-import { createEffect, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { api, type Change, type Conversation, type Message } from "./api";
 import { Hash, Lock } from "./icons";
+import Composer from "./Composer";
 import MessageRow, { repliesLabel } from "./MessageRow";
+import { pendingFor } from "./outbox";
 
 export default function Thread(props: {
   conversation: Conversation;
@@ -57,7 +59,18 @@ export default function Thread(props: {
   );
 
   const root = () => (rows[0]?.ts === props.ts ? rows[0] : undefined);
-  const replies = () => (root() ? rows.slice(1) : rows.slice());
+  const stored = () => (root() ? rows.slice(1) : rows.slice());
+  // Replies being sent go last, until their stored copy is loaded.
+  const pending = createMemo(() => pendingFor(props.conversation.id, props.ts, rows));
+  const replies = () => [...stored(), ...pending()];
+  const toBottom = () => requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
+  createEffect(
+    on(
+      pending,
+      () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 150 && toBottom(),
+      { defer: true },
+    ),
+  );
   const kind = () => props.conversation.kind;
 
   return (
@@ -95,6 +108,19 @@ export default function Thread(props: {
           <div class="start muted">Replies appear here once they sync.</div>
         </Show>
       </div>
+      <Show when={!loaded() || rows.length > 0}>
+        <Composer
+          conversationId={props.conversation.id}
+          threadTs={props.ts}
+          placeholder="Reply…"
+          broadcastLabel={
+            kind() === "im" || kind() === "mpim"
+              ? "Also send as direct message"
+              : `Also send to #${props.conversation.label}`
+          }
+          onSent={toBottom}
+        />
+      </Show>
     </aside>
   );
 }

@@ -79,6 +79,39 @@ const profiles: Record<string, Profile> = {
   U4: profile("U4", { display_name: "iryna", pronouns: "she/her", tz_offset: 3600, avatar: "a4" }),
 };
 
+// Messages "sent" from the preview into conversations other than C1.
+const elsewhere: (Message & { conversation_id: string })[] = [];
+const w = window as unknown as { __sendDelay: number };
+w.__sendDelay = 700;
+
+/// send_message: like the app, stores the message, announces it, then
+/// answers. Text containing "fail" is refused like Slack would.
+async function sendMessage(a: Record<string, unknown>) {
+  await new Promise((r) => setTimeout(r, w.__sendDelay));
+  const text = String(a.text);
+  if (text.includes("fail")) throw "You are not a member of this channel";
+  const esc = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const ts = `${Math.floor(Date.now() / 1000)}.${String(Date.now() % 1000).padStart(3, "0")}100`;
+  const conv = String(a.conversationId);
+  const threadTs = (a.threadTs as string | null) ?? null;
+  const m = msg(0, "U3", esc, {
+    ts,
+    client_msg_id: String(a.clientMsgId),
+    thread_ts: threadTs,
+    subtype: threadTs && a.broadcast ? "thread_broadcast" : null,
+  });
+  if (conv !== "C1") elsewhere.push({ ...m, conversation_id: conv });
+  else if (threadTs === ROOT) {
+    replies.push(m);
+    if (a.broadcast) messages.push(m);
+    const root = messages.find((x) => x.ts === ROOT)!;
+    root.reply_count = replies.length;
+    root.latest_reply = ts;
+  } else messages.push(m);
+  emit("flek://change", { type: "message", data: { conversation_id: conv, ts } });
+  return { conversation_id: conv, ts, client_msg_id: m.client_msg_id };
+}
+
 mockIPC(async (cmd, args) => {
   const a = args as Record<string, string | null>;
   switch (cmd) {
@@ -107,9 +140,14 @@ mockIPC(async (cmd, args) => {
     case "thread":
       return structuredClone(a.ts === ROOT ? [messages.find((m) => m.ts === ROOT), ...replies] : []);
     case "message":
-      return structuredClone([...messages, ...replies].find((m) => m.ts === a.ts) ?? null);
+      return structuredClone([...messages, ...replies, ...elsewhere].find((m) => m.ts === a.ts) ?? null);
     case "messages":
-      return structuredClone(a.conversationId === "C1" && !a.before ? messages : []);
+      if (a.before) return [];
+      return structuredClone(
+        a.conversationId === "C1" ? messages : elsewhere.filter((m) => m.conversation_id === a.conversationId),
+      );
+    case "send_message":
+      return sendMessage(a);
     case "search": {
       const q = String(a.query ?? "");
       if (q.includes("before:2024-")) throw "bad date \"2024-\", expected YYYY-MM-DD";

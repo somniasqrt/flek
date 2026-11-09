@@ -95,7 +95,16 @@ export type Message = {
   thread_ts: string | null;
   files: FileRef[];
   unfurls: Unfurl[];
+  /// Id the sending client chose (matches an optimistic copy).
+  client_msg_id?: string | null;
+  /// UI only: an optimistic copy not stored yet (see outbox.ts).
+  pending?: "sending" | "failed";
+  /// UI only: why a pending copy failed.
+  error?: string;
 };
+
+/// A message Slack accepted and Flek stored (core `sync::send::Sent`).
+export type Sent = { conversation_id: string; ts: string; client_msg_id: string };
 
 /// A search result (core `store::search::Hit`). The snippet marks matched
 /// terms with MARK_OPEN … MARK_CLOSE (see snippet.ts).
@@ -169,6 +178,13 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),
+  sendMessage: (
+    conversationId: string,
+    text: string,
+    threadTs: string | null,
+    broadcast: boolean,
+    clientMsgId: string,
+  ) => invoke<Sent>("send_message", { conversationId, text, threadTs, broadcast, clientMsgId }),
 };
 
 export const onStatus = (f: (s: Status) => void): Promise<UnlistenFn> =>

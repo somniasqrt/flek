@@ -4,6 +4,7 @@ import { tsDate, type Message } from "./api";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
 import Files from "./Files";
+import { discard, retry } from "./outbox";
 import { people } from "./people";
 import { openProfile } from "./profile";
 import Rich from "./Rich";
@@ -91,7 +92,13 @@ export default function MessageRow(props: {
   return (
     <article
       class="msg"
-      classList={{ grouped: grouped(), active: props.active, flash: props.flash }}
+      classList={{
+        grouped: grouped(),
+        active: props.active,
+        flash: props.flash,
+        sending: m.pending === "sending",
+        failed: m.pending === "failed",
+      }}
       data-ts={m.ts}
     >
       <div class="gutter">
@@ -141,6 +148,24 @@ export default function MessageRow(props: {
           <Unfurls items={m.unfurls} />
         </Show>
         <Show when={m.reactions}>{(r) => <Reactions summary={r()} />}</Show>
+        <Show when={m.pending === "failed" && m.client_msg_id}>
+          {(id) => (
+            <div class="send-failed" role="alert" title={m.error}>
+              <span>Not sent</span>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => retry(id())}>
+                Retry
+              </button>
+              <span aria-hidden="true">·</span>
+              <button type="button" onClick={() => discard(id())}>
+                Discard
+              </button>
+              <Show when={m.error}>
+                <span class="send-reason">{m.error}</span>
+              </Show>
+            </div>
+          )}
+        </Show>
         <Show when={props.onThread && m.reply_count > 0}>
           <ThreadBar m={m} onOpen={() => props.onThread?.(m.ts)} />
         </Show>

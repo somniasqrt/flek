@@ -2,7 +2,9 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 import { Hash, Lock } from "./icons";
+import Composer from "./Composer";
 import MessageRow from "./MessageRow";
+import { pendingFor } from "./outbox";
 import type { Jump } from "./Search";
 
 const PAGE = 60;
@@ -34,6 +36,7 @@ export default function Timeline(props: {
   let generation = 0;
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
+  const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 150;
   const toBottom = () => requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
 
   const [flash, setFlash] = createSignal<string | null>(null);
@@ -128,6 +131,11 @@ export default function Timeline(props: {
         } else {
           upsert(m);
           if (stick) toBottom();
+          // A broadcast reply also changes its root's reply count.
+          if (m.thread_ts && m.thread_ts !== m.ts) {
+            const root = await api.message(conversation_id, m.thread_ts);
+            if (root && conversation_id === props.conversation.id) upsert(root);
+          }
         }
       },
     ),
@@ -137,9 +145,13 @@ export default function Timeline(props: {
 
   // Messages split by day. Day keys are strings, so <For> keeps a day's
   // section (and its rows) when other days change or older ones load.
+  // Messages being sent go last, until their stored copy is in `rows`.
+  const pending = createMemo(() => pendingFor(props.conversation.id, null, rows));
+  // A pending row that grows ("Not sent · Retry") stays in view at the bottom.
+  createEffect(on(pending, () => nearBottom() && toBottom(), { defer: true }));
   const byDay = createMemo(() => {
     const map = new Map<string, Message[]>();
-    for (const m of rows) {
+    for (const m of [...rows, ...pending()]) {
       const k = dayKey(m.ts);
       const list = map.get(k);
       if (list) list.push(m);
@@ -223,9 +235,16 @@ export default function Timeline(props: {
         </For>
       </div>
       </div>
+      <Composer
+        conversationId={props.conversation.id}
+        placeholder={`Message ${isChannel(props.conversation) ? "#" : ""}${props.conversation.label}`}
+        onSent={toBottom}
+      />
     </div>
   );
 }
+
+const isChannel = (c: Conversation) => c.kind === "public_channel" || c.kind === "private_channel";
 
 const dayKey = (ts: string) => tsDate(ts).toDateString();
 
