@@ -72,7 +72,7 @@ export default function Composer(props: {
     lastEditAt = coalesce ? now : 0;
   };
   const refresh = () => {
-    const text = blocksText(editorBlocks(editor));
+    const text = blocksText(editorBlocks(editor), people());
     setHasText(!!text);
     writeDraft(key(), text ? JSON.stringify({ version: 1, html: editor.innerHTML }) : "");
   };
@@ -220,7 +220,7 @@ export default function Composer(props: {
   };
   const submit = () => {
     const blocks = editorBlocks(editor),
-      text = blocksText(blocks);
+      text = blocksText(blocks, people());
     if (!text) return;
     send(props.conversationId, text, props.threadTs ?? null, broadcast(), blocks);
     editor.replaceChildren();
@@ -289,7 +289,7 @@ export default function Composer(props: {
       history = [editor.innerHTML];
       historyIndex = 0;
       lastEditAt = 0;
-      setHasText(!!blocksText(editorBlocks(editor)));
+      setHasText(!!blocksText(editorBlocks(editor), people()));
       requestAnimationFrame(() => editor.focus({ preventScroll: true }));
     }),
   );

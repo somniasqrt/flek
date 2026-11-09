@@ -229,7 +229,7 @@ export function editorBlocks(editor: HTMLElement): RichBlock[] {
 }
 
 // Plain fallback for notifications and FTS. Styling lives in blocks.
-export function blocksText(blocks: RichBlock[]): string {
+export function blocksText(blocks: RichBlock[], names: Readonly<Record<string, string>> = {}): string {
   return blocks
     .flatMap((b) =>
       b.elements.map((e) => {
@@ -242,7 +242,7 @@ export function blocksText(blocks: RichBlock[]): string {
                   ? n.text || n.url
                   : n.type === "emoji"
                     ? `:${n.name}:`
-                    : `@${n.user_id}`,
+                    : `@${names[n.user_id] || n.user_id}`,
             )
             .join("");
         return e.type === "rich_text_list" ? e.elements.map(section).join("\n") : section(e);

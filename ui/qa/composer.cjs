@@ -50,6 +50,12 @@ const assert=require('node:assert/strict');
  await page.getByRole('button',{name:'＠ Olena Koval',exact:true}).click();
  const result=await editor.evaluate(async el=>{const m=await import('/src/rich-compose.ts');const p=await import('/src/people.ts');return m.blocksText(m.editorBlocks(el),p.people());});
  assert.equal(result,before?'@U1':'@Olena Koval');
+ if(!before) {
+ await page.getByRole('button',{name:'Send',exact:true}).first().click();
+ await page.waitForTimeout(900);
+ const stored=await page.evaluate(async()=>{const {api}=await import('/src/api.ts');return api.messages('C1',null,100);});
+ assert.equal(stored.at(-1).text,'@Olena Koval');
+ }
  } else if(mode==='selection') {
  const row=page.locator('[data-ts="1762500110.000000"]'); await row.scrollIntoViewIfNeeded();
  const prevented=await row.evaluate(el=>{

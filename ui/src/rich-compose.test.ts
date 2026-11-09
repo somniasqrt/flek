@@ -108,3 +108,12 @@ test('typed mrkdwn: fences span DOM paragraphs, split text nodes and preserve ri
   assert.equal(JSON.stringify(result).includes('"bold":true'),true);
   assert.equal(JSON.stringify(result).includes('"user_id":"U1"'),true);
 });
+
+test('mention fallback uses display names, unknown or empty names use IDs', () => {
+  const blocks: import('./rich-compose.ts').RichBlock[] = [{type:'rich_text',elements:[{type:'rich_text_section',elements:[
+    {type:'user',user_id:'U1'},t(' '),{type:'user',user_id:'U2'},t(' '),{type:'user',user_id:'U3'},
+  ]}]}];
+  assert.equal(blocksText(blocks,{U1:'Олена Коваль',U3:''}),'@Олена Коваль @U2 @U3');
+  assert.equal(blocksText(blocks),'@U1 @U2 @U3');
+  assert.equal(blocks[0].elements[0].elements[0].type,'user');
+});
