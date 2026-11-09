@@ -1,7 +1,6 @@
 // Files of a message: cached images inline, everything else as a card.
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { For, Show } from "solid-js";
-import { api, type FileRef } from "./api";
+import { api, fileUrl, type FileRef } from "./api";
 
 const MAX_W = 360;
 const MAX_H = 280;
@@ -12,7 +11,7 @@ export default function Files(props: { files: FileRef[] }) {
       <For each={props.files}>
         {(f) => (
           <Show when={isImage(f) && f.local_path} fallback={<Card f={f} />}>
-            {(path) => <Image f={f} src={convertFileSrc(path())} />}
+            <Image f={f} src={fileUrl(f.id)} />
           </Show>
         )}
       </For>
@@ -65,11 +64,9 @@ function Card(props: { f: FileRef }) {
       </span>
       {/* First page of a PDF / a video frame, rendered by Slack and cached. */}
       <Show when={!f.hidden_by_limit && f.preview_path}>
-        {(p) => (
-          <span class="file-preview">
-            <img src={convertFileSrc(p())} alt="" loading="lazy" />
-          </span>
-        )}
+        <span class="file-preview">
+          <img src={fileUrl(f.id, true)} alt="" loading="lazy" />
+        </span>
       </Show>
     </button>
   );

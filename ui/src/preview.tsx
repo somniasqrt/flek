@@ -3,7 +3,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
-import type { Conversation, FileRef, Message } from "./api";
+import { overrideFileUrl, type Conversation, type FileRef, type Message } from "./api";
 import "./styles.css";
 
 const people: Record<string, string> = { U1: "Olena Koval", U2: "Taras Melnyk", U3: "Me" };
@@ -50,13 +50,12 @@ mockIPC((cmd, args) => {
   }
 });
 
-// Cached images: a placeholder instead of asset:// (no Tauri here).
+// Cached images: a placeholder instead of flekfile:// (no app here).
 const placeholder =
   "data:image/svg+xml," +
   encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="100%" height="100%" fill="#8fb3e8"/><text x="50%" y="50%" font-size="80" text-anchor="middle" fill="#fff" font-family="sans-serif">image</text></svg>',
   );
-(window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__.convertFileSrc =
-  () => placeholder;
+overrideFileUrl(() => placeholder);
 
 render(() => <App />, document.getElementById("root")!);

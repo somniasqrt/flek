@@ -99,3 +99,17 @@ export const isReplyOnly = (m: Message) =>
   m.thread_ts !== null && m.thread_ts !== m.ts && m.subtype !== "thread_broadcast";
 
 export const tsDate = (ts: string) => new Date(parseFloat(ts) * 1000);
+
+/// URL of a cached file (or its preview) served by the app's `flekfile`
+/// protocol (crates/app/src/files.rs). WebView2 maps custom schemes to http.
+let fileUrlImpl = (id: string, preview: boolean) =>
+  (navigator.userAgent.includes("Windows") ? "http://flekfile.localhost/" : "flekfile://localhost/") +
+  encodeURIComponent(id) +
+  (preview ? "/preview" : "");
+
+export const fileUrl = (id: string, preview = false) => fileUrlImpl(id, preview);
+
+/// For preview.html, which runs without the app.
+export function overrideFileUrl(f: (id: string, preview: boolean) => string) {
+  fileUrlImpl = f;
+}

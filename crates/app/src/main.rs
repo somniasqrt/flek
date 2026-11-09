@@ -5,6 +5,7 @@
 
 mod autostart;
 mod commands;
+mod files;
 mod login;
 mod state;
 mod tray;
@@ -40,6 +41,7 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
         ))
+        .register_asynchronous_uri_scheme_protocol(files::SCHEME, files::handle)
         .manage(AppState::new(store))
         .invoke_handler(tauri::generate_handler![
             commands::status,
