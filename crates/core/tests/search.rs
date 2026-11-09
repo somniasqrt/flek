@@ -110,7 +110,12 @@ fn finds_words_with_filters() {
         find(&store, "from:bob grades"),
         ["random:1707523200.000002"]
     );
-    assert_eq!(find(&store, "таблиця"), ["general:1704844800.000001"]);
+    // Other forms of the word match too ("таблицю").
+    assert_eq!(
+        find(&store, "таблиця"),
+        ["general:1707523200.000001", "general:1704844800.000001"]
+    );
+    assert_eq!(find(&store, "\"таблиця\""), ["general:1704844800.000001"]);
     assert_eq!(
         find(&store, "таблиц*"),
         ["general:1707523200.000001", "general:1704844800.000001"]
@@ -279,4 +284,41 @@ fn bench_100k_messages() {
         );
         assert!(elapsed.as_millis() < 50, "{query} took {elapsed:?}");
     }
+}
+
+#[test]
+fn a_word_finds_its_other_forms() {
+    let store = store();
+    store
+        .with_conn(|c| {
+            messages::upsert_messages(
+                c,
+                "C1",
+                &[
+                    msg("1.000001", "U1", "Огляд методів оптимізації"),
+                    msg("1.000002", "U1", "Новий метод на лекції"),
+                    msg("1.000003", "U2", "Лекція перенесена"),
+                    msg("1.000004", "U2", "Practice tests tomorrow"),
+                    msg("1.000005", "U2", "Мета роботи"),
+                ],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let ts = |q: &str| {
+        let mut v: Vec<String> = find(&store, q)
+            .into_iter()
+            .map(|h| h.rsplit(':').next().unwrap().to_owned())
+            .collect();
+        v.sort();
+        v
+    };
+    assert_eq!(ts("метод"), ["1.000001", "1.000002"]);
+    assert_eq!(ts("методів"), ["1.000001", "1.000002"]);
+    assert_eq!(ts("лекції"), ["1.000002", "1.000003"]);
+    assert_eq!(ts("test"), ["1.000004"]);
+    // Short words are not cut further: "мета" does not find "метод".
+    assert_eq!(ts("мета"), ["1.000005"]);
+    // Quoted stays exact.
+    assert_eq!(ts("\"метод\""), ["1.000002"]);
 }

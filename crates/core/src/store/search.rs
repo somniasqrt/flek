@@ -59,7 +59,7 @@ pub fn parse(input: &str) -> Result<Query> {
                 if let Some(neg) = token.strip_prefix('-').filter(|t| !t.is_empty()) {
                     exclude.push(fts_term(neg));
                 } else {
-                    include.push(fts_term(&token));
+                    include.push(word_term(&token).unwrap_or_else(|| fts_term(&token)));
                 }
             }
         }
@@ -100,6 +100,37 @@ fn tokenize(input: &str) -> Vec<String> {
         out.push(cur);
     }
     out
+}
+
+/// A bare word matches its other forms: `метод` finds `методів`, `методів`
+/// finds `метод` (Ukrainian inflects heavily, and so does English a bit).
+/// The word is cut to a rough stem and searched as a prefix. Only plain
+/// words: quoted phrases, `word*` and anything with punctuation stay exact.
+fn word_term(token: &str) -> Option<String> {
+    if !token.chars().all(char::is_alphabetic) {
+        return None;
+    }
+    let word = token.to_lowercase();
+    Some(format!("\"{}\"*", stem(&word)))
+}
+
+/// Common endings, longest first. Cutting one is enough for a prefix search;
+/// a stem never gets shorter than four letters.
+const ENDINGS: &[&str] = &[
+    // Ukrainian (and Russian) noun, adjective and verb endings.
+    "ться", "ами", "ями", "ові", "еві", "ого", "ому", "ими", "ях", "ах", "ів", "їв", "ям", "ам",
+    "ою", "ею", "ий", "ій", "ої", "им", "их", "ом", "ем", "ти", "ть", "ла", "ли", "ло", "ють",
+    "ують", "ує", "а", "я", "и", "і", "ї", "е", "у", "ю", "о", "й", "ь", // English.
+    "ing", "ed", "es", "s",
+];
+
+fn stem(word: &str) -> &str {
+    let len = word.chars().count();
+    ENDINGS
+        .iter()
+        .filter(|e| word.ends_with(*e) && len - e.chars().count() >= 4)
+        .max_by_key(|e| e.chars().count())
+        .map_or(word, |e| &word[..word.len() - e.len()])
 }
 
 fn fts_term(token: &str) -> String {
@@ -282,7 +313,7 @@ mod tests {
         assert!(q.has_link && q.has_file);
         assert_eq!(q.before.as_deref(), Some("1706659200.000000"));
         assert_eq!(q.after.as_deref(), Some("1704067200.000000"));
-        assert_eq!(q.fts, r#""grades" "big sheet" "draft"* NOT "old""#);
+        assert_eq!(q.fts, r#""grad"* "big sheet" "draft"* NOT "old""#);
     }
 
     #[test]
