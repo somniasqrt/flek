@@ -92,7 +92,8 @@ async fn unread_counts_from_read_markers() {
         Secret::new("xoxd-fake"),
         &server.uri(),
     )
-    .unwrap();
+    .unwrap()
+    .without_pacing();
     let store = Store::open_in_memory().unwrap();
     sync_directory(&client, &store, &me()).await.unwrap();
 
@@ -135,7 +136,8 @@ async fn syncs_users_and_conversations() {
         Secret::new("xoxd-fake"),
         &server.uri(),
     )
-    .unwrap();
+    .unwrap()
+    .without_pacing();
     let store = Store::open_in_memory().unwrap();
 
     let stats = sync_directory(&client, &store, &me()).await.unwrap();
