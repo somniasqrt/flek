@@ -52,3 +52,13 @@ export const Search = (p: { size?: number }) => (
     <path d="M12.3 12.3L17 17" />
   </Icon>
 );
+
+// One continuous face-and-plus silhouette, rather than a text emoji and a plus.
+export const AddReaction = (p: { size?: number }) => (
+  <Icon size={p.size ?? 20}>
+    <path d="M10 3.5a7 7 0 1 0 6.5 6.5M14.5 2v5M12 4.5h5" />
+    <circle cx="7" cy="8.5" r=".6" fill="currentColor" stroke="none" />
+    <circle cx="11.5" cy="8.5" r=".6" fill="currentColor" stroke="none" />
+    <path d="M6.5 11.5a3.2 3.2 0 0 0 5.5 0" />
+  </Icon>
+);

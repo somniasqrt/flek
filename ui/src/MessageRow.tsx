@@ -1,6 +1,7 @@
 // One message, as both the timeline and the thread panel show it.
 import { createSignal, For, Show } from "solid-js";
 import { api, tsDate, type Message } from "./api";
+import { AddReaction } from "./icons";
 import MessageMenu from "./MessageMenu";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
@@ -68,7 +69,7 @@ function Reactions(props: {
         disabled={props.busy}
         onClick={props.onPicker}
       >
-        ☺+
+        <AddReaction />
       </button>
     </div>
   );
@@ -177,7 +178,7 @@ export default function MessageRow(props: {
             disabled={busy()}
             onClick={(e) => openMenu(e, true)}
           >
-            ☺+
+            <AddReaction />
           </button>
           <Show when={props.onThread}>
             <button
