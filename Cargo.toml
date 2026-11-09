@@ -44,3 +44,11 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# Smaller dev builds: line tables keep backtraces readable, dependencies
+# carry no debug info, so target/ stays much smaller.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
