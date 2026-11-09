@@ -1,3 +1,6 @@
+import { escapeText } from "./compose.ts";
+import { fencedParts, inline as parseInline, trimUrl, unescape, type Inline } from "./mrkdwn.ts";
+
 // The editor DOM never leaves the UI. Send a small documented Slack rich_text tree.
 export type TextStyle = Partial<
   Record<"bold" | "italic" | "underline" | "strike" | "code", boolean>
@@ -35,11 +38,7 @@ export function linkify(text: string, style: TextStyle = {}): RichInline[] {
   const out: RichInline[] = [];
   let cursor = 0;
   for (const match of text.matchAll(/https?:\/\/[^\s<>]+/gi)) {
-    let url = match[0];
-    while (/[.,;:!?) ]$/.test(url)) {
-      if (url.endsWith(")") && [...url].filter(c => c === "(").length >= [...url].filter(c => c === ")").length) break;
-      url = url.slice(0, -1);
-    }
+    const url = trimUrl(match[0]);
     if (!safeLink(url)) continue;
     if (match.index! > cursor) out.push(plain(text.slice(cursor, match.index)));
     out.push({ type: "link", url, ...styled });
@@ -49,12 +48,75 @@ export function linkify(text: string, style: TextStyle = {}): RichInline[] {
   return out;
 }
 
+// Adapt the existing mrkdwn parser; typed angle brackets are escaped first.
+function parsedInline(nodes: Inline[], style: TextStyle = {}): RichInline[] {
+  const styled = Object.keys(style).length ? { style } : {};
+  return nodes.flatMap((n): RichInline[] => {
+    switch (n.t) {
+      case "text": return linkify(n.v, style);
+      case "b": return parsedInline(n.c, { ...style, bold: true });
+      case "i": return parsedInline(n.c, { ...style, italic: true });
+      case "s": return parsedInline(n.c, { ...style, strike: true });
+      case "code": return [{ type: "text", text: n.v, style: { ...style, code: true } }];
+      case "link": return [{ type: "link", url: n.url, ...styled }];
+      case "emoji": return [{ type: "emoji", name: n.name }];
+      // Typed text cannot produce Slack angle tokens after escapeText.
+      default: return [];
+    }
+  });
+}
+
+export function formatRichText(blocks: RichBlock[]): RichBlock[] {
+  const format = (section: RichSection): RichSection[] => {
+    if (section.type === "rich_text_preformatted") return [section];
+    const result: RichSection[] = [];
+    let content: RichInline[] = [];
+    const flush = () => {
+      if (content.length) result.push({ ...section, elements: content });
+      content = [];
+    };
+    // DOM edits can leave adjacent text nodes; markers may cross that boundary.
+    const joined: RichInline[] = [];
+    for (const n of section.elements) {
+      const last = joined.at(-1);
+      if (n.type === "text" && !Object.values(n.style ?? {}).some(Boolean) && last?.type === "text" && !Object.values(last.style ?? {}).some(Boolean))
+        joined[joined.length - 1] = { type: "text", text: last.text + n.text };
+      else joined.push(n);
+    }
+    for (const n of joined) {
+      if (n.type !== "text" || Object.values(n.style ?? {}).some(Boolean)) {
+        content.push(n);
+        continue;
+      }
+      for (const part of fencedParts(escapeText(n.text))) {
+        if (part.code) {
+          flush();
+          result.push({ type: "rich_text_preformatted", elements: [{ type: "text", text: unescape(part.text) }] });
+        } else content.push(...parsedInline(parseInline(part.text)));
+      }
+    }
+    flush();
+    return result;
+  };
+  return blocks.map(b => {
+    const joined: (RichSection | RichList)[] = [];
+    for (const section of b.elements) {
+      const previous = joined.at(-1);
+      if (section.type === "rich_text_section" && previous?.type === "rich_text_section")
+        joined[joined.length - 1] = { ...previous, elements: [...previous.elements, { type: "text", text: "\n" }, ...section.elements] };
+      else joined.push(section);
+    }
+    return { ...b, elements: joined.flatMap((section): (RichSection | RichList)[] =>
+      section.type === "rich_text_list" ? [{ ...section, elements: section.elements.flatMap(format) }] : format(section)) };
+  });
+}
+
 function inline(nodes: Iterable<Node>, style: TextStyle = {}): RichInline[] {
   const out: RichInline[] = [];
   for (const node of nodes) {
     if (node.nodeType === 3) {
       const text = (node.textContent ?? "").replace(/\u200b/g, "").replace(/\u00a0/g, " ");
-      if (text) out.push(...linkify(text, style));
+      if (text) out.push(...(Object.values(style).some(Boolean) ? linkify(text, style) : [{ type: "text" as const, text }]));
       continue;
     }
     if (!(node instanceof HTMLElement)) continue;
@@ -163,7 +225,7 @@ export function editorBlocks(editor: HTMLElement): RichBlock[] {
   };
   walk(editor.childNodes);
   flush();
-  return elements.length ? [{ type: "rich_text", elements }] : [];
+  return elements.length ? formatRichText([{ type: "rich_text", elements }]) : [];
 }
 
 // Plain fallback for notifications and FTS. Styling lives in blocks.

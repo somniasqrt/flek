@@ -366,7 +366,18 @@ async fn live_echo_before_the_response_does_not_duplicate() {
 #[tokio::test]
 async fn rich_text_blocks_travel_with_plain_fallback_and_survive_storage() {
     let server = MockServer::start().await;
-    let blocks = json!([{"type":"rich_text","elements":[{"type":"rich_text_section","elements":[{"type":"text","text":"underlined <text>","style":{"underline":true,"bold":true}}]}]}]);
+    let blocks = json!([{"type":"rich_text","elements":[
+        {"type":"rich_text_section","elements":[
+            {"type":"text","text":"underlined <text>","style":{"underline":true,"bold":true}},
+            {"type":"text","text":"italic","style":{"italic":true}},
+            {"type":"text","text":"strike","style":{"strike":true}},
+            {"type":"text","text":"code","style":{"code":true}},
+            {"type":"link","url":"https://example.com/a_(b)"}
+        ]},
+        {"type":"rich_text_preformatted","elements":[
+            {"type":"text","text":"https://example.com *literal* & <>"}
+        ]}
+    ]}]);
     post_mock()
         .and(field("blocks", serde_json::to_string(&blocks).unwrap()))
         .and(field("text", "underlined &lt;text&gt;"))

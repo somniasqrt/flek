@@ -30,17 +30,29 @@ export const unescape = (s: string) =>
 
 export function parse(text: string): Block[] {
   const blocks: Block[] = [];
-  const parts = text.split("```");
-  // An unclosed fence is plain text: glue it back to what precedes it.
-  if (parts.length % 2 === 0) parts.push(parts.pop()!.replace(/^/, parts.pop()! + "```"));
-  parts.forEach((part, i) => {
-    if (i % 2 === 1) {
-      blocks.push({ t: "pre", v: unescape(part.replace(/^\n/, "").replace(/\n$/, "")) });
-    } else {
-      lineBlocks(part, blocks);
-    }
-  });
+  for (const part of fencedParts(text)) {
+    if (part.code) blocks.push({ t: "pre", v: unescape(part.text) });
+    else lineBlocks(part.text, blocks);
+  }
   return blocks;
+}
+
+// Shared with the rich composer: preserve ordinary text, recognize closed fences only.
+export function fencedParts(text: string): { code: boolean; text: string }[] {
+  const parts = text.split("```");
+  if (parts.length % 2 === 0) parts.push(parts.pop()!.replace(/^/, parts.pop()! + "```"));
+  return parts.map((text, i) => ({
+    code: i % 2 === 1,
+    text: i % 2 === 1 ? text.replace(/^\n/, "").replace(/\n$/, "") : text,
+  }));
+}
+
+export function trimUrl(url: string): string {
+  while (/[.,;:!?)]$/.test(url)) {
+    if (url.endsWith(")") && [...url].filter(c => c === "(").length >= [...url].filter(c => c === ")").length) break;
+    url = url.slice(0, -1);
+  }
+  return url;
 }
 
 const QUOTE = /^(?:&gt;|>)\s?(.*)$/;
@@ -152,7 +164,7 @@ export function inline(s: string): Inline[] {
     } else if (ch === "h" && boundaryBefore) {
       const m = s.slice(i).match(BARE_URL);
       if (m) {
-        const url = m[0].replace(/[.,!?;:)]+$/, "");
+        const url = trimUrl(m[0]);
         flush();
         out.push({ t: "link", url: unescape(url) });
         i += url.length;
