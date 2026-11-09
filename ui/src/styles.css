@@ -926,6 +926,7 @@ a.chip {
   align-items: center;
   gap: 5px;
   max-width: 100%;
+  min-width: 0;
   margin: 1px 0;
   padding: 1px 8px 1px 6px;
   border-radius: 6px;
@@ -949,11 +950,16 @@ a.chip .icon {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* In a narrow column the label shrinks (with an ellipsis); the service
+   name never wraps. */
 a.chip .service {
+  flex: none;
   font-weight: 600;
   color: var(--chip);
+  white-space: nowrap;
 }
 a.chip .label {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
