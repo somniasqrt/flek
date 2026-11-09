@@ -1,6 +1,7 @@
 // One message, as both the timeline and the thread panel show it.
 import { createSignal, For, Show } from "solid-js";
-import { tsDate, type Message } from "./api";
+import { api, tsDate, type Message } from "./api";
+import MessageMenu from "./MessageMenu";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
 import Files from "./Files";
@@ -19,7 +20,10 @@ const [now, setNow] = createSignal(new Date());
 setInterval(() => setNow(new Date()), 60_000);
 
 export const timeLabel = (ts: string) =>
-  tsDate(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  tsDate(ts).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 export const author = (m: Message) =>
   (m.user_id && people()[m.user_id]) || m.author || m.user_id || "unknown";
@@ -27,9 +31,14 @@ export const author = (m: Message) =>
 export const repliesLabel = (n: number) => `${n} ${n === 1 ? "reply" : "replies"}`;
 
 /// `:name: count` pairs (core's summary) as chips.
-function Reactions(props: { summary: string }) {
+function Reactions(props: {
+  m: Message;
+  busy: boolean;
+  onToggle: (name: string) => void;
+  onPicker: (e: MouseEvent) => void;
+}) {
   const items = () =>
-    [...props.summary.matchAll(/:([^:\s]+(?:::skin-tone-\d)?): (\d+)/g)].map((m) => ({
+    [...(props.m.reactions ?? "").matchAll(/:([^:\s]+(?:::skin-tone-\d)?): (\d+)/g)].map((m) => ({
       name: m[1],
       count: m[2],
     }));
@@ -37,12 +46,30 @@ function Reactions(props: { summary: string }) {
     <div class="reactions">
       <For each={items()}>
         {(r) => (
-          <span class="reaction" title={`:${r.name}:`}>
+          <button
+            type="button"
+            class="reaction"
+            classList={{ mine: props.m.own_reactions?.includes(r.name) }}
+            aria-pressed={props.m.own_reactions?.includes(r.name) ?? false}
+            disabled={props.busy}
+            title={`${props.m.own_reactions?.includes(r.name) ? "Remove" : "Add"} :${r.name}: reaction`}
+            onClick={() => props.onToggle(r.name)}
+          >
             <Emoji name={r.name} />
             <span>{r.count}</span>
-          </span>
+          </button>
         )}
       </For>
+      <button
+        type="button"
+        class="reaction reaction-add"
+        title="Add reaction"
+        aria-label="Add reaction"
+        disabled={props.busy}
+        onClick={props.onPicker}
+      >
+        ☺+
+      </button>
     </div>
   );
 }
@@ -61,9 +88,7 @@ function ThreadBar(props: { m: Message; onOpen: () => void }) {
       </Show>
       <span class="thread-count">{repliesLabel(props.m.reply_count)}</span>
       <Show when={last()}>
-        {(ts) => (
-          <span class="thread-last">Last reply {relativeTime(tsDate(ts()), now())}</span>
-        )}
+        {(ts) => <span class="thread-last">Last reply {relativeTime(tsDate(ts()), now())}</span>}
       </Show>
       <span class="thread-view">View thread</span>
       <span class="thread-chevron" aria-hidden="true">
@@ -77,6 +102,7 @@ function ThreadBar(props: { m: Message; onOpen: () => void }) {
 /// author line. `onThread` shows the reply bar of a thread root.
 export default function MessageRow(props: {
   m: Message;
+  conversationId: string;
   prev?: Message;
   onThread?: (ts: string) => void;
   active?: boolean;
@@ -84,6 +110,39 @@ export default function MessageRow(props: {
   flash?: boolean;
 }) {
   const m = props.m;
+  const [menu, setMenu] = createSignal<{
+    x: number;
+    y: number;
+    picker: boolean;
+  } | null>(null);
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const openMenu = (e: MouseEvent, picker = false) => {
+    if (m.pending) return;
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, picker });
+  };
+  const react = async (name: string) => {
+    if (busy()) return;
+    setMenu(null);
+    setBusy(true);
+    setError("");
+    try {
+      await api.setReaction(props.conversationId, m.ts, name, !m.own_reactions?.includes(name));
+    } catch (e) {
+      setError(`Reaction failed: ${String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async () => {
+    setMenu(null);
+    try {
+      await navigator.clipboard.writeText(m.text);
+    } catch {
+      setError("Could not copy the message");
+    }
+  };
   const grouped = () =>
     !!props.prev &&
     props.prev.user_id === m.user_id &&
@@ -100,7 +159,60 @@ export default function MessageRow(props: {
         failed: m.pending === "failed",
       }}
       data-ts={m.ts}
+      onContextMenu={(e) => openMenu(e)}
+      onKeyDown={(e) => {
+        if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (!m.pending) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
+        }
+      }}
     >
+      <Show when={!m.pending}>
+        <div class="message-actions">
+          <button
+            type="button"
+            title="Add reaction"
+            aria-label="Add reaction"
+            disabled={busy()}
+            onClick={(e) => openMenu(e, true)}
+          >
+            ☺+
+          </button>
+          <Show when={props.onThread}>
+            <button
+              type="button"
+              title="Reply in thread"
+              aria-label="Reply in thread"
+              onClick={() => props.onThread?.(m.thread_ts ?? m.ts)}
+            >
+              ↩
+            </button>
+          </Show>
+          <button
+            type="button"
+            title="More actions"
+            aria-label="More message actions"
+            onClick={(e) => openMenu(e)}
+          >
+            ⋯
+          </button>
+        </div>
+      </Show>
+      <Show when={menu()}>
+        {(pos) => (
+          <MessageMenu
+            x={pos().x}
+            y={pos().y}
+            picker={pos().picker}
+            own={m.own_reactions ?? []}
+            onReaction={react}
+            onClose={() => setMenu(null)}
+            onCopy={copy}
+            onThread={props.onThread ? () => props.onThread?.(m.thread_ts ?? m.ts) : undefined}
+          />
+        )}
+      </Show>
       <div class="gutter">
         <Show when={!grouped()} fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}>
           <Show when={m.user_id} fallback={<Avatar id={m.user_id} name={author(m)} />}>
@@ -122,7 +234,11 @@ export default function MessageRow(props: {
           <div class="meta">
             <Show when={m.user_id} fallback={<span class="author">{author(m)}</span>}>
               {(id) => (
-                <button class="author author-button" type="button" onClick={() => openProfile(id())}>
+                <button
+                  class="author author-button"
+                  type="button"
+                  onClick={() => openProfile(id())}
+                >
                   {author(m)}
                 </button>
               )}
@@ -147,7 +263,17 @@ export default function MessageRow(props: {
         <Show when={m.unfurls.length > 0}>
           <Unfurls items={m.unfurls} />
         </Show>
-        <Show when={m.reactions}>{(r) => <Reactions summary={r()} />}</Show>
+        <Show when={m.reactions && !m.pending}>
+          <Reactions m={m} busy={busy()} onToggle={react} onPicker={(e) => openMenu(e, true)} />
+        </Show>
+        <Show when={error()}>
+          <div class="reaction-error" role="alert">
+            {error()}{" "}
+            <button type="button" aria-label="Dismiss error" onClick={() => setError("")}>
+              ×
+            </button>
+          </div>
+        </Show>
         <Show when={m.pending === "failed" && m.client_msg_id}>
           {(id) => (
             <div class="send-failed" role="alert" title={m.error}>

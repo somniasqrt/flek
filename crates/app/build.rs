@@ -21,6 +21,7 @@ const COMMANDS: &[&str] = &[
     "open_url",
     "search",
     "send_message",
+    "set_reaction",
 ];
 
 fn main() {

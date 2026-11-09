@@ -296,3 +296,32 @@ pub async fn send_message(
     }
     Ok(sent)
 }
+
+/// Change only the signed-in user's reaction; publish after it is stored.
+#[tauri::command]
+pub async fn set_reaction(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    ts: String,
+    name: String,
+    on: bool,
+) -> CmdResult<()> {
+    let (Some(client), Status::Ready { user_id, .. }) = (state.client(), state.status()) else {
+        return Err("not signed in to Slack".into());
+    };
+    let applied = flek_core::sync::reactions::set(
+        &client,
+        &state.store,
+        &user_id,
+        &conversation_id,
+        &ts,
+        &name,
+        on,
+    )
+    .await
+    .map_err(text)?;
+    if let flek_core::sync::live::Applied::Changed(change) = applied {
+        let _ = state.bus.send(change);
+    }
+    Ok(())
+}

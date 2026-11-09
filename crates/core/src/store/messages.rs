@@ -401,6 +401,8 @@ pub struct HistoryRow {
     pub hidden_by_limit: bool,
     /// `:name: count` pairs, most used first.
     pub reactions: Option<String>,
+    /// Emoji names the workspace owner reacted with.
+    pub own_reactions: Vec<String>,
     pub thread_ts: Option<String>,
     /// Files attached to the message.
     pub files: Vec<FileRef>,
@@ -568,6 +570,7 @@ fn query_display(
                 edited: r.get(6)?,
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
+                own_reactions: Vec::new(),
                 thread_ts: r.get(9)?,
                 files: Vec::new(),
                 unfurls: r
@@ -583,18 +586,35 @@ fn query_display(
     attach_files(conn, conversation_id, rows)
 }
 
-/// Fills `files` of `rows` (one query over their ts range).
+/// Fills files and the signed-in user's reactions with queries over the page range.
 fn attach_files(
     conn: &Connection,
     conversation_id: &str,
     mut rows: Vec<HistoryRow>,
 ) -> Result<Vec<HistoryRow>> {
     let (Some(lo), Some(hi)) = (
-        rows.iter().map(|r| r.ts.as_str()).min(),
-        rows.iter().map(|r| r.ts.as_str()).max(),
+        rows.iter().map(|r| &r.ts).min().cloned(),
+        rows.iter().map(|r| &r.ts).max().cloned(),
     ) else {
         return Ok(rows);
     };
+    let mut own = conn.prepare_cached(
+        "SELECT r.ts, r.name FROM reactions r
+         JOIN conversations c ON c.id = r.conversation_id
+         JOIN teams t ON t.id = c.team_id AND t.self_user_id = r.user_id
+         WHERE r.conversation_id = ?1 AND r.ts BETWEEN ?2 AND ?3",
+    )?;
+    let found = own.query_map(params![conversation_id, lo, hi], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })?;
+    let mut by_reaction: std::collections::HashMap<String, Vec<String>> = Default::default();
+    for item in found {
+        let (ts, name) = item?;
+        by_reaction.entry(ts).or_default().push(name);
+    }
+    for row in &mut rows {
+        row.own_reactions = by_reaction.remove(&row.ts).unwrap_or_default();
+    }
     let mut stmt = conn.prepare_cached(
         "SELECT mf.ts, f.id, f.name, f.title, f.mimetype, f.filetype, f.size, f.local_path,
                 f.permalink, f.hidden_by_limit,

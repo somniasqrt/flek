@@ -28,3 +28,5 @@ export function emoji(name: string): string | undefined {
   const mod = tone ? SKIN_TONES[tone] : undefined;
   return mod ? char.replace("️", "") + mod : char;
 }
+
+export const standardEmojiNames = [...byName.keys()];

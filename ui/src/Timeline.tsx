@@ -222,6 +222,7 @@ export default function Timeline(props: {
                   {(m, i) => (
                     <MessageRow
                       m={m}
+                      conversationId={props.conversation.id}
                       prev={items()[i() - 1]}
                       onThread={props.onThread}
                       active={props.thread === m.ts}

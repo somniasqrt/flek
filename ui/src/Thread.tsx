@@ -92,14 +92,14 @@ export default function Thread(props: {
         </button>
       </header>
       <div class="thread-scroller" ref={scroller}>
-        <Show when={root()}>{(m) => <MessageRow m={m()} />}</Show>
+        <Show when={root()}>{(m) => <MessageRow m={m()} conversationId={props.conversation.id} />}</Show>
         <Show when={replies().length > 0}>
           <div class="thread-divider">
             <span>{repliesLabel(replies().length)}</span>
           </div>
         </Show>
         <For each={replies()}>
-          {(m, i) => <MessageRow m={m} prev={i() > 0 ? replies()[i() - 1] : undefined} />}
+          {(m, i) => <MessageRow m={m} conversationId={props.conversation.id} prev={i() > 0 ? replies()[i() - 1] : undefined} />}
         </For>
         <Show when={loaded() && rows.length === 0}>
           <div class="start muted">This thread is no longer available.</div>

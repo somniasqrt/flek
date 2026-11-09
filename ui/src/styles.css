@@ -1723,9 +1723,9 @@ a.chip .label {
 .composer textarea {
   display: block;
   width: 100%;
-  min-height: 42px;
-  max-height: 40vh;
-  padding: 11px 12px 4px;
+  min-height: 36px;
+  max-height: 30vh;
+  padding: 6px 12px;
   border: none;
   outline: none;
   resize: none;
@@ -1743,8 +1743,8 @@ a.chip .label {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
-  padding: 4px 6px 6px 12px;
+  min-height: 36px;
+  padding: 2px 8px 6px;
   cursor: default;
 }
 .composer-broadcast {
@@ -1767,10 +1767,7 @@ a.chip .label {
   margin-left: auto;
   font-size: 12px;
   white-space: nowrap;
-  visibility: hidden;
-}
-.composer-hint.shown {
-  visibility: visible;
+  color: var(--muted);
 }
 .thread-panel .composer-hint {
   display: none;
@@ -1838,4 +1835,240 @@ a.chip .label {
   flex-basis: 100%;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Message actions are shared by timeline and thread rows. */
+.msg {
+  position: relative;
+}
+.message-actions {
+  position: absolute;
+  z-index: 3;
+  right: 16px;
+  top: -14px;
+  display: flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  box-shadow: 0 2px 5px #0002;
+  opacity: 0;
+  pointer-events: none;
+}
+.msg:hover .message-actions,
+.msg:focus-within .message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-actions button,
+.quick-reactions button {
+  border: 0;
+  background: transparent;
+  border-radius: 5px;
+  width: 34px;
+  height: 30px;
+  cursor: pointer;
+}
+.message-actions button {
+  font-size: 20px;
+}
+.message-actions button:hover,
+.quick-reactions button:hover,
+.emoji-grid button:hover {
+  background: var(--hover);
+}
+.reaction {
+  cursor: pointer;
+}
+.reaction:hover {
+  border-color: var(--muted);
+}
+.reaction.mine {
+  border-color: var(--accent);
+  background: var(--mention-bg);
+  color: var(--link);
+}
+.reaction:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.reaction-add {
+  color: var(--muted);
+}
+.reaction-error {
+  font-size: 12px;
+  color: var(--error);
+  margin-top: 4px;
+}
+.reaction-error button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.message-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+}
+.message-menu {
+  position: fixed;
+  width: 292px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.quick-reactions {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 3px 9px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 5px;
+}
+.quick-reactions button {
+  font-size: 21px;
+}
+.message-menu-item {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.message-menu-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.message-menu-item:hover,
+.message-menu-item:focus-visible {
+  background: var(--accent);
+  color: white;
+}
+.message-menu-item:hover span {
+  color: inherit;
+}
+.emoji-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.emoji-picker-heading button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 22px;
+}
+.emoji-picker {
+  padding: 5px;
+}
+.emoji-picker input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px 9px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  max-height: min(260px, 40vh);
+  overflow-y: auto;
+  margin-top: 8px;
+  gap: 2px;
+}
+.emoji-grid button {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+.emoji-grid button[aria-pressed="true"],
+.quick-reactions button[aria-pressed="true"] {
+  background: var(--mention-bg);
+  border-color: var(--accent);
+}
+.composer-format {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 8px 0;
+}
+.composer-format button,
+.composer-emoji-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+}
+.composer-format button:hover,
+.composer-emoji-button:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.composer-format-divider {
+  height: 16px;
+  border-left: 1px solid var(--border);
+  margin: 0 4px;
+}
+.composer-emoji {
+  position: relative;
+}
+.composer-emoji-button {
+  font-size: 23px;
+}
+.composer-emoji-popover {
+  position: absolute;
+  bottom: 36px;
+  left: 0;
+  z-index: 30;
+  width: 280px;
+  max-width: calc(100vw - 56px);
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+.composer-broadcast {
+  white-space: normal;
+  font-size: 12px;
+}
+.composer-hint {
+  font-size: 11px;
+}
+.composer-hint b {
+  font-weight: 500;
+}
+@media (max-width: 800px) {
+  .composer-hint {
+    display: none;
+  }
+  .composer-hint + .composer-send {
+    margin-left: auto;
+  }
 }

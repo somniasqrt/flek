@@ -147,3 +147,19 @@ telemetry with values Flek cannot honestly produce), `accept-language`,
 - **Works with `xoxc`:** untested by Flek's tests (wiremock only). Owner's
   first real test: the self-DM.
 - **Date written:** 2026-11-09.
+
+### `reactions.add` / `reactions.remove`
+
+- **Documented:** [add](https://docs.slack.dev/reference/methods/reactions.add/),
+  [remove](https://docs.slack.dev/reference/methods/reactions.remove/).
+- **Request:** `channel=C0FAKE`, `timestamp=1700000000.000100`, `name=heart`.
+  Both use the existing authenticated client and its retry handling.
+- **Storage:** only after success, apply the signed-in user's change through
+  the live-event path. The RTM echo is idempotent and other users' reactions
+  are preserved. `already_reacted` (add) and `no_reaction` (remove) reconcile
+  the local copy to the requested state.
+- **UI:** message context menu, hover actions, searchable emoji picker;
+  clicking a reaction toggles only the signed-in user's participation.
+- **Works with `xoxc`:** not live-tested; verified against wiremock only.
+  No real Slack actions are run by the agent.
+- **Date written:** 2026-11-09.

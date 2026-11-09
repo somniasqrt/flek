@@ -92,6 +92,7 @@ export type Message = {
   edited: boolean;
   hidden_by_limit: boolean;
   reactions: string | null;
+  own_reactions?: string[];
   thread_ts: string | null;
   files: FileRef[];
   unfurls: Unfurl[];
@@ -178,6 +179,8 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),
+  setReaction: (conversationId: string, ts: string, name: string, on: boolean) =>
+    invoke<void>("set_reaction", { conversationId, ts, name, on }),
   sendMessage: (
     conversationId: string,
     text: string,

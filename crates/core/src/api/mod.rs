@@ -9,6 +9,7 @@ mod history;
 mod internal;
 mod pagination;
 pub mod profile;
+mod reactions;
 mod rtm;
 mod users;
 

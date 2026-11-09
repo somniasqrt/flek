@@ -13,6 +13,8 @@ export async function loadCustomEmoji() {
   setCustom(await api.customEmoji().catch(() => custom()));
 }
 
+export const customEmojiNames = () => [...Object.keys(custom().images), ...Object.keys(custom().aliases)];
+
 type Resolved = { char: string } | { image: string } | null;
 
 /// `party_parrot`, `yes::skin-tone-3` (an alias of a standard emoji) → what to draw.

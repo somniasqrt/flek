@@ -1,6 +1,7 @@
 // Message box at the bottom of a conversation or thread (like Slack's):
 // Enter sends, Shift+Enter breaks the line, drafts survive restarts.
 import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
+import EmojiPicker from "./EmojiPicker";
 import { draftKey, outgoingText, readDraft, writeDraft } from "./compose";
 import { send } from "./outbox";
 
@@ -16,6 +17,7 @@ export default function Composer(props: {
 }) {
   const key = () => draftKey(props.conversationId, props.threadTs);
   const [text, setText] = createSignal("");
+  const [emojiOpen, setEmojiOpen] = createSignal(false);
   const [broadcast, setBroadcast] = createSignal(false);
   let area!: HTMLTextAreaElement;
 
@@ -30,6 +32,7 @@ export default function Composer(props: {
     on(key, (k) => {
       setText(readDraft(k));
       setBroadcast(false);
+      setEmojiOpen(false);
       requestAnimationFrame(() => {
         resize();
         area.focus({ preventScroll: true });
@@ -37,6 +40,11 @@ export default function Composer(props: {
     }),
   );
   onMount(() => {
+    const dismiss = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest(".composer-emoji")) setEmojiOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    onCleanup(() => document.removeEventListener("pointerdown", dismiss));
     window.addEventListener("resize", resize);
     onCleanup(() => window.removeEventListener("resize", resize));
   });
@@ -45,6 +53,16 @@ export default function Composer(props: {
     setText(value);
     writeDraft(key(), value);
     resize();
+  };
+
+  const insert = (before: string, after = "") => {
+    const start = area.selectionStart,
+      end = area.selectionEnd;
+    const selection = text().slice(start, end);
+    onInput(text().slice(0, start) + before + selection + after + text().slice(end));
+    setEmojiOpen(false);
+    area.focus();
+    area.setSelectionRange(start + before.length, end + before.length);
   };
 
   const submit = () => {
@@ -68,6 +86,37 @@ export default function Composer(props: {
   return (
     <div class="composer">
       <div class="composer-box" onClick={(e) => e.target === e.currentTarget && area.focus()}>
+        <div class="composer-format" aria-label="Text formatting">
+          <button type="button" title="Bold" aria-label="Bold" onClick={() => insert("*", "*")}>
+            <b>B</b>
+          </button>
+          <button type="button" title="Italic" aria-label="Italic" onClick={() => insert("_", "_")}>
+            <i>I</i>
+          </button>
+          <button
+            type="button"
+            title="Inline code"
+            aria-label="Inline code"
+            onClick={() => insert("`", "`")}
+          >
+            〈〉
+          </button>
+          <span class="composer-format-divider" />
+          <button
+            type="button"
+            title="Quote"
+            aria-label="Quote"
+            onClick={() =>
+              insert(
+                area.selectionStart === 0 || text()[area.selectionStart - 1] === "\n"
+                  ? "> "
+                  : "\n> ",
+              )
+            }
+          >
+            ❯
+          </button>
+        </div>
         <textarea
           ref={area}
           rows={1}
@@ -79,6 +128,32 @@ export default function Composer(props: {
           onKeyDown={onKeyDown}
         />
         <div class="composer-bar">
+          <div class="composer-emoji">
+            <button
+              type="button"
+              class="composer-emoji-button"
+              title="Insert emoji"
+              aria-label="Insert emoji"
+              aria-expanded={emojiOpen()}
+              onClick={() => setEmojiOpen(!emojiOpen())}
+            >
+              ☺
+            </button>
+            <Show when={emojiOpen()}>
+              <div
+                class="composer-emoji-popover"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setEmojiOpen(false);
+                    area.focus();
+                  }
+                }}
+              >
+                <EmojiPicker onPick={(name) => insert(`:${name}: `)} />
+              </div>
+            </Show>
+          </div>
           <Show when={props.broadcastLabel}>
             <label class="composer-broadcast">
               <input
@@ -93,7 +168,7 @@ export default function Composer(props: {
               <span>{props.broadcastLabel}</span>
             </label>
           </Show>
-          <span class="composer-hint muted" classList={{ shown: !!text() }}>
+          <span class="composer-hint muted">
             <b>Shift + Enter</b> for a new line
           </span>
           <button

@@ -146,7 +146,33 @@ mockIPC(async (cmd, args) => {
       return structuredClone(
         a.conversationId === "C1" ? messages : elsewhere.filter((m) => m.conversation_id === a.conversationId),
       );
-    case "send_message":
+    case "set_reaction": {
+        const m = [...messages, ...replies, ...elsewhere].find((m) => m.ts === a.ts);
+        if (!m) throw "message_not_found";
+        const name = String(a.name);
+        const counts = new Map(
+          [...String(m.reactions ?? "").matchAll(/:([^:\s]+(?:::skin-tone-\d)?): (\d+)/g)].map(
+            (r) => [r[1], Number(r[2])],
+          ),
+        );
+        const own = new Set(m.own_reactions ?? []);
+        const delta = a.on ? (own.has(name) ? 0 : 1) : own.has(name) ? -1 : 0;
+        if (a.on) own.add(name);
+        else own.delete(name);
+        counts.set(name, (counts.get(name) ?? 0) + delta);
+        m.own_reactions = [...own];
+        m.reactions =
+          [...counts]
+            .filter(([, n]) => n > 0)
+            .map(([name, n]) => `:${name}: ${n}`)
+            .join("  ") || null;
+        emit("flek://change", {
+          type: "reactions",
+          data: { conversation_id: String(a.conversationId), ts: m.ts },
+        });
+        return null;
+      }
+      case "send_message":
       return sendMessage(a);
     case "search": {
       const q = String(a.query ?? "");

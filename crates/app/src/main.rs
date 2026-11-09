@@ -62,6 +62,7 @@ fn main() {
             commands::open_url,
             commands::search,
             commands::send_message,
+            commands::set_reaction,
         ])
         .setup(move |app| {
             let handle = app.handle();
