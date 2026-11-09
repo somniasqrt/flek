@@ -14,6 +14,8 @@ const COMMANDS: &[&str] = &[
     "people",
     "avatars",
     "custom_emoji",
+    "profile",
+    "profile_photo",
     "open_file",
     "pdf_data",
     "open_url",

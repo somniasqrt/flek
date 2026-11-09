@@ -176,6 +176,51 @@ pub async fn download_custom_emoji(
     fetch_images(client, store, cache_dir, None, urls).await
 }
 
+/// The large photo of one person, for the profile panel: fetched on demand
+/// straight from Slack's CDN (public URL, no session, like avatars) unless
+/// cached. Returns its cache hash, or `None` when the user has no photo.
+/// A failure is recorded but retried the next time the panel opens.
+pub async fn fetch_profile_photo(
+    user_agent: &str,
+    store: &Store,
+    cache_dir: &Path,
+    user_id: &str,
+) -> Result<Option<String>> {
+    let id = user_id.to_owned();
+    let Some(url) = store
+        .read(move |c| crate::store::directory::profile_photo_url(c, &id))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let hash = crate::store::unfurls::url_hash(&url);
+    let known = url.clone();
+    if store
+        .read(move |c| Ok(crate::store::unfurls::is_cached(c, &known)))
+        .await?
+    {
+        return Ok(Some(hash));
+    }
+    let http = public_http(user_agent)?;
+    let fetched = files::fetch_link_image(&http, None, cache_dir, &url).await;
+    let path = fetched
+        .as_ref()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned());
+    store
+        .call(move |c| crate::store::unfurls::set_image(c, &url, path.as_deref()))
+        .await?;
+    fetched.map(|_| Some(hash))
+}
+
+/// A client without the session (no cookie, no token), for public images.
+fn public_http(user_agent: &str) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent(user_agent)
+        .timeout(Duration::from_secs(30))
+        .build()?)
+}
+
 async fn fetch_images(
     client: &Client,
     store: &Store,
@@ -186,10 +231,7 @@ async fn fetch_images(
     if urls.is_empty() {
         return Ok(0);
     }
-    let http = reqwest::Client::builder()
-        .user_agent(client.profile().user_agent.clone())
-        .timeout(Duration::from_secs(30))
-        .build()?;
+    let http = public_http(&client.profile().user_agent)?;
     let mut bucket = TokenBucket::for_files();
     let mut fetched = 0;
     for url in urls {

@@ -3,7 +3,7 @@
 use flek_core::api::Client;
 use flek_core::store::messages::{self, MessageRow};
 use flek_core::store::{directory, unfurls, Store};
-use flek_core::sync::files::{download_avatars, download_link_images};
+use flek_core::sync::files::{download_avatars, download_link_images, fetch_profile_photo};
 use flek_core::Secret;
 use serde_json::json;
 use wiremock::matchers::{path, query_param};
@@ -179,4 +179,83 @@ async fn avatars_of_authors_are_cached() {
             .unwrap(),
         0
     );
+}
+
+#[tokio::test]
+async fn profile_photo_is_fetched_on_demand_without_the_session() {
+    let server = MockServer::start().await;
+    Mock::given(path("/avatars/u1_512.png"))
+        .and(|r: &Request| {
+            !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
+        })
+        .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/avatars/u2_192.png"))
+        .respond_with(ResponseTemplate::new(404))
+        .expect(2)
+        .mount(&server)
+        .await;
+
+    let big = format!("{}/avatars/u1_512.png", server.uri());
+    let store = Store::open_in_memory().unwrap();
+    let raws = [
+        (
+            "U1",
+            json!({"profile": {"image_72": "https://cdn.example/u1_72.png",
+                "image_192": "https://cdn.example/u1_192.png", "image_512": big}}),
+        ),
+        (
+            "U2",
+            json!({"profile": {"image_192": format!("{}/avatars/u2_192.png", server.uri())}}),
+        ),
+        ("U3", json!({"profile": {}})),
+    ];
+    store
+        .with_conn(|c| {
+            c.execute("INSERT INTO teams (id, name) VALUES ('T1', 'Team')", [])?;
+            for (id, raw) in &raws {
+                c.execute(
+                    "INSERT INTO users (id, team_id, name, raw_json) VALUES (?1, 'T1', ?1, ?2)",
+                    [*id, raw.to_string().as_str()],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let ua = "Mozilla/5.0 (test)";
+
+    let hash = fetch_profile_photo(ua, &store, cache.path(), "U1")
+        .await
+        .unwrap();
+    assert_eq!(hash, Some(unfurls::url_hash(&big)));
+    // Cached now: no second request (expect(1)), and the profile shows it.
+    let again = fetch_profile_photo(ua, &store, cache.path(), "U1")
+        .await
+        .unwrap();
+    assert_eq!(again, hash);
+    let profile = store
+        .with_read(|c| directory::user_profile(c, "U1"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(profile.photo, hash);
+    assert!(profile.has_photo);
+
+    // 192 px is the fallback; a failure is an error, retried next time.
+    for _ in 0..2 {
+        assert!(fetch_profile_photo(ua, &store, cache.path(), "U2")
+            .await
+            .is_err());
+    }
+    // No photo at all, and unknown users: nothing to fetch.
+    for id in ["U3", "U404"] {
+        assert_eq!(
+            fetch_profile_photo(ua, &store, cache.path(), id)
+                .await
+                .unwrap(),
+            None
+        );
+    }
 }

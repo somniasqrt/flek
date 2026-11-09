@@ -184,6 +184,32 @@ pub async fn custom_emoji(state: State<'_, AppState>) -> CmdResult<emoji::Custom
         .map_err(text)
 }
 
+/// One person's profile for the side panel; `None` for an unknown id.
+#[tauri::command]
+pub async fn profile(
+    state: State<'_, AppState>,
+    user_id: String,
+) -> CmdResult<Option<directory::Profile>> {
+    state
+        .store
+        .read(move |c| directory::user_profile(c, &user_id))
+        .await
+        .map_err(text)
+}
+
+/// Fetches a person's large photo into the image cache if missing (Slack's
+/// public CDN, no session) and returns its hash for `flekfile://…/link/`.
+#[tauri::command]
+pub async fn profile_photo(
+    state: State<'_, AppState>,
+    user_id: String,
+) -> CmdResult<Option<String>> {
+    let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    flek_core::sync::files::fetch_profile_photo(&state.user_agent(), &state.store, &cache, &user_id)
+        .await
+        .map_err(text)
+}
+
 /// Opens a cached file with its default app. Takes the file id, not a path,
 /// so the UI cannot open arbitrary files.
 #[tauri::command]

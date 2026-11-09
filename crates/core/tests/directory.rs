@@ -29,7 +29,11 @@ async fn mock(server: &MockServer) {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "ok": true,
             "members": [
-                {"id": "U0BOB", "team_id": "T0FAKE", "name": "bob", "real_name": "Bob Builder", "profile": {"display_name": "", "real_name": "Bob Builder"}},
+                {"id": "U0BOB", "team_id": "T0FAKE", "name": "bob", "real_name": "Bob Builder",
+                 "tz": "Europe/Kyiv", "tz_label": "Eastern European Time", "tz_offset": 7200,
+                 "profile": {"display_name": "", "real_name": "Bob Builder", "title": " Доцент ",
+                    "email": "bob@example.com", "phone": "", "image_72": "https://cdn.example/b72.png",
+                    "image_512": "https://cdn.example/b512.png"}},
                 {"id": "U0BOT", "team_id": "T0FAKE", "name": "helper", "is_bot": true, "profile": {}},
                 {"id": "U0EXT", "team_id": "T0OTHER", "name": "ext", "profile": {"display_name": "External"}}
             ],
@@ -196,4 +200,54 @@ async fn syncs_users_and_conversations() {
         .with_conn(|c| Ok(c.query_row("SELECT COUNT(*) FROM conversations", [], |r| r.get(0))?))
         .unwrap();
     assert_eq!(n, 6);
+}
+
+#[tokio::test]
+async fn profiles_come_from_the_stored_directory() {
+    let server = MockServer::start().await;
+    mock(&server).await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap()
+    .without_pacing();
+    let store = Store::open_in_memory().unwrap();
+    sync_directory(&client, &store, &me()).await.unwrap();
+
+    let bob = store
+        .with_read(|c| directory::user_profile(c, "U0BOB"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(bob.name, "bob");
+    assert_eq!(bob.real_name.as_deref(), Some("Bob Builder"));
+    assert_eq!(bob.display_name, None, "empty display name is no name");
+    assert_eq!(bob.title.as_deref(), Some("Доцент"));
+    assert_eq!(bob.email.as_deref(), Some("bob@example.com"));
+    assert_eq!(bob.phone, None);
+    assert_eq!(bob.tz.as_deref(), Some("Europe/Kyiv"));
+    assert_eq!(bob.tz_label.as_deref(), Some("Eastern European Time"));
+    assert_eq!(bob.tz_offset, Some(7200));
+    assert_eq!(bob.dm_conversation_id.as_deref(), Some("D0BOB"));
+    assert!(bob.has_photo);
+    assert_eq!(bob.photo, None, "not fetched yet");
+    assert_eq!(bob.avatar, None, "not fetched yet");
+    assert!(!bob.is_bot && !bob.deleted);
+    // Personal data stays out of logs.
+    let debug = format!("{bob:?}");
+    assert!(!debug.contains("bob@example.com"), "{debug}");
+
+    let alice = store
+        .with_read(|c| directory::user_profile(c, "U0ALICE"))
+        .unwrap()
+        .unwrap();
+    assert!(alice.deleted);
+    assert_eq!(alice.display_name.as_deref(), Some("Alice"));
+    assert_eq!(alice.dm_conversation_id, None);
+    assert!(!alice.has_photo);
+    assert!(store
+        .with_read(|c| directory::user_profile(c, "U0NOBODY"))
+        .unwrap()
+        .is_none());
 }

@@ -50,6 +50,8 @@ pub struct AppState {
     /// Latest progress, for a UI that mounts after it was sent.
     progress: Mutex<Option<Progress>>,
     connection: Mutex<Option<ConnectionState>>,
+    /// User agent of the session's client, for public image fetches.
+    user_agent: Mutex<Option<String>>,
     engine_stop: Mutex<Option<watch::Sender<bool>>>,
 }
 
@@ -63,6 +65,7 @@ impl AppState {
             status: Mutex::new(Status::Starting),
             progress: Mutex::new(None),
             connection: Mutex::new(None),
+            user_agent: Mutex::new(None),
             engine_stop: Mutex::new(None),
         }
     }
@@ -88,6 +91,16 @@ impl AppState {
             Status::Ready { team_id, .. } => Some(team_id),
             _ => None,
         }
+    }
+
+    /// The session client's user agent (a current desktop Chrome before a
+    /// session exists), so on-demand image fetches look like the sync's.
+    pub fn user_agent(&self) -> String {
+        self.user_agent
+            .lock()
+            .ok()
+            .and_then(|u| u.clone())
+            .unwrap_or_else(|| flek_core::api::ClientProfile::detect().user_agent)
     }
 
     /// Stops the sync engine (quit, or before a new session starts).
@@ -236,6 +249,9 @@ pub fn start(app: &AppHandle, session: Session) {
             return;
         }
     };
+    if let Ok(mut ua) = state.user_agent.lock() {
+        *ua = Some(client.profile().user_agent.clone());
+    }
     let files = flek_core::files::default_cache_dir()
         .ok()
         .map(|dir| (dir, Some(MAX_FILE_BYTES)));
