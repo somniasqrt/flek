@@ -24,7 +24,7 @@ export default function Avatar(props: { id: string | null; name: string; size?: 
   const box = () => ({
     width: `${px()}px`,
     height: `${px()}px`,
-    "border-radius": `${Math.round(px() / 6)}px`,
+    "border-radius": `${Math.round(px() * 0.22)}px`,
     "font-size": `${Math.round(px() * 0.36)}px`,
   });
   return (

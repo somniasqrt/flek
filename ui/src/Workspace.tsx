@@ -10,6 +10,7 @@ import {
   type Status,
 } from "./api";
 import { loadPeople } from "./people";
+import Rail from "./Rail";
 import Viewer from "./Viewer";
 import Sidebar from "./Sidebar";
 import SyncBar from "./SyncBar";
@@ -102,33 +103,40 @@ export default function Workspace(props: { status: Ready }) {
   const current = () => conversations.find((c) => c.id === selected()) ?? null;
 
   return (
-    <div class="workspace">
-      <Sidebar
-        team={props.status.team}
-        user={props.status.user}
-        conversations={conversations}
-        selected={selected()}
-        onSelect={select}
-      />
-      <section class="main">
+    <div class="shell">
+      {/* The window has no title bar: this strip drags it, under the traffic lights. */}
+      <header class="topbar" data-tauri-drag-region>
         <SyncBar progress={progress()} connection={connection()} />
-        <Show
-          when={current()}
-          fallback={
-            <div class="empty">
-              <Show when={loaded()} fallback={<div class="spinner" />}>
-                <h2>Syncing messages</h2>
-                <p class="muted">
-                  Channels appear here as soon as they are fetched. Flek keeps syncing in the menu
-                  bar even when this window is closed.
-                </p>
-              </Show>
-            </div>
-          }
-        >
-          {(c) => <Timeline conversation={c()} change={change()} />}
-        </Show>
-      </section>
+      </header>
+      <div class="shell-body">
+        <Rail team={props.status.team} userId={props.status.user_id} user={props.status.user} />
+        <div class="frame">
+          <Sidebar
+            team={props.status.team}
+            conversations={conversations}
+            selected={selected()}
+            onSelect={select}
+          />
+          <section class="main">
+            <Show
+              when={current()}
+              fallback={
+                <div class="empty">
+                  <Show when={loaded()} fallback={<div class="spinner" />}>
+                    <h2>Syncing messages</h2>
+                    <p class="muted">
+                      Channels appear here as soon as they are fetched. Flek keeps syncing in the
+                      menu bar even when this window is closed.
+                    </p>
+                  </Show>
+                </div>
+              }
+            >
+              {(c) => <Timeline conversation={c()} change={change()} />}
+            </Show>
+          </section>
+        </div>
+      </div>
       <Viewer />
     </div>
   );

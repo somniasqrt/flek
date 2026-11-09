@@ -1,16 +1,22 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 import type { Conversation } from "./api";
 import Avatar from "./Avatar";
+import { Caret, Hash, Lock, People, Search } from "./icons";
 
 /// Channels by name, then direct messages by latest activity.
 export default function Sidebar(props: {
   team: string;
-  user: string;
   conversations: Conversation[];
   selected: string | null;
   onSelect: (id: string) => void;
 }) {
-  const live = () => props.conversations.filter((c) => !c.is_archived);
+  const [query, setQuery] = createSignal("");
+  const live = () => {
+    const q = query().trim().toLowerCase();
+    return props.conversations.filter(
+      (c) => !c.is_archived && (!q || c.label.toLowerCase().includes(q)),
+    );
+  };
   const channels = () =>
     live()
       .filter((c) => c.kind === "public_channel" || c.kind === "private_channel")
@@ -20,6 +26,17 @@ export default function Sidebar(props: {
       .filter((c) => c.kind === "im" || c.kind === "mpim")
       .sort((a, b) => (b.latest_ts ?? "").localeCompare(a.latest_ts ?? ""));
 
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") setQuery("");
+    if (e.key === "Enter") {
+      const first = channels()[0] ?? direct()[0];
+      if (first) {
+        props.onSelect(first.id);
+        setQuery("");
+      }
+    }
+  };
+
   const Item = (p: { c: Conversation }) => (
     <li>
       <button
@@ -28,16 +45,17 @@ export default function Sidebar(props: {
         onClick={() => props.onSelect(p.c.id)}
         title={p.c.topic ?? p.c.label}
       >
-        <Show
-          when={p.c.kind === "im"}
-          fallback={
-            <span class="prefix">
-              {p.c.kind === "public_channel" ? "#" : p.c.kind === "private_channel" ? "🔒" : "●"}
-            </span>
-          }
-        >
-          <Avatar id={p.c.dm_user_id} name={p.c.label} size={20} />
-        </Show>
+        <span class="conv-icon">
+          {p.c.kind === "im" ? (
+            <Avatar id={p.c.dm_user_id} name={p.c.label} size={20} />
+          ) : p.c.kind === "public_channel" ? (
+            <Hash />
+          ) : p.c.kind === "private_channel" ? (
+            <Lock />
+          ) : (
+            <People />
+          )}
+        </span>
         <span class="name">{p.c.label}</span>
         <Show when={(p.c.unread ?? 0) > 0 && (p.c.kind === "im" || p.c.kind === "mpim")}>
           <span class="badge">{p.c.unread}</span>
@@ -50,18 +68,48 @@ export default function Sidebar(props: {
     <nav class="sidebar">
       <header>
         <div class="team">{props.team}</div>
-        <div class="me muted">{props.user}</div>
       </header>
+      <label class="find">
+        <Search size={14} />
+        <input
+          type="search"
+          placeholder="Find a conversation…"
+          value={query()}
+          onInput={(e) => setQuery(e.currentTarget.value)}
+          onKeyDown={onKey}
+        />
+      </label>
       <div class="sections">
-        <h3>Channels</h3>
-        <ul>
-          <For each={channels()}>{(c) => <Item c={c} />}</For>
-        </ul>
-        <h3>Direct messages</h3>
-        <ul>
-          <For each={direct()}>{(c) => <Item c={c} />}</For>
-        </ul>
+        <Section title="Channels" items={channels()} item={Item} />
+        <Section title="Direct messages" items={direct()} item={Item} />
+        <Show when={query() && channels().length + direct().length === 0}>
+          <p class="nothing">No conversations match</p>
+        </Show>
       </div>
     </nav>
+  );
+}
+
+function Section(props: {
+  title: string;
+  items: Conversation[];
+  item: (p: { c: Conversation }) => JSX.Element;
+}) {
+  const [open, setOpen] = createSignal(true);
+  // A collapsed section still shows what needs attention, like Slack's.
+  const shown = () =>
+    open() ? props.items : props.items.filter((c) => (c.unread ?? 0) > 0);
+  return (
+    <Show when={props.items.length > 0}>
+      <button class="section" classList={{ open: open() }} onClick={() => setOpen(!open())}>
+        <span class="caret">
+          <Caret size={14} />
+        </span>
+        {props.title}
+      </button>
+      <ul>
+        <For each={shown()}>{(c) => props.item({ c })}</For>
+      </ul>
+    </Show>
   );
 }

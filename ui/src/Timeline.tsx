@@ -4,6 +4,7 @@ import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message 
 import Avatar from "./Avatar";
 import { emoji } from "./emoji";
 import Files from "./Files";
+import { Hash, Lock } from "./icons";
 import { people } from "./people";
 import Rich from "./Rich";
 import Unfurls from "./Unfurls";
@@ -135,11 +136,11 @@ export default function Timeline(props: { conversation: Conversation; change: Ch
     <div class="timeline">
       <header class="conv-header">
         <h2>
-          {props.conversation.kind === "public_channel"
-            ? "#"
-            : props.conversation.kind === "private_channel"
-              ? "🔒 "
-              : ""}
+          {props.conversation.kind === "public_channel" ? (
+            <Hash size={18} />
+          ) : props.conversation.kind === "private_channel" ? (
+            <Lock size={18} />
+          ) : null}
           {props.conversation.label}
         </h2>
         <Show when={props.conversation.topic}>

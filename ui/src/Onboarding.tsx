@@ -4,7 +4,7 @@ import { api, type Status } from "./api";
 /// First launch and lost sessions: import from Slack desktop, else sign in.
 export default function Onboarding(props: { status: Status }) {
   return (
-    <main class="onboarding">
+    <main class="onboarding" data-tauri-drag-region>
       <div class="card">
         <img class="logo" src="/icon.png" alt="" />
         <h1>Flek</h1>
