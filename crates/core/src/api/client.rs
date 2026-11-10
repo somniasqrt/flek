@@ -55,7 +55,20 @@ impl Client {
         base_url: &str,
         profile: ClientProfile,
     ) -> Result<Self> {
+        let base =
+            reqwest::Url::parse(base_url).map_err(|_| Error::File("invalid API URL".into()))?;
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                if attempt.previous().len() > 5 {
+                    attempt.error("too many redirects")
+                } else if crate::net_policy::slack_file(attempt.url())
+                    || crate::net_policy::same_origin(attempt.url(), &base)
+                {
+                    attempt.follow()
+                } else {
+                    attempt.stop()
+                }
+            }))
             .default_headers(session_headers(&cookie, &profile)?)
             .timeout(Duration::from_secs(30))
             .build()?;
@@ -77,6 +90,19 @@ impl Client {
             ("user-agent", self.profile.user_agent.clone()),
             ("origin", self.profile.origin.clone()),
         ]
+    }
+
+    pub(crate) fn validate_ws_url(&self, url: &str) -> Result<()> {
+        let url =
+            reqwest::Url::parse(url).map_err(|_| Error::WebSocket("invalid RTM URL".into()))?;
+        let base = reqwest::Url::parse(&self.base_url)
+            .map_err(|_| Error::WebSocket("invalid API URL".into()))?;
+        if !crate::net_policy::websocket(&url, &base) {
+            return Err(Error::WebSocket(
+                "refusing session for untrusted RTM URL".into(),
+            ));
+        }
+        Ok(())
     }
 
     pub fn profile(&self) -> &ClientProfile {
@@ -175,23 +201,37 @@ impl Client {
     /// GETs a Slack-hosted file with the session headers into `dest`
     /// (written to a temp file first, then renamed). Refuses hosts outside
     /// Slack so the session never leaks, and HTML pages unless `html_ok`
-    /// (Slack answers a broken session with its login page).
+    /// (Slack answers a broken session with its login page). Uses the default
+    /// file cap; stored-file callers pass current settings to download_bounded.
     pub async fn download(&self, url: &str, dest: &std::path::Path, html_ok: bool) -> Result<u64> {
+        let limit = crate::settings::Settings::default()
+            .max_file_bytes
+            .and_then(|n| u64::try_from(n).ok());
+        self.download_bounded(url, dest, html_ok, limit).await
+    }
+
+    /// Stream bound chosen from user settings and untrusted declared metadata.
+    pub async fn download_bounded(
+        &self,
+        url: &str,
+        dest: &std::path::Path,
+        html_ok: bool,
+        limit: Option<u64>,
+    ) -> Result<u64> {
         let parsed =
             reqwest::Url::parse(url).map_err(|_| Error::File("invalid file URL".into()))?;
-        let host = parsed.host_str().unwrap_or_default();
-        let api_host = reqwest::Url::parse(&self.base_url)
-            .ok()
-            .and_then(|u| u.host_str().map(str::to_owned))
-            .unwrap_or_default();
-        if !(host == "slack.com" || host.ends_with(".slack.com") || host == api_host) {
-            return Err(Error::File(format!(
-                "refusing to send the session to {host}"
-            )));
+        let base = reqwest::Url::parse(&self.base_url)
+            .map_err(|_| Error::File("invalid API URL".into()))?;
+        if !(crate::net_policy::slack_file(&parsed)
+            || crate::net_policy::same_origin(&parsed, &base))
+        {
+            return Err(Error::File(
+                "refusing session for untrusted file URL".into(),
+            ));
         }
 
         let mut attempt = 0;
-        let mut resp = loop {
+        let resp = loop {
             let resp = self
                 .http
                 .get(parsed.clone())
@@ -225,20 +265,7 @@ impl Client {
             ));
         }
 
-        let dir = dest
-            .parent()
-            .ok_or_else(|| Error::File("destination has no parent".into()))?;
-        std::fs::create_dir_all(dir)?;
-        let tmp = dest.with_extension("part");
-        let mut out = tokio::fs::File::create(&tmp).await?;
-        let mut written = 0u64;
-        while let Some(chunk) = resp.chunk().await? {
-            tokio::io::AsyncWriteExt::write_all(&mut out, &chunk).await?;
-            written += chunk.len() as u64;
-        }
-        tokio::io::AsyncWriteExt::flush(&mut out).await?;
-        drop(out);
-        std::fs::rename(&tmp, dest)?;
+        let written = crate::files::write_response(resp, dest, limit).await?;
         if let Err(error) = crate::files::quarantine(dest) {
             let _ = std::fs::remove_file(dest);
             return Err(error);

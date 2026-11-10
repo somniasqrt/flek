@@ -1,17 +1,17 @@
 //! RTM websocket against a local fake server.
 
+mod common;
+
 use std::sync::{Arc, Mutex};
 
 use flek_core::api::Client;
 use flek_core::rtm::Connection;
-use flek_core::Secret;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::Message as Frame;
-use wiremock::matchers::path;
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::MockServer;
 
 // The handshake callback's error type is fixed by tungstenite.
 #[allow(clippy::result_large_err)]
@@ -43,16 +43,7 @@ async fn ws_server(frames: Vec<serde_json::Value>) -> (String, Arc<Mutex<Vec<(St
 
 async fn client_for(ws_url: &str) -> (MockServer, Client) {
     let api = MockServer::start().await;
-    Mock::given(path("/rtm.connect"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true, "url": ws_url})))
-        .mount(&api)
-        .await;
-    let client = Client::with_base_url(
-        Secret::new("xoxc-fake"),
-        Secret::new("xoxd-fake"),
-        &api.uri(),
-    )
-    .unwrap();
+    let client = common::websocket_client(&api, ws_url).await;
     (api, client)
 }
 
@@ -93,17 +84,15 @@ mod follow {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use flek_core::api::{AuthTest, Client};
+    use flek_core::api::AuthTest;
     use flek_core::store::{messages, Store};
     use flek_core::sync::follow::{follow, FollowConfig};
     use flek_core::sync::live::{bus, Change, ConnectionState};
-    use flek_core::Secret;
     use futures_util::{SinkExt, StreamExt};
     use serde_json::json;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message as Frame;
-    use wiremock::matchers::path;
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::MockServer;
 
     enum Step {
         Send(serde_json::Value),
@@ -177,18 +166,7 @@ mod follow {
         ])
         .await;
         let api = MockServer::start().await;
-        Mock::given(path("/rtm.connect"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!({"ok": true, "url": ws_url})),
-            )
-            .mount(&api)
-            .await;
-        let client = Client::with_base_url(
-            Secret::new("xoxc-fake"),
-            Secret::new("xoxd-fake"),
-            &api.uri(),
-        )
-        .unwrap();
+        let client = crate::common::websocket_client(&api, &ws_url).await;
         let store = Store::open_in_memory().unwrap();
         store
             .with_conn(|c| {

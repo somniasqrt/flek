@@ -60,8 +60,21 @@ impl Store {
     /// Opens a file store with a caller-selected startup/writer lock wait budget.
     pub fn open_with_busy_timeout(path: &Path, timeout: Duration) -> Result<Self> {
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+            crate::private_fs::dir(dir)?;
         }
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).truncate(false).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match crate::private_fs::database(path) {
+            Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+            result => result?,
+        }
+        options.open(path)?;
+        crate::private_fs::database(path)?;
         let conn = Connection::open(path)?;
         conn.busy_timeout(timeout)?;
         // SQLite can return SQLITE_BUSY immediately while two first-open
@@ -82,7 +95,9 @@ impl Store {
             }
         }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        Self::init(conn, Some(path.to_owned()), timeout)
+        let store = Self::init(conn, Some(path.to_owned()), timeout)?;
+        crate::private_fs::database(path)?;
+        Ok(store)
     }
 
     /// Private in-memory database, for tests.
@@ -129,11 +144,16 @@ impl Store {
         R: Send + 'static,
     {
         let conn = Arc::clone(&self.conn);
+        let path = self.path.clone();
         tokio::task::spawn_blocking(move || {
             let mut guard = conn
                 .lock()
                 .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
-            f(&mut guard)
+            let result = f(&mut guard);
+            if let Some(path) = &path {
+                crate::private_fs::database(path)?;
+            }
+            result
         })
         .await
         .map_err(|e| Error::Store(format!("database task failed: {e}")))?
@@ -145,7 +165,11 @@ impl Store {
             .conn
             .lock()
             .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
-        f(&mut guard)
+        let result = f(&mut guard);
+        if let Some(path) = &self.path {
+            crate::private_fs::database(path)?;
+        }
+        result
     }
 
     /// Runs a read-only `f` on a reader connection on the blocking pool.

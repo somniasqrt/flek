@@ -33,6 +33,9 @@ async fn main() {
         }
         Err(e) => e.exit(),
     };
+    if let Err(error) = flek_core::auth::chromium::cleanup_stale_copies() {
+        std::process::exit(output::report(&anyhow::Error::new(error), cli.global.json));
+    }
     let json_output = cli.global.json;
     if let Err(error) = dispatch::run(cli).await {
         std::process::exit(output::report(&error, json_output));

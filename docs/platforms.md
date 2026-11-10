@@ -143,3 +143,43 @@ core/CLI keep the workspace forbid. Dependencies were already present transitive
 See [Apple's record-scoped removal API](https://developer.apple.com/documentation/webkit/wkwebsitedatastore/removedata(oftypes:for:completionhandler:))
 and [Tauri's window builder API](https://docs.rs/tauri/2.12.5/tauri/struct.WebviewWindowBuilder.html).
 Native store cleanup and persistence need the owner checks in ROADMAP.md.
+
+
+## Private local storage (M9.7)
+
+On Unix (macOS/Linux), core creates app-owned data/cache directories with 0700 and
+repairs existing ones. The DB, its `-wal`/`-shm` files, settings and cached downloads
+are 0600. The DB is precreated and chmodded before SQLite opens it; sidecars are
+chmodded after startup/migrations and writer operations, including checkpoints.
+SQLite can recreate sidecars internally between those checks. The containing 0700
+directory blocks other users throughout that interval, independent of sidecar mode
+or process umask. No process-wide umask changes or unsafe calls are used.
+Only Flek-owned paths are repaired; shared system data/cache parents are untouched.
+Cache repair skips symlinks, while sensitive storage targets reject symlinks.
+
+Windows has no Unix mode equivalent here: permission changes are cfg(unix).
+M7 must apply/verify owner-only ACLs for data, caches, settings and session-copy
+directories. Current Windows safety depends on the user's profile/temp ACLs.
+
+Temporary Chromium copies are RAII TempDirs with prefix `flek-chromium-v1-`,
+created 0700 on Unix with 0600 copied files. Normal success, errors and unwinding
+remove them. Startup cleanup only removes same-owner, non-symlink prefixed
+directories at least 24 hours old. A recent crash copy remains private until a
+later startup; the age threshold reduces interference with another importer.
+It is not a process-liveness lock. Old unprefixed `.tmp*` directories cannot be
+safely distinguished from other applications' files and are not deleted.
+Deletion is logical removal, not secure erasure of disk blocks.
+
+## Public image networking (M9.6)
+
+Public, session-free images (avatars, emoji, workspace icon, link-preview images)
+may come from any HTTPS site on port 443: link previews point at the linked site
+itself, and Gravatar avatars redirect to Slack's CDN. The boundary is the network,
+not the host name: IP-literal hosts must be public, and every name resolves through
+a resolver that hands only checked public IP addresses to reqwest's connector,
+including IPv6/mapped checks. Redirects are followed up to five hops, each target
+re-checked by the same URL policy and resolver. Environment proxies are disabled on
+this client so proxy-side DNS cannot bypass the policy (corporate setups that require
+an HTTP proxy lose these images; cached/fallback presentation remains). The
+conservative IP policy may reject new special-purpose IPv6 allocations until
+reviewed. The OS/network still controls routing and TLS trust.

@@ -110,6 +110,12 @@ impl Settings {
     }
 
     pub fn load(path: &Path) -> Result<Self> {
+        if path.exists() {
+            if let Some(parent) = path.parent() {
+                crate::private_fs::dir(parent)?;
+            }
+            crate::private_fs::mode(path, 0o600)?;
+        }
         let value = match std::fs::read(path) {
             Ok(bytes) => serde_json::from_slice(&bytes)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
@@ -126,8 +132,9 @@ impl Settings {
         let parent = path
             .parent()
             .ok_or_else(|| Error::Store("invalid settings path".into()))?;
-        std::fs::create_dir_all(parent)?;
+        crate::private_fs::dir(parent)?;
         let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+        crate::private_fs::mode(temp.path(), 0o600)?;
         temp.write_all(&serde_json::to_vec_pretty(self)?)?;
         temp.as_file().sync_all()?;
         temp.persist(path).map_err(|e| Error::Io(e.error))?;

@@ -17,17 +17,86 @@ const PBKDF2_SALT: &[u8] = b"saltysalt";
 const PBKDF2_ROUNDS: u32 = 1003;
 const CBC_IV: [u8; 16] = [b' '; 16];
 const HOST_HASH_LEN: usize = 32;
+const TEMP_PREFIX: &str = "flek-chromium-v1-";
+
+fn private_temp() -> Result<tempfile::TempDir> {
+    private_temp_in(&std::env::temp_dir())
+}
+
+fn private_temp_in(root: &Path) -> Result<tempfile::TempDir> {
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(TEMP_PREFIX);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        builder.permissions(fs::Permissions::from_mode(0o700));
+    }
+    let tmp = builder.tempdir_in(root)?;
+    crate::private_fs::dir(tmp.path())?;
+    Ok(tmp)
+}
+
+/// Remove stale crash copies only: our versioned prefix, owned directories,
+/// no symlinks, at least 24h old (do not race another running importer).
+pub fn cleanup_stale_copies() -> Result<()> {
+    cleanup_stale_in(
+        &std::env::temp_dir(),
+        std::time::Duration::from_secs(24 * 60 * 60),
+    )
+}
+
+fn cleanup_stale_in(root: &Path, min_age: std::time::Duration) -> Result<()> {
+    // A private probe gets our effective ownership without unsafe getuid calls.
+    let probe = tempfile::Builder::new()
+        .prefix("flek-cleanup-probe-")
+        .tempdir_in(root)?;
+    #[cfg(unix)]
+    let owner = {
+        use std::os::unix::fs::MetadataExt;
+        fs::metadata(probe.path())?.uid()
+    };
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if !entry.file_name().to_string_lossy().starts_with(TEMP_PREFIX) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(entry.path())?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() {
+            continue;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            if metadata.uid() != owner {
+                continue;
+            }
+        }
+        if metadata
+            .modified()?
+            .elapsed()
+            .is_ok_and(|age| age >= min_age)
+        {
+            fs::remove_dir_all(entry.path())?;
+        }
+    }
+    Ok(())
+}
 
 /// Copies a LevelDB directory (minus its `LOCK`) into a temp dir, so the
 /// running browser's lock does not get in the way.
 pub fn copy_leveldb(src: &Path) -> Result<tempfile::TempDir> {
-    let tmp = tempfile::tempdir()?;
+    copy_leveldb_into(src, private_temp()?)
+}
+
+fn copy_leveldb_into(src: &Path, tmp: tempfile::TempDir) -> Result<tempfile::TempDir> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         if !entry.file_type()?.is_file() || entry.file_name() == "LOCK" {
             continue;
         }
-        fs::copy(entry.path(), tmp.path().join(entry.file_name()))?;
+        let dest = tmp.path().join(entry.file_name());
+        fs::copy(entry.path(), &dest)?;
+        crate::private_fs::mode(&dest, 0o600)?;
     }
     Ok(tmp)
 }
@@ -89,12 +158,21 @@ pub enum StoredCookie {
 /// Reads one cookie from a Chromium `Cookies` SQLite file. The file (plus
 /// any journal) is copied first; the browser may hold it open.
 pub fn read_cookie(cookies_db: &Path, hosts: &[&str], name: &str) -> Result<Option<StoredCookie>> {
-    let tmp = tempfile::tempdir()?;
+    read_cookie_copy(cookies_db, hosts, name, private_temp()?)
+}
+
+fn read_cookie_copy(
+    cookies_db: &Path,
+    hosts: &[&str],
+    name: &str,
+    tmp: tempfile::TempDir,
+) -> Result<Option<StoredCookie>> {
     let file_name = cookies_db
         .file_name()
         .ok_or_else(|| Error::DesktopData("cookie store path has no file name".into()))?;
     let copy = tmp.path().join(file_name);
     fs::copy(cookies_db, &copy)?;
+    crate::private_fs::mode(&copy, 0o600)?;
     for suffix in ["-journal", "-wal"] {
         let mut side = cookies_db.as_os_str().to_owned();
         side.push(suffix);
@@ -102,7 +180,8 @@ pub fn read_cookie(cookies_db: &Path, hosts: &[&str], name: &str) -> Result<Opti
         if side.exists() {
             let mut dst = copy.as_os_str().to_owned();
             dst.push(suffix);
-            fs::copy(side, dst)?;
+            fs::copy(side, &dst)?;
+            crate::private_fs::mode(Path::new(&dst), 0o600)?;
         }
     }
 
@@ -178,6 +257,80 @@ fn strip_host_hash(plain: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_copies_are_raii_on_success_and_errors() {
+        let root = tempfile::tempdir().unwrap();
+        let source = tempfile::tempdir().unwrap();
+        fs::write(source.path().join("LOCK"), "locked").unwrap();
+        fs::write(source.path().join("data.ldb"), "synthetic").unwrap();
+        let copy = copy_leveldb_into(source.path(), private_temp_in(root.path()).unwrap()).unwrap();
+        assert!(!copy.path().join("LOCK").exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(copy.path()).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                fs::metadata(copy.path().join("data.ldb"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        drop(copy);
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+        assert!(copy_leveldb_into(
+            &source.path().join("missing"),
+            private_temp_in(root.path()).unwrap()
+        )
+        .is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+        // A copied file which fails SQLite parsing is removed along with its directory.
+        let invalid = source.path().join("Cookies");
+        fs::write(&invalid, "not SQLite").unwrap();
+        assert!(read_cookie_copy(
+            &invalid,
+            &[".slack.com"],
+            "d",
+            private_temp_in(root.path()).unwrap()
+        )
+        .is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+        assert!(read_cookie_copy(
+            &source.path().join("missing"),
+            &[],
+            "d",
+            private_temp_in(root.path()).unwrap()
+        )
+        .is_err());
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn crash_cleanup_only_removes_own_prefix_and_skips_fresh_or_symlink() {
+        let root = tempfile::tempdir().unwrap();
+        let stale = private_temp_in(root.path()).unwrap().keep();
+        let other = root.path().join("another-app");
+        fs::create_dir(&other).unwrap();
+        cleanup_stale_in(root.path(), std::time::Duration::from_secs(86400)).unwrap();
+        assert!(stale.exists());
+        #[cfg(unix)]
+        {
+            let link = root.path().join(format!("{TEMP_PREFIX}symlink"));
+            std::os::unix::fs::symlink(&other, &link).unwrap();
+            cleanup_stale_in(root.path(), std::time::Duration::ZERO).unwrap();
+            assert!(link.symlink_metadata().is_ok());
+        }
+        #[cfg(not(unix))]
+        cleanup_stale_in(root.path(), std::time::Duration::ZERO).unwrap();
+        assert!(!stale.exists());
+        assert!(other.exists());
+    }
 
     #[test]
     fn decodes_latin1_and_utf16() {

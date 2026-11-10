@@ -80,14 +80,14 @@ async fn custom_emoji_are_listed_resolved_and_fetched_when_used() {
         .expect(1)
         .mount(&server)
         .await;
-    // The emoji CDN is public: no session may reach it.
+    // Imported HTTP/private image URLs must never be contacted.
     for name in ["party_parrot", "gdocs", "squirrel"] {
         Mock::given(path(format!("/emoji/{name}.png")))
             .and(|r: &Request| {
                 !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
             })
             .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
-            .expect(1)
+            .expect(0)
             .mount(&server)
             .await;
     }
@@ -121,9 +121,30 @@ async fn custom_emoji_are_listed_resolved_and_fetched_when_used() {
         .await
         .unwrap();
     assert_eq!(
-        n, 3,
-        "party_parrot and shipit (→ squirrel) from text, gdocs from a reaction"
+        n, 0,
+        "private HTTP images must be refused before any request"
     );
+    assert!(store
+        .with_read(|c| emoji::custom_emoji(c, "T1"))
+        .unwrap()
+        .images
+        .is_empty());
+    assert_eq!(
+        server.received_requests().await.unwrap().len(),
+        1,
+        "only emoji.list is allowed"
+    );
+    // Cache hydration/alias resolution remains independent of network URL policy.
+    let image = cache.path().join("synthetic.png");
+    std::fs::write(&image, b"\x89PNG").unwrap();
+    store
+        .with_conn(|c| {
+            for name in ["party_parrot", "gdocs", "squirrel"] {
+                unfurls::set_image(c, &img(name), image.to_str())?;
+            }
+            Ok(())
+        })
+        .unwrap();
 
     let after = store.with_read(|c| emoji::custom_emoji(c, "T1")).unwrap();
     let hash = |n: &str| unfurls::url_hash(&img(n));

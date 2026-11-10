@@ -73,6 +73,7 @@ pub async fn download_files(
     max_size: Option<i64>,
     mut progress: impl FnMut(usize, usize),
 ) -> Result<FileStats> {
+    files::prepare_cache(cache_dir)?;
     if max_size == Some(0) {
         return Ok(FileStats::default());
     }
@@ -95,7 +96,7 @@ pub async fn download_files(
         if !files::cache_path(cache_dir, &f.id, f.name.as_deref()).is_file() {
             bucket.acquire().await;
         }
-        match files::fetch(client, cache_dir, &f).await {
+        match files::fetch_bounded(client, cache_dir, &f, max_size).await {
             Ok((path, fresh)) => {
                 match (fresh, preview) {
                     (true, true) => stats.previews += 1,
@@ -204,7 +205,7 @@ pub async fn fetch_profile_photo(
     {
         return Ok(Some(hash));
     }
-    let http = public_http(user_agent)?;
+    let http = files::ImageClient::new(user_agent)?;
     let fetched = files::fetch_link_image(&http, None, cache_dir, &url).await;
     let path = fetched
         .as_ref()
@@ -214,14 +215,6 @@ pub async fn fetch_profile_photo(
         .call(move |c| crate::store::unfurls::set_image(c, &url, path.as_deref()))
         .await?;
     fetched.map(|_| Some(hash))
-}
-
-/// A client without the session (no cookie, no token), for public images.
-fn public_http(user_agent: &str) -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .user_agent(user_agent)
-        .timeout(Duration::from_secs(30))
-        .build()?)
 }
 
 async fn fetch_images(
@@ -234,7 +227,8 @@ async fn fetch_images(
     if urls.is_empty() {
         return Ok(0);
     }
-    let http = public_http(&client.profile().user_agent)?;
+    files::prepare_cache(cache_dir)?;
+    let http = files::ImageClient::new(&client.profile().user_agent)?;
     let mut bucket = TokenBucket::for_files();
     let mut fetched = 0;
     for url in urls {

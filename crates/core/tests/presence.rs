@@ -1,4 +1,6 @@
 //! Presence stays local in these tests: fake HTTP, websocket and SQLite only.
+
+mod common;
 mod support;
 use support::field;
 
@@ -370,7 +372,7 @@ async fn websocket_replaces_subscriptions_resubscribes_and_resolves_self_events(
             ("dnd.info",json!({"ok":true,"snooze_enabled":false})),
             ("users.getPresence",json!({"ok":true,"presence":"active","manual_away":false})),
         ] { Mock::given(path(format!("/{endpoint}"))).respond_with(ResponseTemplate::new(200).set_body_json(response)).mount(&server).await; }
-        let client=client(&server);
+        let client=common::websocket_client(&server, &url).await;
         let store=Store::open_in_memory().unwrap();
         let bus=bus(); let mut changes=bus.subscribe();
         let (interest_tx,interest_rx)=tokio::sync::watch::channel(vec!["U1".into(),"UME".into()]);

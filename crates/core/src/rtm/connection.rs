@@ -29,6 +29,7 @@ impl Connection {
     /// `rtm.connect`, then the websocket handshake, then waits for `hello`.
     pub async fn open(client: &Client) -> Result<Self> {
         let url = client.rtm_connect().await?.url;
+        client.validate_ws_url(&url)?;
         let mut req = url.as_str().into_client_request().map_err(ws_err)?;
         for (name, value) in client.ws_headers() {
             let mut v = HeaderValue::from_str(&value)

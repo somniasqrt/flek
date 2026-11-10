@@ -13,20 +13,20 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 async fn previews_show_with_cached_images_only() {
     let server = MockServer::start().await;
     let proxy = format!("{}/proxy", server.uri());
-    // The proxy is public: no session may reach it.
+    // HTTP/private proxy fixtures must never be contacted.
     Mock::given(path("/proxy"))
         .and(query_param("url", "https://site.example/cover.png"))
         .and(|r: &Request| {
             !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
         })
         .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
-        .expect(1)
+        .expect(0)
         .mount(&server)
         .await;
     Mock::given(path("/proxy"))
         .and(query_param("url", "https://site.example/icon.ico"))
         .respond_with(ResponseTemplate::new(200).set_body_raw("<html>", "text/html"))
-        .expect(1)
+        .expect(0)
         .mount(&server)
         .await;
 
@@ -82,7 +82,17 @@ async fn previews_show_with_cached_images_only() {
     let n = download_link_images(&client, &store, cache.path(), &proxy)
         .await
         .unwrap();
-    assert_eq!(n, 1, "the HTML 'icon' is refused");
+    assert_eq!(
+        n, 0,
+        "HTTP/private proxy must be refused before any request"
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+    assert!(shown(&store)[0].image.is_none());
+    let image = cache.path().join("synthetic.png");
+    std::fs::write(&image, b"\x89PNG").unwrap();
+    store
+        .with_conn(|c| unfurls::set_image(c, "https://site.example/cover.png", image.to_str()))
+        .unwrap();
 
     let after = shown(&store);
     let hash = unfurls::url_hash("https://site.example/cover.png");
@@ -98,7 +108,7 @@ async fn previews_show_with_cached_images_only() {
         .unwrap();
     assert_eq!(std::fs::read(cached).unwrap(), b"\x89PNG");
 
-    // Nothing left to try: failures are remembered (expect(1) above).
+    // Nothing left to try: rejected URLs are remembered.
     assert_eq!(
         download_link_images(&client, &store, cache.path(), &proxy)
             .await
@@ -115,7 +125,7 @@ async fn avatars_of_authors_are_cached() {
             !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
         })
         .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
-        .expect(1)
+        .expect(0)
         .mount(&server)
         .await;
 
@@ -162,8 +172,15 @@ async fn avatars_of_authors_are_cached() {
         download_avatars(&client, &store, cache.path(), "T1")
             .await
             .unwrap(),
-        1
+        0
     );
+    assert!(server.received_requests().await.unwrap().is_empty());
+    let image = cache.path().join("synthetic.png");
+    std::fs::write(&image, b"\x89PNG").unwrap();
+    let url = format!("{}/avatars/u1.png", server.uri());
+    store
+        .with_conn(|c| unfurls::set_image(c, &url, image.to_str()))
+        .unwrap();
     let shown = store.with_read(|c| directory::avatars(c, "T1")).unwrap();
     assert_eq!(shown.len(), 1);
     assert_eq!(
@@ -182,19 +199,19 @@ async fn avatars_of_authors_are_cached() {
 }
 
 #[tokio::test]
-async fn profile_photo_is_fetched_on_demand_without_the_session() {
+async fn profile_photo_refuses_private_http_and_uses_existing_cache() {
     let server = MockServer::start().await;
     Mock::given(path("/avatars/u1_512.png"))
         .and(|r: &Request| {
             !r.headers.contains_key("cookie") && !r.headers.contains_key("authorization")
         })
         .respond_with(ResponseTemplate::new(200).set_body_raw(b"\x89PNG".to_vec(), "image/png"))
-        .expect(1)
+        .expect(0)
         .mount(&server)
         .await;
     Mock::given(path("/avatars/u2_192.png"))
         .respond_with(ResponseTemplate::new(404))
-        .expect(2)
+        .expect(0)
         .mount(&server)
         .await;
 
@@ -227,11 +244,17 @@ async fn profile_photo_is_fetched_on_demand_without_the_session() {
     let cache = tempfile::tempdir().unwrap();
     let ua = "Mozilla/5.0 (test)";
 
-    let hash = fetch_profile_photo(ua, &store, cache.path(), "U1")
+    assert!(fetch_profile_photo(ua, &store, cache.path(), "U1")
         .await
+        .is_err());
+    assert!(server.received_requests().await.unwrap().is_empty());
+    let image = cache.path().join("synthetic.png");
+    std::fs::write(&image, b"\x89PNG").unwrap();
+    store
+        .with_conn(|c| unfurls::set_image(c, &big, image.to_str()))
         .unwrap();
-    assert_eq!(hash, Some(unfurls::url_hash(&big)));
-    // Cached now: no second request (expect(1)), and the profile shows it.
+    let hash = Some(unfurls::url_hash(&big));
+    // A cached record needs no network request; the profile shows it.
     let again = fetch_profile_photo(ua, &store, cache.path(), "U1")
         .await
         .unwrap();

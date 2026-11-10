@@ -33,6 +33,15 @@ fn main() {
         .init();
 
     let hidden = std::env::args().any(|a| a == HIDDEN_ARG);
+    if let Err(error) = flek_core::auth::chromium::cleanup_stale_copies() {
+        eprintln!("cannot clean stale Flek session copies: {error}");
+    }
+    if let Err(error) =
+        flek_core::files::default_cache_dir().and_then(|p| flek_core::files::prepare_cache(&p))
+    {
+        eprintln!("cannot protect Flek cache: {error}");
+        return;
+    }
     let store = flek_core::store::default_path()
         .and_then(|p| flek_core::store::Store::open(&p))
         .expect("cannot open the Flek database");
