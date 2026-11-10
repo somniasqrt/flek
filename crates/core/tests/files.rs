@@ -201,6 +201,19 @@ async fn download_retries_after_429() {
         .download(&format!("{}/f/a.txt", server.uri()), &dest, false)
         .await
         .unwrap();
+    #[cfg(target_os = "macos")]
+    {
+        let quarantine = xattr::get(&dest, "com.apple.quarantine")
+            .unwrap()
+            .expect("download must be quarantined");
+        let value = String::from_utf8(quarantine).unwrap();
+        let parts: Vec<_> = value.split(';').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "0081");
+        assert!(u64::from_str_radix(parts[1], 16).unwrap() > 0);
+        assert_eq!(parts[2], "Flek");
+        uuid::Uuid::parse_str(parts[3]).unwrap();
+    }
     assert_eq!(std::fs::read_to_string(dest).unwrap(), "ok");
 }
 
@@ -240,4 +253,123 @@ fn files_of_messages_stored_before_m1_6_are_recovered() {
     assert_eq!(files[0].mimetype.as_deref(), Some("image/png"));
     assert_eq!((files[0].width, files[0].height), (Some(800), Some(600)));
     assert!(files[1].hidden_by_limit);
+}
+
+#[test]
+fn bidi_controls_cannot_disguise_cached_extension() {
+    let root = std::path::Path::new("/cache");
+    assert_eq!(
+        files::cache_path(root, "F1", Some("Розклад\u{202e}fdp.command")),
+        root.join("F1/Розкладfdp.command")
+    );
+}
+
+#[tokio::test]
+async fn stored_paths_outside_cache_are_refused() {
+    let store = store();
+    let cache = tempfile::tempdir().unwrap();
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    let path = outside.path().to_string_lossy().into_owned();
+    store
+        .with_conn(|c| {
+            c.execute(
+                "INSERT INTO files (id, name, local_path) VALUES ('FOUT', 'x.pdf', ?1)",
+                [&path],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    assert!(files::cached_open_target(&store, cache.path(), "FOUT")
+        .await
+        .is_err());
+    assert!(files::stored_cached_path(&store, cache.path(), "FOUT")
+        .await
+        .is_err());
+}
+
+#[test]
+fn file_views_preserve_real_name_and_strip_bidi_for_display() {
+    let store = store();
+    store.with_conn(|c| {
+        c.execute_batch("INSERT INTO messages (conversation_id, ts, text) VALUES ('C1', '1.000000', 'synthetic');
+            INSERT INTO files (id, name, title, mimetype) VALUES ('FMASK', 'x.terminal', 'Розклад.pdf', 'application/pdf');
+            INSERT INTO message_files (conversation_id, ts, file_id) VALUES ('C1', '1.000000', 'FMASK');")?;
+        c.execute("INSERT INTO files (id, name, title, mimetype) VALUES ('FBIDI', ?1, 'title', 'application/pdf')", ["Розклад\u{202e}fdp.command"])?;
+        c.execute_batch("INSERT INTO message_files (conversation_id, ts, file_id) VALUES ('C1', '1.000000', 'FBIDI');")?;
+        Ok(())
+    }).unwrap();
+    let rows = store
+        .with_read(|c| flek_core::store::messages::page(c, "C1", None, 10))
+        .unwrap();
+    let files = serde_json::to_value(&rows[0].files).unwrap();
+    let masked = files
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["id"] == "FMASK")
+        .unwrap();
+    assert_eq!(masked["name"], "x.terminal");
+    assert_eq!(masked["title"], "Розклад.pdf");
+    assert_eq!(masked["can_open"], false);
+    let bidi = files
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["id"] == "FBIDI")
+        .unwrap();
+    assert_eq!(bidi["name"], "Розкладfdp.command");
+    assert_eq!(bidi["can_open"], false);
+    let browser = store
+        .with_read(|c| {
+            flek_core::reads::files(
+                c,
+                "T1",
+                &flek_core::reads::FileFilter {
+                    limit: 10,
+                    ..Default::default()
+                },
+            )
+        })
+        .unwrap();
+    let json = serde_json::to_value(browser).unwrap();
+    assert!(!json.to_string().contains('\u{202e}'));
+    assert!(json
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|f| f["can_open"] == false));
+}
+
+#[cfg(unix)]
+#[test]
+fn cache_containment_resolves_symlinks_and_rejects_directories() {
+    let cache = tempfile::tempdir().unwrap();
+    let outside = tempfile::NamedTempFile::new().unwrap();
+    let link = cache.path().join("link.pdf");
+    std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+    assert!(files::inside_cache(cache.path(), &link).is_none());
+    assert!(files::inside_cache(cache.path(), cache.path()).is_none());
+    let file = cache.path().join("real.pdf");
+    std::fs::write(&file, "synthetic").unwrap();
+    assert_eq!(
+        files::inside_cache(cache.path(), &file),
+        Some(file.canonicalize().unwrap())
+    );
+}
+
+#[tokio::test]
+async fn open_policy_uses_cached_extension_even_with_safe_metadata_name() {
+    let store = store();
+    let cache = tempfile::tempdir().unwrap();
+    let path = cache.path().join("x.pdf.command");
+    std::fs::write(&path, "synthetic").unwrap();
+    store.with_conn(|c| {
+        c.execute("INSERT INTO files (id, name, title, mimetype, local_path) VALUES ('FMASK', 'report.pdf', 'Розклад.pdf', 'application/pdf', ?1)", [path.to_str().unwrap()])?;
+        Ok(())
+    }).unwrap();
+    let (resolved, allowed) = files::cached_open_target(&store, cache.path(), "FMASK")
+        .await
+        .unwrap();
+    assert_eq!(resolved, path.canonicalize().unwrap());
+    assert!(!allowed);
 }

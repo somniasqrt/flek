@@ -114,9 +114,22 @@
 .file-name {
   font-size: 13px;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+.file-image {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.file-safety {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 /* Link previews */

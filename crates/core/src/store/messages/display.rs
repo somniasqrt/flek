@@ -41,6 +41,7 @@ pub struct FileRef {
     pub title: Option<String>,
     pub mimetype: Option<String>,
     pub filetype: Option<String>,
+    pub can_open: bool,
     pub size: Option<i64>,
     /// Cached copy on disk, once downloaded.
     pub local_path: Option<String>,
@@ -54,7 +55,6 @@ pub struct FileRef {
     pub preview_width: Option<i64>,
     pub preview_height: Option<i64>,
 }
-
 /// How many repliers a thread root lists (Slack shows a few avatars).
 pub const MAX_REPLIERS: usize = 4;
 
@@ -304,16 +304,28 @@ fn attach_files(
     )?;
     let mut by_ts: std::collections::HashMap<String, Vec<FileRef>> = Default::default();
     let found = stmt.query_map(params![conversation_id, lo, hi], |r| {
+        let name: Option<String> = r.get(2)?;
+        let mimetype: Option<String> = r.get(4)?;
+        let local_path: Option<String> = r.get(7)?;
+        let path = local_path
+            .as_deref()
+            .or(name.as_deref())
+            .unwrap_or_default();
+        let can_open = crate::files::can_open(std::path::Path::new(path), mimetype.as_deref());
         Ok((
             r.get::<_, String>(0)?,
             FileRef {
                 id: r.get(1)?,
-                name: r.get(2)?,
-                title: r.get(3)?,
-                mimetype: r.get(4)?,
+                name: name.as_deref().map(crate::files::display_name),
+                title: r
+                    .get::<_, Option<String>>(3)?
+                    .as_deref()
+                    .map(crate::files::display_name),
+                mimetype,
+                can_open,
                 filetype: r.get(5)?,
                 size: r.get(6)?,
-                local_path: r.get(7)?,
+                local_path,
                 permalink: r.get(8)?,
                 hidden_by_limit: r.get(9)?,
                 width: r.get(10)?,

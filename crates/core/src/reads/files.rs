@@ -118,15 +118,14 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
             let url: Option<String> = r.get(8)?;
             let thread: Option<String> = r.get::<_, Option<String>>(10)?.filter(|root| root != &ts);
             Ok(File {
-                file: views::File {
-                    id: r.get(0)?,
-                    name: r.get(1)?,
-                    mimetype: r.get(2)?,
-                    size: r.get(3)?,
-                    local_path: r
-                        .get::<_, Option<String>>(4)?
+                file: views::File::new(
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get::<_, Option<String>>(4)?
                         .filter(|p| std::path::Path::new(p).is_file()),
-                },
+                ),
                 permalink: url.map(|u| {
                     let mut link = format!(
                         "{}/archives/{id}/p{}",
@@ -142,7 +141,10 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
                 ts: Some(ts),
                 user_id: r.get(7)?,
                 hidden_by_limit: r.get(9)?,
-                title: r.get(11)?,
+                title: r
+                    .get::<_, Option<String>>(11)?
+                    .as_deref()
+                    .map(crate::files::display_name),
             })
         },
     )?;

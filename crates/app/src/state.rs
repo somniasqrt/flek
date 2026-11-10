@@ -212,7 +212,14 @@ pub async fn boot(app: AppHandle) {
         .map(|ids| !ids.is_empty())
         .unwrap_or(false);
     if stored {
-        match auth::resume_session(&state.creds, Some(&state.store), None).await {
+        match auth::resume_session(
+            &state.creds,
+            Some(&state.store),
+            None,
+            state.settings().desktop_import_on_start,
+        )
+        .await
+        {
             Ok(session) => return start(&app, session),
             Err(e) => {
                 tracing::warn!("stored session unusable: {e}");
@@ -352,6 +359,7 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
     let app = app.clone();
     // The engine gets its own thread and runtime: its future is not `Send`,
     // and sync work never competes with the UI's IPC this way.
+    let recovery_credentials = session.credentials.clone();
     let spawned = std::thread::Builder::new()
         .name("flek-sync".into())
         .spawn(move || {
@@ -390,7 +398,25 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
                             if state.generation.load(std::sync::atomic::Ordering::SeqCst)
                                 == generation
                             {
-                                import_desktop(app.clone()).await;
+                                match auth::recover_rejected(
+                                    &state.creds,
+                                    &recovery_credentials,
+                                    state.settings().desktop_import_on_start,
+                                )
+                                .await
+                                {
+                                    Ok(session) => start(&app, session),
+                                    Err(error) => {
+                                        state.forget_session();
+                                        set_status(
+                                            &app,
+                                            Status::SignIn {
+                                                desktop: desktop_installed(),
+                                                reason: Some(error.to_string()),
+                                            },
+                                        );
+                                    }
+                                }
                             }
                         });
                     }

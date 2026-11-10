@@ -180,6 +180,21 @@ impl CredentialStore {
         Ok(deleted)
     }
 
+    /// Clear every indexed Flek entry and the index. Keep failed ids indexed for retry.
+    pub fn clear(&self) -> Result<()> {
+        let mut failure = None;
+        for id in self.list()? {
+            if let Err(error) = self.delete(&id) {
+                failure.get_or_insert(error);
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        self.backend.delete(INDEX_ACCOUNT)?;
+        Ok(())
+    }
+
     /// Team ids with stored credentials, in the order they were added.
     pub fn list(&self) -> Result<Vec<String>> {
         match self.backend.get(INDEX_ACCOUNT)? {
@@ -229,4 +244,28 @@ pub fn slack_safe_storage_password() -> Result<Secret> {
     Err(Error::Unsupported(
         "reading Slack desktop cookies outside macOS",
     ))
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+    #[test]
+    fn clear_removes_entries_and_the_index_account() {
+        let store = CredentialStore::with_backend(MemoryBackend::default());
+        for team in ["T1", "T2"] {
+            store
+                .save(&Credentials {
+                    team_id: team.into(),
+                    user_id: "UFAKE".into(),
+                    token: Secret::new("xoxc-fake"),
+                    cookie: Secret::new("xoxd-fake"),
+                    origin: None,
+                })
+                .unwrap();
+        }
+        store.clear().unwrap();
+        for account in ["T1", "T2", INDEX_ACCOUNT] {
+            assert!(store.backend.get(account).unwrap().is_none());
+        }
+    }
 }

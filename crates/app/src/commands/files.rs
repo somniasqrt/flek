@@ -6,7 +6,7 @@ use flek_core::store::messages;
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
 
-/// Opens a cached file with its default app. Takes the file id, not a path,
+/// Opens an allowlisted cached file, or reveals other types. Takes the file id,
 /// so the UI cannot open arbitrary files.
 #[tauri::command]
 pub async fn open_file(
@@ -14,13 +14,18 @@ pub async fn open_file(
     state: State<'_, AppState>,
     file_id: String,
 ) -> CmdResult<()> {
-    let path = state
-        .store
-        .read(move |c| messages::file_local_path(c, &file_id))
+    let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    let (path, allowed) = flek_core::files::cached_open_target(&state.store, &cache, &file_id)
         .await
-        .map_err(text)?
-        .ok_or("the file is not downloaded yet")?;
-    app.opener().open_path(path, None::<&str>).map_err(text)
+        .map_err(text)?;
+    flek_core::files::quarantine(&path).map_err(text)?;
+    if allowed {
+        app.opener()
+            .open_path(path.to_string_lossy().into_owned(), None::<&str>)
+            .map_err(text)
+    } else {
+        app.opener().reveal_item_in_dir(path).map_err(text)
+    }
 }
 
 /// Bytes of a cached PDF, for the in-app viewer. Goes over IPC rather than
@@ -139,6 +144,8 @@ pub async fn fetch_file(
         });
     }
     if reveal {
+        let path = crate::files::inside_cache(&path).ok_or("the file is outside the cache")?;
+        flek_core::files::quarantine(&path).map_err(text)?;
         app.opener().reveal_item_in_dir(path).map_err(text)?;
     }
     Ok(())

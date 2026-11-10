@@ -69,3 +69,42 @@ plus Snap and Flatpak); reading the token (LevelDB) works everywhere, the cookie
 - Tray icon, autostart and single-instance verification on a real Windows machine
   (M7.1.4, M7.1.6); Linux tray behaviour varies by desktop environment.
 - UI says "Preferences" everywhere; Windows and Linux may prefer "Settings".
+
+## Download quarantine (M9.1)
+
+On `cfg(target_os = "macos")`, core applies `com.apple.quarantine` with the safe
+`xattr` crate immediately after a completed download's atomic rename. Saved copies
+(`file get --to`) are explicitly marked too, even when copied from an older cache.
+Open/reveal also marks old cached attachments before handing them to the OS. Failure
+to mark a new download/copy fails the operation and removes the new target; an OS
+open/reveal fails instead of proceeding without protection.
+
+The value is `0081;<hex Unix seconds>;Flek;<random UUID v4>`. This is the conventional
+browser-style download marker requested for Flek, with first-open approval pending.
+The download bit is `0x0001`; the user-approved bit `0x0040` is deliberately **clear**
+([Apple's WebKit SPI declarations](https://chromium.googlesource.com/external/github.com/WebKit/webkit/+/283c780414b7c24e4a911c823af665f53a15e8f7/Source/WebCore/PAL/pal/spi/mac/QuarantineSPI.h)).
+The raw attribute format and the additional `0x0080` bit are not a documented public
+Apple API contract. A generated UUID identifies the mark; Flek does not create a
+LaunchServices quarantine database event. No Slack URL, token or cookie goes in it.
+Gatekeeper's actual first-open UI still requires owner verification on macOS.
+
+`LSFileQuarantineEnabled` is deliberately not enabled in the bundle. Apple documents
+it as a default for **all files created by the app**, with path-pattern exclusions
+([Launch Services keys](https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/LaunchServicesKeys.html)).
+Chromium uses this broad flag and then enriches OS quarantine metadata
+([implementation](https://raw.githubusercontent.com/chromium/chromium/main/components/services/quarantine/quarantine_mac.mm)).
+For Flek, the broad default could also mark the SQLite DB, WAL and settings. This is
+an inference from that documented scope, not a verified runtime side effect; a safe
+exclusion policy across configurable paths is more than a one-line bundle change.
+M6.4 therefore retains explicit per-download marking and defers a bundle-wide layer.
+
+`cfg(target_os = "windows")` TODO (M7.1): apply Zone.Identifier ADS to downloads and
+saved copies. Quarantine is currently a no-op on Windows/Linux; the shared launch
+allowlist and canonical cache containment still apply on every OS.
+
+Direct OS opening requires an exact, case-insensitive extension/MIME pair from
+`core::files::can_open`, using the resolved cached filename. Images (raster formats),
+PDF, plain text/Markdown/CSV, the listed office formats and common audio/video are
+allowed. SVG, HTML, scripts, shortcuts, disk images, installers, archives and unknown
+or mismatched types only reveal in the platform file manager. This policy does not
+inspect file contents or guarantee document safety; quarantine is an independent layer.

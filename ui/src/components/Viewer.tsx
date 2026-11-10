@@ -1,3 +1,5 @@
+import FileSafety, { fileActionLabel } from "./FileSafety";
+import { canOpen, fileName } from "../models/file-presentation";
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { t, locale, clock24 } from "../i18n/index";
 import { api, fileUrl, tsDate, type FileRef } from "../api";
@@ -18,7 +20,7 @@ const isPdf = (f: FileRef) =>
 const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/");
 
 /// Whether the viewer can show `f` (it has to be downloaded).
-export const canView = (f: FileRef) => !!f.local_path && (isImage(f) || isPdf(f));
+export const canView = (f: FileRef) => !!f.local_path && canOpen(f) && (isImage(f) || isPdf(f));
 
 export const isViewing = () => viewing() !== null;
 export const openViewer = (file: FileRef, from?: Sender) => setViewing({ file, from });
@@ -61,10 +63,11 @@ function Overlay(props: { v: Viewing }) {
               <Show when={when()}>{(w) => <span class="muted">{w()}</span>}</Show>
             </div>
             <div class="viewer-name">{name(f)}</div>
+            <FileSafety file={f} />
           </div>
           <button
             class="viewer-btn"
-            title={t("Open in default app")}
+            title={fileActionLabel(f)}
             onClick={() => api.openFile(f.id).catch(() => {})}
           >
             <svg viewBox="0 0 20 20" aria-hidden="true">
@@ -199,7 +202,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
             <p>{t("Can't show this PDF here.")}</p>
             <p class="muted">{failed()}</p>
             <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
-              {t("Open in default app")}
+              {fileActionLabel(props.file)}
             </button>
           </div>
         </Show>
@@ -235,4 +238,4 @@ async function draw(
   await page.render({ canvas, viewport }).promise;
 }
 
-const name = (f: FileRef) => f.title || f.name || t("file");
+const name = (f: FileRef) => fileName(f, t("file"));

@@ -104,7 +104,7 @@ fn complete_views_are_stable_and_resolved_from_db() {
             "text":"Hi <@U1> <#C1|old> <https://example.test|site> &amp; &lt;literal&gt; &#33;",
             "text_resolved":"Hi @Ali #general site (https://example.test) & <literal> !",
             "edited":true,"deleted":false,"hidden_by_limit":false,
-            "files":[{"id":"F1","name":"note.txt","mimetype":"text/plain","size":12,"local_path":"/tmp/fake/note.txt"}],
+            "files":[{"id":"F1","name":"note.txt","mimetype":"text/plain","size":12,"local_path":"/tmp/fake/note.txt","can_open":true}],
             "reactions":[{"name":"wave","count":2,"users":["U1","U2"]}],
             "permalink":"https://fake.slack.com/archives/C1/p1700000000123456"
         }));

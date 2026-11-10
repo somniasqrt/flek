@@ -239,6 +239,10 @@ impl Client {
         tokio::io::AsyncWriteExt::flush(&mut out).await?;
         drop(out);
         std::fs::rename(&tmp, dest)?;
+        if let Err(error) = crate::files::quarantine(dest) {
+            let _ = std::fs::remove_file(dest);
+            return Err(error);
+        }
         Ok(written)
     }
 }

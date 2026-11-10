@@ -244,9 +244,7 @@ pub async fn run(cmd: ReadCommand, creds: &CredentialStore, g: &Global) -> Resul
                     flek_core::files::fetch_stored(&session.client()?, &db, &cache, &id).await?
                 };
             let output = if let Some(to) = to {
-                if to != path {
-                    std::fs::copy(&path, &to)?;
-                }
+                flek_core::files::save_copy(&path, &to)?;
                 to
             } else {
                 path

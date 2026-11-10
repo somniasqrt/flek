@@ -58,7 +58,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `auth/origin.rs` — Who issued a session (ADR 0001). Stored next to the credentials, so every
 - `auth/webview.rs` — The system webview Flek signs in with (ADR 0001, webview login).
 - `error.rs` — Error type shared by the whole core.
-- `files/mod.rs` — Authenticated stored-file cache, sanitization, public proxy images and previews.
+- `files/mod.rs` — Authenticated stored-file cache, sanitization, public proxy images and previews. `files/safety.rs` owns the shared open allowlist, canonical containment, bidi stripping, quarantine and protected saved copies.
 - `files/storage.rs` — Offline storage inspection and cache maintenance.
 - `lib.rs` — Public library module surface; no app dependencies.
 - `rail.rs` — Local rail views. No network or UI dependencies.
@@ -172,7 +172,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `components/EmojiCategoryIcon.tsx` — Category SVG paths.
 - `components/EmojiPicker.tsx` — Category/search/frequency/tone selection.
 - `components/EmojiView.tsx` — Custom/standard emoji rendering and cached custom catalog.
-- `components/Files.tsx` — Message attachments and cached previews.
+- `components/Files.tsx` — Message attachments and cached previews. `components/FileSafety.tsx` presents core launch decisions, warnings and platform file-manager labels.
 - `components/MessageMenu.tsx` — Message actions and reaction picker.
 - `components/MessageRow.tsx` — Author grouping, text, reactions, files and thread summary.
 - `components/PresenceIndicator.tsx` — Visual active/away/DND/unknown indicator.
@@ -198,6 +198,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `models/emoji-catalog.json` — Generated emojibase catalog; regenerate with scripts/generate-emoji-catalog.mjs.
 - `models/emoji-picker-data.ts` — Catalog/category/search/frequency/tone helpers; convenience preferences use localStorage.
 - `models/emoji.ts` — Unicode emoji name and skin-tone lookup.
+- `models/file-presentation.ts` — Real filenames without bidi controls and fail-closed presentation of core launch eligibility.
 - `models/links.ts` — Link kinds and short display labels.
 - `models/mrkdwn.ts` — Pure Slack text parsing into safe render nodes.
 - `models/presence.ts` — Presence/DND/status expiry and calendar arithmetic.
@@ -225,7 +226,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `styles/chrome-search.css` — Unmodified chrome/search rules, loaded in original cascade order.
 - `styles/composer.css` — Unmodified composer rules, loaded in original cascade order.
 - `styles/file-browser.css` — Unmodified file/browser rules, loaded in original cascade order.
-- `styles/files-unfurls.css` — Unmodified files/unfurls rules, loaded in original cascade order.
+- `styles/files-unfurls.css` — Attachments, filename wrapping, safety warnings and unfurls, loaded in original cascade order.
 - `styles/layout.css` — Unmodified layout rules, loaded in original cascade order.
 - `styles/menus.css` — Unmodified menus rules, loaded in original cascade order.
 - `styles/messages.css` — Unmodified messages rules, loaded in original cascade order.
@@ -238,7 +239,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `styles/rail-views.css` — Unmodified rail/views rules, loaded in original cascade order.
 - `styles/reactions-thread.css` — Unmodified reactions/thread rules, loaded in original cascade order.
 - `styles/timeline.css` — Unmodified timeline rules, loaded in original cascade order.
-- `styles/viewer.css` — Unmodified viewer rules, loaded in original cascade order.
+- `styles/viewer.css` — Viewer overlay and full filenames, loaded in original cascade order.
 - `styles.css` — Ordered CSS import entry; retains the layout rule comment.
 - `views/ActivityView.tsx` — Local activity tabs, paging, unread filters and message jumps.
 - `views/ChannelBrowser.tsx` — Cached channel directory, filtering, previews and explicit joins.
@@ -315,11 +316,16 @@ Migration 0007 owns counters and uses NULL-safe IS comparisons. Unread means und
 - Undocumented calls live only in api/internal.rs, with non-auth fallback; see api-notes.md and tests/directory.rs / engine.rs. New internal calls need an explicit feature/capability check; no unchecked prefs writes.
 - Normal transport is paced HTTP plus websocket, respecting Retry-After: tests/api.rs::retries_after_http_429, tests/backfill.rs::limiter_spaces_requests and tests/rtm.rs.
 
-M9 review-closed invariants to preserve (open M9 findings remain unfixed):
+M9 invariants to preserve (findings outside M9.1/M9.2 remain open):
 - Text/names/unfurls are text nodes; rich drafts are sanitized and paste is plain text. models/unfurl-text.test.ts, models/rich-compose.test.ts and i18n.test.ts cover pure pieces; DOM/paste sanitization still needs review.
 - javascript:/file: links never reach the opener: commands/files.rs::open_url permits http/https/mailto; models/rich-compose.test.ts tests editor protocols. Native opener gate currently has no dedicated unit test.
 - SQL values use bound parameters; dynamic fragments contain internal expressions only. Agent read/search fixture suites cover quotes/filters; parameter discipline also requires review.
-- File ids/names cannot traverse out of cache: tests/files.rs::cache_paths_are_sanitized; files.rs::inside_cache canonicalizes scheme/PDF reads. Open/reveal hardening remains M9.1.
+- Downloaded files receive macOS quarantine after atomic rename; saved copies are explicitly marked. OS actions also protect old cache hits and fail closed on marking errors. tests/files.rs::download_retries_after_429 and files::safety::tests::save_copy_adds_quarantine_even_when_source_has_none guard the attributes; see platforms.md for flags and Windows work.
+- Direct OS open requires the core extension/MIME allowlist using the resolved cached filename. Other types reveal only, with en/uk warnings. files::safety::tests::exact_extension_and_mime_must_agree and tests/files.rs::open_policy_uses_cached_extension_even_with_safe_metadata_name guard the policy; UI consumes core's can_open flag.
+- Every DB path used for open/reveal, scheme or PDF reads must canonicalize to a regular file inside the cache. tests/files.rs::stored_paths_outside_cache_are_refused and cache_containment_resolves_symlinks_and_rejects_directories guard escape rejection. The CLI uses the same core cache lookup.
+- Display the real filename with its extension, never replace it with a sender title or truncate its suffix. Strip bidi controls from display and disk names. tests/files.rs::bidi_controls_cannot_disguise_cached_extension, file_views_preserve_real_name_and_strip_bidi_for_display and UI models/file-presentation.test.ts guard this.
+- Desktop import stores only the selected/first validated team. Sign-out clears every indexed Flek credential plus _teams and persists desktop_import_on_start=false. auth::security_tests and auth::sign_out_tests guard selection, cleanup and signed-out boot resolution with MemoryBackend.
+- Automatic recovery requires desktop_import_on_start=true, a recorded Desktop origin and the same imported team id (including validated identity). Unknown origins stay unknown. Both boot and engine recovery use core's policy. Rejected credentials are deleted before recovery; invalid_auth/token_revoked/account_inactive cannot survive failed recovery. auth::security_tests guard each branch and secret-free errors.
 - Secret Debug/Display and errors redact credentials: secret::tests, tests/secret.rs and CLI output::tests::credential_shaped_error_text_is_redacted. Never serialize Secret to logs/files/fixtures.
 - Sign-in web content has no IPC: capabilities/main.json grants only main; main.rs registers commands through app manifest/build.rs. Enforced by Tauri configuration, no browser test in this pass.
 - UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. tests/unfurls.rs guards proxy/cache parsing; full CSP/navigation needs review (open M9.4).

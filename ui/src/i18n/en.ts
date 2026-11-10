@@ -1,4 +1,5 @@
 export const en = {
+  "This file type can run code. Flek doesn't open it directly.": "This file type can run code. Flek doesn't open it directly.",
   "Refresh channels": "Refresh channels",
   "Create a channel": "Create a channel",
   "Browse channels": "Browse channels",

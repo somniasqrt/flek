@@ -108,10 +108,6 @@ fn sniff_image(b: &[u8]) -> Option<&'static str> {
 
 /// `path` resolved, if it lies inside the download cache.
 pub(crate) fn inside_cache(path: &Path) -> Option<PathBuf> {
-    let cache = flek_core::files::default_cache_dir()
-        .ok()?
-        .canonicalize()
-        .ok()?;
-    let path = path.canonicalize().ok()?;
-    path.starts_with(&cache).then_some(path)
+    let cache = flek_core::files::default_cache_dir().ok()?;
+    flek_core::files::inside_cache(&cache, path)
 }

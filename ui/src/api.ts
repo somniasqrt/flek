@@ -63,6 +63,7 @@ export type Conversation = {
 };
 
 export type FileRef = {
+  can_open?: boolean;
   id: string;
   name: string | null;
   title: string | null;
@@ -218,6 +219,7 @@ export type ActivityPage = {
 };
 
 export type StoredFile = {
+  can_open?: boolean;
   title: string | null;
   id: string;
   name: string | null;

@@ -1,3 +1,5 @@
+import FileSafety, { fileActionLabel } from "../components/FileSafety";
+import { fileName } from "../models/file-presentation";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { t, errorMessage, locale } from "../i18n/index";
 import { api, fileUrl, tsDate, type Conversation, type StoredFile } from "../api";
@@ -167,19 +169,20 @@ export default function FileBrowser(props: {
               </span>
               <div class="browser-file-text">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
-                  {f.title ?? f.name ?? t("Untitled file")}
+                  {fileName(f, t("Untitled file"))}
                 </button>
                 <p class="muted">
                   {people()[f.user_id ?? ""] ?? t("Unknown")} · {where(f)} ·{" "}
                   {f.ts ? tsDate(f.ts).toLocaleDateString(locale()) : ""}
                 </p>
+                <FileSafety file={f} />
                 <Show when={f.hidden_by_limit}>
                   <p class="muted">{t("Hidden by Slack's 90-day limit")}</p>
                 </Show>
               </div>
               <div class="browser-file-actions">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
-                  {t("Open")}
+                  {fileActionLabel(f)}
                 </button>
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "download")}>
                   {t("Download")}

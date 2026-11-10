@@ -236,6 +236,7 @@ export const storedFiles = (): StoredFile[] =>
       name: f.name,
       mimetype: f.mimetype,
       size: f.size,
+      can_open: f.can_open,
       local_path: f.local_path,
       conversation_id: "C1",
       ts: m.ts,

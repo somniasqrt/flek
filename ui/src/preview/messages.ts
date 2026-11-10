@@ -64,6 +64,7 @@ export const file = (f: Partial<FileRef>): FileRef => ({
   mimetype: null,
   filetype: null,
   size: null,
+  can_open: false,
   local_path: null,
   permalink: "https://example.com/f",
   hidden_by_limit: false,
@@ -139,6 +140,7 @@ export const messages: Message[] = [
         id: "F1",
         name: "calendar.png",
         mimetype: "image/png",
+        can_open: true,
         local_path: "/tmp/x.png",
         width: 1200,
         height: 800,
@@ -149,6 +151,7 @@ export const messages: Message[] = [
         mimetype: "application/pdf",
         filetype: "pdf",
         size: 2_400_000,
+        can_open: true,
         local_path: "/tmp/l.pdf",
         preview_path: "/tmp/p.png",
         preview_width: 910,
@@ -164,6 +167,7 @@ export const messages: Message[] = [
         mimetype: "application/pdf",
         filetype: "pdf",
         size: 300_000,
+        can_open: true,
         local_path: "/tmp/v.pdf",
         preview_path: "/tmp/v.png",
         preview_width: 910,
@@ -178,6 +182,7 @@ export const messages: Message[] = [
         name: "KM-53 11-30.pdf",
         mimetype: "application/pdf",
         filetype: "pdf",
+        can_open: true,
         local_path: "/tmp/a.pdf",
         preview_path: "/tmp/a.png",
       }),
@@ -186,6 +191,7 @@ export const messages: Message[] = [
         name: "KM-51 11-30.pdf",
         mimetype: "application/pdf",
         filetype: "pdf",
+        can_open: true,
         local_path: "/tmp/b.pdf",
         preview_path: "/tmp/b.png",
       }),
@@ -268,6 +274,11 @@ export const messages: Message[] = [
     ],
   }),
 ];
+
+// Synthetic security fixture: no executable contents or real cache path.
+messages.push(msg(1762500050, "U2", "File safety preview", {
+  files: [file({ id: "FSECURITY", name: "x.terminal", title: "Розклад.pdf", mimetype: "application/pdf", local_path: "/synthetic/x.terminal", can_open: false })],
+}));
 
 // Real-shaped received blocks paired with their mrkdwn fallback for regression QA.
 const receivedText =

@@ -87,6 +87,7 @@ for integrations that request them explicitly.
 | `mimetype` | string or null |
 | `size` | integer or null, bytes |
 | `local_path` | string or null, cached file path |
+| `can_open` | boolean, core extension/MIME launch policy; OS opening rechecks the resolved cache path |
 
 | Reaction field | Type |
 |---|---|
@@ -331,7 +332,9 @@ appear once per stored share; `file get` chooses the newest share in the team.
 `local_path` is null when no cache path is recorded. `file get` checks the file
 still exists, downloads through core into the standard cache only when needed,
 and stores the cache path. `--to` copies to the destination; `file.local_path`
-continues to identify the cache. Hidden files fail with `not_found` and an
+continues to identify the cache. DB paths outside the canonical cache are refused;
+on macOS new downloads and saved copies receive quarantine protection. Names have
+bidi formatting controls removed for display. Hidden files fail with `not_found` and an
 explanation; files without a downloadable stored URL fail before session access.
 Type groups are `image`, `pdf`, `video`, `audio`, `doc` (text/office documents),
 `other`; MIME prefixes such as `image/` or `application/vnd.` also work.

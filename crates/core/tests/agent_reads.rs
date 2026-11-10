@@ -351,6 +351,8 @@ async fn cache_reconciliation_and_hidden_files_need_no_session() {
     let path = flek_core::files::cache_path(temp.path(), "FFAKE", Some("photo.png"));
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, "fake image").unwrap();
+    // Cache lookups return the resolved path (/var is a symlink on macOS).
+    let path = path.canonicalize().unwrap();
     assert_eq!(
         flek_core::files::stored_cached_path(&db, temp.path(), "FFAKE")
             .await

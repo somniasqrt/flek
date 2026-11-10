@@ -1,3 +1,5 @@
+import FileSafety from "./FileSafety";
+import { fileName } from "../models/file-presentation";
 import { For, Show } from "solid-js";
 import { t } from "../i18n/index";
 import { settings } from "../stores/settings";
@@ -5,7 +7,7 @@ import { api, fileUrl, type FileRef } from "../api";
 import { canView, openViewer, type Sender } from "./Viewer";
 
 // Files of a message: cached images inline, everything else as a card.
-// Images and PDFs open in the in-app viewer, other files in their default app.
+// Images and PDFs use the viewer; core decides whether other types open or reveal.
 
 const MAX_W = 480;
 const MAX_H = 360;
@@ -58,14 +60,18 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
     return { width: `${Math.round(w * k)}px`, "aspect-ratio": `${w} / ${h}` };
   };
   return (
-    <button
-      class="image"
-      style={size()}
-      aria-label={name(props.f)}
-      onClick={() => props.onOpen(props.f)}
-    >
-      <img src={props.src} alt={name(props.f)} loading="lazy" />
-    </button>
+    <div class="file-image">
+      <button
+        class="image"
+        style={size()}
+        aria-label={name(props.f)}
+        onClick={() => props.onOpen(props.f)}
+      >
+        <img src={props.src} alt={name(props.f)} loading="lazy" />
+      </button>
+      <span class="file-name">{name(props.f)}</span>
+      <FileSafety file={props.f} />
+    </div>
   );
 }
 
@@ -88,6 +94,7 @@ function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => voi
         </span>
         <span class="file-text">
           <span class="file-name">{name(f)}</span>
+          <FileSafety file={f} />
           <span class="muted">
             {f.hidden_by_limit
               ? t("Hidden by Slack's Free plan")
@@ -107,7 +114,7 @@ function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => voi
   );
 }
 
-const name = (f: FileRef) => f.title || f.name || t("file");
+const name = (f: FileRef) => fileName(f, t("file"));
 
 function kind(f: FileRef): string {
   const m = f.mimetype ?? "";

@@ -323,12 +323,16 @@ fn agent_read_json_and_human_contracts_without_credentials() {
     assert_eq!(files["files"][0]["id"], "F1");
     assert_eq!(files["files"][0]["conversation_id"], "C1");
     let dest = dir.path().join("copy.txt");
-    let f = success(
-        &path,
-        &["file", "get", "F1", "--to", dest.to_str().unwrap()],
-    );
-    assert_eq!(f["file"]["id"], "F1");
-    assert_eq!(std::fs::read_to_string(dest).unwrap(), "fake cached data");
+    // This fixture deliberately records a file outside Flek's cache. The CLI
+    // must refuse it before resolving credentials or copying arbitrary DB paths.
+    let refused = command(&path)
+        .args(["file", "get", "F1", "--to", dest.to_str().unwrap()])
+        .assert()
+        .failure()
+        .get_output()
+        .clone();
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("outside the cache"));
+    assert!(!dest.exists());
     let p = success(&path, &["history", "C1", "--limit", "1"]);
     let cursor = p["next_cursor"].as_str().unwrap();
     assert_eq!(
@@ -352,6 +356,15 @@ fn agent_read_json_and_human_contracts_without_credentials() {
         ],
     );
     assert_eq!(p["messages"][1]["target"], true);
+    let refused_human = Command::new(assert_cmd::cargo::cargo_bin!("flek"))
+        .arg("--db")
+        .arg(&path)
+        .args(["file", "get", "F1"])
+        .assert()
+        .failure()
+        .get_output()
+        .clone();
+    assert!(String::from_utf8_lossy(&refused_human.stderr).contains("outside the cache"));
     for args in [
         vec!["unread"],
         vec!["users"],
@@ -361,7 +374,6 @@ fn agent_read_json_and_human_contracts_without_credentials() {
         vec!["message", "C1", "1700000001.000001"],
         vec!["mentions", "--since", "2020-01-01"],
         vec!["files"],
-        vec!["file", "get", "F1"],
         vec!["history", "C1"],
     ] {
         let result = Command::new(assert_cmd::cargo::cargo_bin!("flek"))

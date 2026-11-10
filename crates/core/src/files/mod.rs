@@ -2,6 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
+mod safety;
+pub use safety::{can_open, display_name, inside_cache, quarantine, save_copy};
+
 use crate::api::Client;
 use crate::store::files::PendingDownload;
 use crate::{Error, Result};
@@ -40,7 +43,7 @@ fn id_component(id: &str) -> String {
 }
 
 fn sanitize(name: &str) -> String {
-    let cleaned: String = name
+    let cleaned: String = display_name(name)
         .chars()
         .map(|c| {
             if matches!(c, '/' | '\\' | '\0' | ':') || c.is_control() {
@@ -157,17 +160,42 @@ pub async fn stored_cached_path(
         })
         .await?;
     if let Some(path) = recorded.map(PathBuf::from).filter(|p| p.is_file()) {
-        return Ok(Some(path));
+        return inside_cache(cache_dir, &path)
+            .map(Some)
+            .ok_or_else(|| Error::File("the file is outside the cache".into()));
     }
     let path = cache_path(cache_dir, id, name.as_deref());
     if !path.is_file() {
         return Ok(None);
     }
+    let path = inside_cache(cache_dir, &path)
+        .ok_or_else(|| Error::File("the file is outside the cache".into()))?;
     let (file_id, local_path) = (id.to_owned(), path.to_string_lossy().into_owned());
     store
         .call(move |c| crate::store::files::set_local_path(c, &file_id, &local_path))
         .await?;
     Ok(Some(path))
+}
+
+/// Resolve a cached attachment for an OS action. DB paths are untrusted and the
+/// launch decision uses the resolved file's extension, never its display title.
+pub async fn cached_open_target(
+    store: &crate::store::Store,
+    cache_dir: &Path,
+    id: &str,
+) -> Result<(PathBuf, bool)> {
+    let id = id.to_owned();
+    let file = store
+        .read(move |c| crate::store::messages::cached_file(c, &id))
+        .await?
+        .ok_or_else(|| Error::File("unknown file".into()))?;
+    let path = file
+        .local_path
+        .ok_or_else(|| Error::File("the file is not downloaded yet".into()))?;
+    let path = inside_cache(cache_dir, Path::new(&path))
+        .ok_or_else(|| Error::File("the file is outside the cache".into()))?;
+    let allowed = can_open(&path, file.mimetype.as_deref());
+    Ok((path, allowed))
 }
 
 /// Download one stored file and persist the cache path before returning it.
@@ -182,6 +210,8 @@ pub async fn fetch_stored(
         .read(move |c| crate::reads::pending_file(c, &file_id))
         .await?;
     let (path, _) = fetch(client, cache_dir, &pending).await?;
+    let path = inside_cache(cache_dir, &path)
+        .ok_or_else(|| Error::File("the file is outside the cache".into()))?;
     let (file_id, local_path) = (id.to_owned(), path.to_string_lossy().into_owned());
     store
         .call(move |c| crate::store::files::set_local_path(c, &file_id, &local_path))

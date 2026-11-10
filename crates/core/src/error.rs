@@ -88,7 +88,7 @@ impl Error {
 
     /// The stored session is no longer accepted by Slack.
     pub fn is_auth_error(&self) -> bool {
-        matches!(self, Error::Slack { code, .. } if code == "invalid_auth" || code == "token_revoked" || code == "not_authed")
+        matches!(self, Error::Slack { code, .. } if code == "invalid_auth" || code == "token_revoked" || code == "not_authed" || code == "account_inactive")
     }
 }
 

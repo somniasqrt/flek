@@ -13,6 +13,31 @@ pub struct File {
     pub mimetype: Option<String>,
     pub size: Option<i64>,
     pub local_path: Option<String>,
+    pub can_open: bool,
+}
+
+impl File {
+    pub(crate) fn new(
+        id: String,
+        name: Option<String>,
+        mimetype: Option<String>,
+        size: Option<i64>,
+        local_path: Option<String>,
+    ) -> Self {
+        let path = local_path
+            .as_deref()
+            .or(name.as_deref())
+            .unwrap_or_default();
+        let can_open = crate::files::can_open(std::path::Path::new(path), mimetype.as_deref());
+        Self {
+            id,
+            name: name.as_deref().map(crate::files::display_name),
+            mimetype,
+            size,
+            local_path,
+            can_open,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,13 +148,13 @@ pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Mess
     while let Some(r) = cursor.next()? {
         let key = (r.get::<_, String>(0)?, r.get::<_, String>(1)?);
         if let Some(&i) = positions.get(&key) {
-            rows[i].files.push(File {
-                id: r.get(2)?,
-                name: r.get(3)?,
-                mimetype: r.get(4)?,
-                size: r.get(5)?,
-                local_path: r.get(6)?,
-            });
+            rows[i].files.push(File::new(
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+            ));
         }
     }
     let mut stmt = conn.prepare(

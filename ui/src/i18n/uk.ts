@@ -4,6 +4,7 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "This file type can run code. Flek doesn't open it directly.": "Цей тип файлу може виконувати код. Flek не відкриває його напряму.",
   "Refresh channels": "Оновити канали",
   "Create a channel": "Створити канал",
   "Browse channels": "Переглянути канали",
