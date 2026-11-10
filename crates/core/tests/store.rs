@@ -77,7 +77,7 @@ fn reactions_cascade_with_messages() {
                 "INSERT INTO teams (id, name) VALUES ('T1', 'Team');
                  INSERT INTO conversations (id, team_id, kind, name) VALUES ('C1', 'T1', 'public_channel', 'general');
                  INSERT INTO messages (conversation_id, ts, text) VALUES ('C1', '1700000000.000100', 'hi');
-                 INSERT INTO reactions VALUES ('C1', '1700000000.000100', 'wave', 'U1');",
+                 INSERT INTO reactions (conversation_id,ts,name,user_id) VALUES ('C1', '1700000000.000100', 'wave', 'U1');",
             )?;
             c.execute("DELETE FROM messages WHERE conversation_id = ?1", params!["C1"])?;
             let n: i64 = c.query_row("SELECT COUNT(*) FROM reactions", [], |r| r.get(0))?;

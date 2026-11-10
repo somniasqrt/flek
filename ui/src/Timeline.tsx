@@ -3,6 +3,7 @@ import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 import Avatar from "./Avatar";
 import Composer from "./Composer";
+import DmIntro from "./DmIntro";
 import CustomStatus from "./CustomStatus";
 import { Hash, Lock } from "./icons";
 import MessageRow from "./MessageRow";
@@ -21,6 +22,8 @@ const REVEAL_PAGES = 20;
 
 export default function Timeline(props: {
   conversation: Conversation;
+  me: string;
+  members: string[];
   change: Change | null;
   /// Root ts of the thread open in the side panel.
   thread: string | null;
@@ -79,7 +82,11 @@ export default function Timeline(props: {
     const id = props.conversation.id;
     const oldest = t.thread_ts && t.thread_ts < t.ts ? t.thread_ts : t.ts;
     setLoading(true);
-    for (let i = 0; i < REVEAL_PAGES && !exhausted() && rows.length > 0 && rows[0].ts > oldest; i++) {
+    for (
+      let i = 0;
+      i < REVEAL_PAGES && !exhausted() && rows.length > 0 && rows[0].ts > oldest;
+      i++
+    ) {
       const page = await api.messages(id, rows[0].ts, REVEAL_PAGE);
       if (gen !== generation) return;
       show([...page, ...current()]);
@@ -215,6 +222,7 @@ export default function Timeline(props: {
             )}
           </Show>
           {props.conversation.label}
+          {props.conversation.dm_user_id === props.me ? " (you)" : ""}
           <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
             {(id) => <CustomStatus status={statuses()[id()]} text />}
           </Show>
@@ -224,40 +232,48 @@ export default function Timeline(props: {
         </Show>
       </header>
       <div class="scroll-area">
-      <div class="scroller" ref={scroller} onScroll={onScroll}>
-        <Show when={exhausted() && rows.length > 0}>
-          <div class="start muted">Start of what Flek has for this conversation</div>
-        </Show>
-        <Show when={!loading() && rows.length === 0}>
-          <div class="start muted">No messages yet. They appear here as they sync.</div>
-        </Show>
-        <For each={days()}>
-          {(key) => {
-            const items = () => byDay().get(key) ?? [];
-            return (
-              // Each day is its own section, so its sticky label only sticks
-              // while that day is on screen (like Slack).
-              <section class="day-section">
-                <div class="day">
-                  <span>{dayLabel(items()[0]?.ts ?? "0")}</span>
-                </div>
-                <For each={items()}>
-                  {(m, i) => (
-                    <MessageRow
-                      m={m}
-                      conversationId={props.conversation.id}
-                      prev={items()[i() - 1]}
-                      onThread={props.onThread}
-                      active={props.thread === m.ts}
-                      flash={flash() === m.ts}
-                    />
-                  )}
-                </For>
-              </section>
-            );
-          }}
-        </For>
-      </div>
+        <div class="scroller" ref={scroller} onScroll={onScroll}>
+          <Show
+            when={
+              exhausted() &&
+              (props.conversation.kind === "im" || props.conversation.kind === "mpim")
+            }
+          >
+            <DmIntro conversation={props.conversation} me={props.me} members={props.members} />
+          </Show>
+          <Show when={exhausted() && rows.length > 0 && isChannel(props.conversation)}>
+            <div class="start muted">Start of what Flek has for this conversation</div>
+          </Show>
+          <Show when={!loading() && rows.length === 0}>
+            <div class="start muted">No messages yet. They appear here as they sync.</div>
+          </Show>
+          <For each={days()}>
+            {(key) => {
+              const items = () => byDay().get(key) ?? [];
+              return (
+                // Each day is its own section, so its sticky label only sticks
+                // while that day is on screen (like Slack).
+                <section class="day-section">
+                  <div class="day">
+                    <span>{dayLabel(items()[0]?.ts ?? "0")}</span>
+                  </div>
+                  <For each={items()}>
+                    {(m, i) => (
+                      <MessageRow
+                        m={m}
+                        conversationId={props.conversation.id}
+                        prev={items()[i() - 1]}
+                        onThread={props.onThread}
+                        active={props.thread === m.ts}
+                        flash={flash() === m.ts}
+                      />
+                    )}
+                  </For>
+                </section>
+              );
+            }}
+          </For>
+        </div>
       </div>
       <Composer
         conversationId={props.conversation.id}

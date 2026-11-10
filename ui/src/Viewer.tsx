@@ -17,7 +17,7 @@ const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/");
 
 /// Whether the viewer can show `f` (it has to be downloaded).
 export const canView = (f: FileRef) =>
-  !f.hidden_by_limit && !!f.local_path && (isImage(f) || isPdf(f));
+  !!f.local_path && (isImage(f) || isPdf(f));
 
 export const isViewing = () => viewing() !== null;
 export const openViewer = (file: FileRef, from?: Sender) => setViewing({ file, from });

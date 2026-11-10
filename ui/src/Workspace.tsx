@@ -7,6 +7,8 @@ import {
   onCleanup,
   onMount,
   Show,
+  Switch,
+  Match,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import {
@@ -15,6 +17,7 @@ import {
   type Change,
   type ConnectionState,
   type Conversation,
+  type DirectMessage,
   type Hit,
   type Progress,
   type Status,
@@ -25,6 +28,11 @@ import { directoryChanged, refreshPresence, watchPresence, tickPresence } from "
 import { closeProfile, profileUser } from "./profile";
 import ProfilePanel from "./ProfilePanel";
 import Rail from "./Rail";
+import ActivityView from "./ActivityView";
+import DirectMessages from "./DirectMessages";
+import FileBrowser, { FileNav } from "./FileBrowser";
+import NewMessage from "./NewMessage";
+import { readRail, type RailView } from "./rail-model";
 import { jumpOf, SearchBar, SearchResults, type Jump } from "./Search";
 import Viewer, { isViewing } from "./Viewer";
 import Sidebar from "./Sidebar";
@@ -51,12 +59,36 @@ export default function Workspace(props: { status: Ready }) {
   // the sidebar does not re-render (and flicker) on every sync step.
   setMe(props.status.user_id);
   const [conversations, setConversations] = createStore<Conversation[]>([]);
+  const viewKey = `flek.rail.${props.status.team_id}.${props.status.user_id}`;
+  const [view, setView] = createSignal<RailView>(readRail(viewKey));
+  const [icon, setIcon] = createSignal<string | null>(null);
+  const [dms, setDms] = createSignal<DirectMessage[]>([]);
+  const [activityBadge, setActivityBadge] = createSignal(0);
+  const [revision, setRevision] = createSignal(0);
+  const [fileCategory, setFileCategory] = createSignal("all");
+  const [compose, setCompose] = createSignal(false);
+  const [readError, setReadError] = createSignal("");
+  const chooseView = (next: RailView) => {
+    setView(next);
+    setSearching(null);
+    if (next === "dms" && !dms().some((dm) => dm.id === selected())) {
+      const first = dms()[0];
+      if (first) select(first.id);
+    }
+    try {
+      localStorage.setItem(viewKey, next);
+    } catch {
+      /* Optional preference. */
+    }
+  };
   const [loaded, setLoaded] = createSignal(false);
   const [selected, setSelected] = createSignal<string | null>(readLast());
   const [progress, setProgress] = createSignal<Progress | null>(null);
   const [connection, setConnection] = createSignal<ConnectionState | null>(null);
   // Changes for the open conversation, handed to the timeline.
-  const [change, setChange] = createSignal<Change | null>(null, { equals: false });
+  const [change, setChange] = createSignal<Change | null>(null, {
+    equals: false,
+  });
   // The query whose results fill the main pane, and the message to reveal
   // after opening a result (a fresh object per click, so it re-triggers).
   const [searching, setSearching] = createSignal<string | null>(null);
@@ -69,16 +101,36 @@ export default function Workspace(props: { status: Ready }) {
     refreshTimer = window.setTimeout(async () => {
       refreshTimer = undefined;
       await loadConversations();
+      setRevision((n) => n + 1);
     }, 500);
   };
 
   const loadConversations = async () => {
-    const list = await api.conversations();
+    let list: Conversation[];
+    try {
+      const [convs, direct, badge, image] = await Promise.all([
+        api.conversations(),
+        api.directMessages(),
+        api.activity("all", true, 1, 0),
+        api.teamIcon(),
+      ]);
+      list = convs;
+      setDms(direct);
+      setActivityBadge(badge.unread_count);
+      setIcon(image);
+      setReadError("");
+    } catch (e) {
+      setReadError(String(e));
+      return;
+    }
     setConversations(reconcile(list, { key: "id" }));
     setLoaded(true);
     if (!selected() || !list.some((c) => c.id === selected())) {
       const first = list.find((c) => c.kind === "public_channel" && !c.is_archived) ?? list[0];
       if (first) select(first.id);
+    }
+    if (view() === "dms" && !dms().some((dm) => dm.id === selected()) && dms()[0]) {
+      select(dms()[0].id);
     }
   };
 
@@ -156,12 +208,28 @@ export default function Workspace(props: { status: Ready }) {
 
   // Batched, so the timeline mounts (or switches) already knowing the target.
   const openHit = (h: Hit) => {
+    if (view() === "files") chooseView("home");
     batch(() => {
       select(h.conversation_id);
       setJump(jumpOf(h));
     });
     // A reply: also open its thread (after the switch, which closes threads).
     if (h.thread_ts && h.thread_ts !== h.ts) setThread(h.thread_ts);
+  };
+
+  const openJump = (target: Jump) => {
+    batch(() => {
+      select(target.conversation_id);
+      setJump(target);
+    });
+    if (target.thread_ts && target.thread_ts !== target.ts) setThread(target.thread_ts);
+  };
+  const composeIn = (id: string) => {
+    chooseView("home");
+    select(id);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('.main .composer [contenteditable="true"]')?.focus();
+    });
   };
 
   const current = () => conversations.find((c) => c.id === selected()) ?? null;
@@ -189,7 +257,7 @@ export default function Workspace(props: { status: Ready }) {
   const [sidebarWidth, setSidebarWidth] = createSignal(readPanelSize(SIDEBAR_KEY, DEFAULT_SIDEBAR));
   const [detailWidth, setDetailWidth] = createSignal(readPanelSize(DETAIL_KEY, DEFAULT_DETAIL));
   const [frameWidth, setFrameWidth] = createSignal(window.innerWidth - 78);
-  const detailOpen = () => !!(profileUser() || (current() && thread()));
+  const detailOpen = () => view() !== "files" && !!(profileUser() || (current() && thread()));
   const sizes = createMemo(() =>
     panelSizes(frameWidth(), sidebarWidth(), detailWidth(), detailOpen()),
   );
@@ -217,9 +285,20 @@ export default function Workspace(props: { status: Ready }) {
         </div>
       </header>
       <div class="shell-body">
-        <Rail team={props.status.team} userId={props.status.user_id} user={props.status.user} />
+        <Rail
+          team={props.status.team}
+          icon={icon()}
+          userId={props.status.user_id}
+          user={props.status.user}
+          view={view()}
+          dms={dms().filter((dm) => (dm.unread ?? 0) > 0).length}
+          activity={activityBadge()}
+          onView={chooseView}
+          onCompose={() => setCompose(true)}
+        />
         <div
           class="frame"
+          classList={{ "rail-view-frame": view() !== "home" }}
           ref={frame}
           style={{
             "--sidebar-width": `${sizes().sidebar}px`,
@@ -227,12 +306,36 @@ export default function Workspace(props: { status: Ready }) {
           }}
         >
           <div class="sidebar-pane" id="conversation-sidebar">
-            <Sidebar
-              team={props.status.team}
-              conversations={conversations}
-              selected={selected()}
-              onSelect={select}
-            />
+            <Switch>
+              <Match when={view() === "dms"}>
+                <DirectMessages
+                  rows={dms()}
+                  me={props.status.user_id}
+                  selected={selected()}
+                  onSelect={select}
+                  onCompose={() => setCompose(true)}
+                />
+              </Match>
+              <Match when={view() === "activity"}>
+                <ActivityView
+                  revision={revision()}
+                  conversations={conversations}
+                  me={props.status.user_id}
+                  onOpen={openJump}
+                />
+              </Match>
+              <Match when={view() === "files"}>
+                <FileNav category={fileCategory()} onCategory={setFileCategory} />
+              </Match>
+              <Match when={view() === "home"}>
+                <Sidebar
+                  team={props.status.team}
+                  conversations={conversations}
+                  selected={selected()}
+                  onSelect={select}
+                />
+              </Match>
+            </Switch>
             <ResizeHandle
               side="left"
               label="Resize sidebar"
@@ -246,46 +349,68 @@ export default function Workspace(props: { status: Ready }) {
             />
           </div>
           <section class="main">
+            <Show when={readError()}>
+              <p class="error view-empty" role="alert">
+                {readError()}
+              </p>
+            </Show>
             <Show
-              when={searching()}
+              when={view() === "files" && !searching()}
               fallback={
                 <Show
-                  when={current()}
+                  when={searching()}
                   fallback={
-                    <div class="empty">
-                      <Show when={loaded()} fallback={<div class="spinner" />}>
-                        <h2>Syncing messages</h2>
-                        <p class="muted">
-                          Channels appear here as soon as they are fetched. Flek keeps syncing in
-                          the menu bar even when this window is closed.
-                        </p>
-                      </Show>
-                    </div>
+                    <Show
+                      when={current()}
+                      fallback={
+                        <div class="empty">
+                          <Show when={loaded()} fallback={<div class="spinner" />}>
+                            <h2>Syncing messages</h2>
+                            <p class="muted">
+                              Channels appear here as soon as they are fetched. Flek keeps syncing
+                              in the menu bar even when this window is closed.
+                            </p>
+                          </Show>
+                        </div>
+                      }
+                    >
+                      {(c) => (
+                        <Timeline
+                          conversation={c()}
+                          me={props.status.user_id}
+                          members={dms().find((dm) => dm.id === c().id)?.members ?? []}
+                          change={change()}
+                          thread={thread()}
+                          onThread={setThread}
+                          jump={jump()}
+                        />
+                      )}
+                    </Show>
                   }
                 >
-                  {(c) => (
-                    <Timeline
-                      conversation={c()}
-                      change={change()}
-                      thread={thread()}
-                      onThread={setThread}
-                      jump={jump()}
+                  {(q) => (
+                    <SearchResults
+                      query={q()}
+                      conversations={conversations}
+                      onOpen={openHit}
+                      onClose={() => setSearching(null)}
                     />
                   )}
                 </Show>
               }
             >
-              {(q) => (
-                <SearchResults
-                  query={q()}
-                  conversations={conversations}
-                  onOpen={openHit}
-                  onClose={() => setSearching(null)}
-                />
-              )}
+              <FileBrowser
+                category={fileCategory()}
+                revision={revision()}
+                conversations={conversations}
+                onOpen={(target) => {
+                  chooseView("home");
+                  openJump(target);
+                }}
+              />
             </Show>
           </section>
-          <Show when={detailOpen()}>
+          <Show when={view() !== "files" && detailOpen()}>
             <div class="detail-pane" id="conversation-detail">
               <ResizeHandle
                 side="right"
@@ -303,6 +428,7 @@ export default function Workspace(props: { status: Ready }) {
                   <Thread
                     conversation={current()!}
                     ts={ts()}
+                    jump={jump()}
                     change={change()}
                     onClose={() => setThread(null)}
                   />
@@ -315,6 +441,13 @@ export default function Workspace(props: { status: Ready }) {
           </Show>
         </div>
       </div>
+      <Show when={compose()}>
+        <NewMessage
+          conversations={conversations}
+          onSelect={composeIn}
+          onClose={() => setCompose(false)}
+        />
+      </Show>
       <Viewer />
     </div>
   );

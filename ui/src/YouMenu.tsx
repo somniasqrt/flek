@@ -26,13 +26,14 @@ import {
 } from "./presence-store";
 
 export default function YouMenu(props: {
+  pauseOnly?: boolean;
   userId: string;
   user: string;
   anchor: DOMRect;
   onClose: () => void;
 }) {
   const [view, setView] = createSignal<"menu" | "status">("menu");
-  const [pause, setPause] = createSignal(false);
+  const [pause, setPause] = createSignal(!!props.pauseOnly);
   const [picker, setPicker] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -112,6 +113,7 @@ export default function YouMenu(props: {
       await refreshPresence();
       directoryChanged();
       if (saved) {
+        if (props.pauseOnly) props.onClose();
         setView("menu");
         setPause(false);
       }
@@ -130,7 +132,7 @@ export default function YouMenu(props: {
         queueMicrotask(() => emojiButton?.focus());
       } else if (view() === "status") {
         setView("menu");
-      } else if (pause()) {
+      } else if (pause() && !props.pauseOnly) {
         setPause(false);
       } else {
         props.onClose();
@@ -146,7 +148,7 @@ export default function YouMenu(props: {
       setPause(true);
       return;
     }
-    if (view() === "menu" && pause() && e.key === "ArrowLeft") {
+    if (view() === "menu" && pause() && !props.pauseOnly && e.key === "ArrowLeft") {
       e.preventDefault();
       setPause(false);
       return;
@@ -185,7 +187,9 @@ export default function YouMenu(props: {
           class="message-menu you-menu"
           classList={{ "status-dialog": view() === "status" }}
           role={view() === "status" ? "dialog" : "menu"}
-          aria-label={view() === "status" ? "Set a status" : "You"}
+          aria-label={
+            view() === "status" ? "Set a status" : props.pauseOnly ? "Pause notifications" : "You"
+          }
           aria-modal={view() === "status" ? true : undefined}
           aria-busy={busy()}
           style={
@@ -198,70 +202,75 @@ export default function YouMenu(props: {
             when={view() === "status"}
             fallback={
               <>
-                <div class="you-header">
-                  <Avatar
-                    id={props.userId}
-                    name={name()}
-                    size={40}
-                    presence={presenceOf(props.userId)}
-                  />
-                  <div>
-                    <strong>{name()}</strong>
-                    <div class="you-presence">
-                      <PresenceIndicator presence={presenceOf(props.userId)} />{" "}
-                      {away() ? "Away" : "Active"}
+                <Show when={!props.pauseOnly}>
+                  <div class="you-header">
+                    <Avatar
+                      id={props.userId}
+                      name={name()}
+                      size={40}
+                      presence={presenceOf(props.userId)}
+                    />
+                    <div>
+                      <strong>{name()}</strong>
+                      <div class="you-presence">
+                        <PresenceIndicator presence={presenceOf(props.userId)} />{" "}
+                        {away() ? "Away" : "Active"}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div class="you-status-button">
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={busy()}
-                    onClick={() => {
-                      setText(current()?.status_text ?? "");
-                      setEmoji(current()?.status_emoji?.replace(/^:|:$/g, "") ?? "");
-                      setAfter("today");
-                      setError("");
-                      setView("status");
-                    }}
-                  >
-                    <Show when={current()} fallback={<>😊 Update your status</>}>
-                      <CustomStatus status={current()} text />
-                    </Show>
-                  </button>
-                  <Show when={current()}>
+                  <div class="you-status-button">
                     <button
                       type="button"
-                      aria-label="Clear status"
+                      role="menuitem"
                       disabled={busy()}
-                      onClick={() => run(api.clearStatus)}
+                      onClick={() => {
+                        setText(current()?.status_text ?? "");
+                        setEmoji(current()?.status_emoji?.replace(/^:|:$/g, "") ?? "");
+                        setAfter("today");
+                        setError("");
+                        setView("status");
+                      }}
                     >
-                      ✕
+                      <Show when={current()} fallback={<>😊 Update your status</>}>
+                        <CustomStatus status={current()} text />
+                      </Show>
                     </button>
-                  </Show>
-                </div>
-                <button
-                  class="message-menu-item"
-                  role="menuitem"
-                  disabled={busy()}
-                  onClick={() => run(() => api.setPresence(!away()))}
-                >
-                  Set yourself as {away() ? "active" : "away"}
-                </button>
-                <button
-                  class="message-menu-item"
-                  role="menuitem"
-                  aria-haspopup="menu"
-                  aria-expanded={pause()}
-                  onClick={() => setPause(!pause())}
-                >
-                  Pause notifications{" "}
-                  <Show when={paused()}>
-                    <span class="muted">· Paused</span>
-                  </Show>{" "}
-                  <span aria-hidden="true">›</span>
-                </button>
+                    <Show when={current()}>
+                      <button
+                        type="button"
+                        aria-label="Clear status"
+                        disabled={busy()}
+                        onClick={() => run(api.clearStatus)}
+                      >
+                        ✕
+                      </button>
+                    </Show>
+                  </div>
+                  <button
+                    class="message-menu-item"
+                    role="menuitem"
+                    disabled={busy()}
+                    onClick={() => run(() => api.setPresence(!away()))}
+                  >
+                    Set yourself as {away() ? "active" : "away"}
+                  </button>
+                  <button
+                    class="message-menu-item"
+                    role="menuitem"
+                    aria-haspopup="menu"
+                    aria-expanded={pause()}
+                    onClick={() => setPause(!pause())}
+                  >
+                    Pause notifications{" "}
+                    <Show when={paused()}>
+                      <span class="muted">· Paused</span>
+                    </Show>{" "}
+                    <span aria-hidden="true">›</span>
+                  </button>
+                </Show>
+                <Show when={props.pauseOnly}>
+                  <h3>Pause notifications</h3>
+                </Show>
                 <Show when={pause()}>
                   <div class="you-pause" role="menu" aria-label="Pause notifications">
                     <For
@@ -299,17 +308,19 @@ export default function YouMenu(props: {
                     </button>
                   </div>
                 </Show>
-                <div class="message-menu-rule" role="separator" />
-                <button
-                  class="message-menu-item"
-                  role="menuitem"
-                  onClick={() => {
-                    openProfile(props.userId);
-                    props.onClose();
-                  }}
-                >
-                  Profile
-                </button>
+                <Show when={!props.pauseOnly}>
+                  <div class="message-menu-rule" role="separator" />
+                  <button
+                    class="message-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      openProfile(props.userId);
+                      props.onClose();
+                    }}
+                  >
+                    Profile
+                  </button>
+                </Show>
               </>
             }
           >

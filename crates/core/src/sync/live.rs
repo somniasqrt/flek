@@ -143,11 +143,22 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     })
                 }
                 Event::ReactionAdded {
+                    event_ts,
                     channel,
                     ts,
                     name,
                     user,
-                } => reaction(c, channel, ts, &name, &user, true)?,
+                } => {
+                    let applied = reaction(c, channel.clone(), ts.clone(), &name, &user, true)?;
+                    if let Some(time) = event_ts {
+                        c.execute(
+                            "UPDATE reactions SET event_ts=COALESCE(event_ts,?5)
+                             WHERE conversation_id=?1 AND ts=?2 AND name=?3 AND user_id=?4",
+                            rusqlite::params![channel, ts, name, user, time],
+                        )?;
+                    }
+                    applied
+                }
                 Event::ReactionRemoved {
                     channel,
                     ts,

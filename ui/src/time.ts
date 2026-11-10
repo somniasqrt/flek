@@ -12,13 +12,15 @@ export function relativeTime(date: Date, now: Date, locale?: string): string {
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   if (diff < 60_000) return "just now";
   if (diff < 3_600_000) return rtf.format(-Math.floor(diff / 60_000), "minute");
-  const clock = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  const clock = date.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
   if (days <= 0) return `today at ${clock}`;
   if (days === 1) return `yesterday at ${clock}`;
   if (days < 30) return rtf.format(-days, "day");
-  const months =
-    (now.getFullYear() - date.getFullYear()) * 12 + now.getMonth() - date.getMonth();
+  const months = (now.getFullYear() - date.getFullYear()) * 12 + now.getMonth() - date.getMonth();
   if (months < 12) return rtf.format(-Math.max(1, months), "month");
   return rtf.format(-Math.floor(months / 12), "year");
 }
@@ -31,7 +33,10 @@ export function localTime(
   offset: number | null,
   locale?: string,
 ): string | null {
-  const opts: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const opts: Intl.DateTimeFormatOptions = {
+    hour: "numeric",
+    minute: "2-digit",
+  };
   if (tz) {
     try {
       return now.toLocaleTimeString(locale, { ...opts, timeZone: tz });
@@ -43,5 +48,35 @@ export function localTime(
   return new Date(now.getTime() + offset * 1000).toLocaleTimeString(locale, {
     ...opts,
     timeZone: "UTC",
+  });
+}
+
+/// Compact rail-list time; dates use English Slack-style day/month order.
+export function listTime(date: Date, now: Date): string {
+  const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? "min" : "mins"}`;
+  if (minutes < 24 * 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
+  if (days < 7) return date.toLocaleDateString("en-GB", { weekday: "long" });
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
+}
+
+export function activityDay(date: Date, now: Date): string {
+  const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days > 1 && days < 7) return date.toLocaleDateString("en-GB", { weekday: "long" });
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
   });
 }

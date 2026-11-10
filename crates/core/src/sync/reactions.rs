@@ -19,6 +19,7 @@ pub async fn set(
     client.set_message_reaction(channel, ts, name, on).await?;
     let event = if on {
         Event::ReactionAdded {
+            event_ts: None,
             channel: channel.into(),
             ts: ts.into(),
             name: name.into(),

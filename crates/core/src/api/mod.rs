@@ -31,3 +31,5 @@ pub use search::{SearchMatch, SearchPage, SearchSort};
 
 mod presence;
 pub use presence::{CustomStatus, Dnd, SetPresence, UserPresence};
+
+pub mod team;

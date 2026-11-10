@@ -253,6 +253,25 @@ async fn fetch_images(
     Ok(fetched)
 }
 
+/// Workspace icons share the public, session-free avatar image cache.
+pub async fn download_team_icon(
+    client: &Client,
+    store: &Store,
+    cache: &Path,
+    team: &str,
+) -> Result<usize> {
+    let team = team.to_owned();
+    let urls = store
+        .read(move |c| {
+            Ok(crate::store::directory::team_icon_url(c, &team)?
+                .filter(|u| !crate::store::unfurls::is_cached(c, u))
+                .into_iter()
+                .collect())
+        })
+        .await?;
+    fetch_images(client, store, cache, None, urls).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

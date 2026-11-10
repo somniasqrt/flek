@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-file"
+description = "Enables the fetch_file command without any pre-configured scope."
+commands.allow = ["fetch_file"]
+
+[[permission]]
+identifier = "deny-fetch-file"
+description = "Denies the fetch_file command without any pre-configured scope."
+commands.deny = ["fetch_file"]

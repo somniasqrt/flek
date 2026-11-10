@@ -3,6 +3,11 @@
 //! showing Slack's page gets none.
 
 const COMMANDS: &[&str] = &[
+    "team_icon",
+    "direct_messages",
+    "activity",
+    "browse_files",
+    "fetch_file",
     "status",
     "progress",
     "conversations",

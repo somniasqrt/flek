@@ -576,3 +576,32 @@ pub fn upsert_user_change(c: &mut Connection, team: &str, user: &User) -> Result
     user.raw = raw;
     upsert_users(c, team, &[user])
 }
+
+/// Store the documented team payload; credentials never belong in it.
+pub fn set_team_info(c: &Connection, team: &str, info: &serde_json::Value) -> Result<()> {
+    c.execute(
+        "UPDATE teams SET raw_json=?2 WHERE id=?1",
+        params![team, info.to_string()],
+    )?;
+    Ok(())
+}
+
+pub fn team_icon_url(c: &Connection, team: &str) -> Result<Option<String>> {
+    let raw: Option<String> = c
+        .query_row("SELECT raw_json FROM teams WHERE id=?1", [team], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .flatten();
+    let value = raw.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    Ok(value
+        .as_ref()
+        .and_then(crate::api::team::icon_url)
+        .map(str::to_owned))
+}
+
+pub fn team_icon(c: &Connection, team: &str) -> Result<Option<String>> {
+    Ok(team_icon_url(c, team)?
+        .filter(|url| super::unfurls::is_cached(c, url))
+        .map(|url| super::unfurls::url_hash(&url)))
+}

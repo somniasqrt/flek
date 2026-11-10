@@ -56,6 +56,7 @@ async fn add_echo_remove_and_ownership() {
     live::apply(
         &s,
         Event::ReactionAdded {
+            event_ts: None,
             channel: "C1".into(),
             ts: "1.000000".into(),
             name: "heart".into(),
@@ -70,6 +71,7 @@ async fn add_echo_remove_and_ownership() {
     live::apply(
         &s,
         Event::ReactionAdded {
+            event_ts: None,
             channel: "C1".into(),
             ts: "1.000000".into(),
             name: "heart".into(),

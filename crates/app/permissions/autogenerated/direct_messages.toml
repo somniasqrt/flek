@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-direct-messages"
+description = "Enables the direct_messages command without any pre-configured scope."
+commands.allow = ["direct_messages"]
+
+[[permission]]
+identifier = "deny-direct-messages"
+description = "Denies the direct_messages command without any pre-configured scope."
+commands.deny = ["direct_messages"]

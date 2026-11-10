@@ -41,6 +41,7 @@ pub enum Event {
         ts: String,
     },
     ReactionAdded {
+        event_ts: Option<String>,
         channel: String,
         ts: String,
         name: String,
@@ -131,6 +132,7 @@ impl Event {
                 let user = str_at(&v, "user").unwrap_or_default();
                 if kind == "reaction_added" {
                     Event::ReactionAdded {
+                        event_ts: str_at(&v, "event_ts"),
                         channel: ch,
                         ts,
                         name,

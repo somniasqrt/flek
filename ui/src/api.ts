@@ -8,11 +8,23 @@ export type Status =
   | { phase: "importing" }
   | { phase: "sign_in"; desktop: boolean; reason: string | null }
   | { phase: "signing_in" }
-  | { phase: "ready"; team_id: string; team: string; user_id: string; user: string };
+  | {
+      phase: "ready";
+      team_id: string;
+      team: string;
+      user_id: string;
+      user: string;
+    };
 
 export type Progress =
   | { stage: "directory" }
-  | { stage: "conversations"; done: number; total: number; current: string; deep: boolean }
+  | {
+      stage: "conversations";
+      done: number;
+      total: number;
+      current: string;
+      deep: boolean;
+    }
   | { stage: "files"; done: number; total: number }
   | { stage: "idle" };
 
@@ -108,7 +120,11 @@ export type Message = {
 };
 
 /// A message Slack accepted and Flek stored (core `sync::send::Sent`).
-export type Sent = { conversation_id: string; ts: string; client_msg_id: string };
+export type Sent = {
+  conversation_id: string;
+  ts: string;
+  client_msg_id: string;
+};
 
 /// A search result (core `store::search::Hit`). The snippet marks matched
 /// terms with MARK_OPEN … MARK_CLOSE (see snippet.ts).
@@ -160,7 +176,63 @@ export type Profile = {
   dm_conversation_id: string | null;
 };
 
+export type DirectMessage = {
+  id: string;
+  label: string;
+  kind: string;
+  partner_id: string | null;
+  members: string[];
+  unread: number | null;
+  ts: string | null;
+  user_id: string | null;
+  text: string;
+  file_name: string | null;
+  hidden_by_limit: boolean;
+};
+
+export type ActivityItem = {
+  kind: "dm" | "mention" | "thread" | "reaction";
+  conversation_id: string;
+  ts: string;
+  event_ts: string;
+  thread_ts: string | null;
+  user_id: string | null;
+  text: string;
+  file_name: string | null;
+  hidden_by_limit: boolean;
+  reaction: string | null;
+  unread: boolean;
+  unread_count: number;
+};
+
+export type ActivityPage = {
+  items: ActivityItem[];
+  unread_count: number;
+  has_more: boolean;
+};
+
+export type StoredFile = {
+  title: string | null;
+  id: string;
+  name: string | null;
+  mimetype: string | null;
+  size: number | null;
+  local_path: string | null;
+  conversation_id: string | null;
+  ts: string | null;
+  user_id: string | null;
+  hidden_by_limit: boolean;
+  permalink: string | null;
+};
+
 export const api = {
+  teamIcon: () => invoke<string | null>("team_icon"),
+  directMessages: () => invoke<DirectMessage[]>("direct_messages"),
+  activity: (tab: string, unread: boolean, limit: number, offset: number) =>
+    invoke<ActivityPage>("activity", { tab, unread, limit, offset }),
+  browseFiles: (query: string, kind: string | null, sort: string, mine: boolean, offset: number) =>
+    invoke<StoredFile[]>("browse_files", { query, kind, sort, mine, offset }),
+  fetchFile: (fileId: string, reveal = false) => invoke<void>("fetch_file", { fileId, reveal }),
   presenceFor: (ids: string[]) => invoke<Presence[]>("presence_for", { ids }),
   statusesFor: (ids: string[]) => invoke<Record<string, CustomStatus>>("statuses_for", { ids }),
   subscribePresence: (ids: string[]) => invoke<void>("subscribe_presence", { ids }),
@@ -200,7 +272,15 @@ export const api = {
     broadcast: boolean,
     clientMsgId: string,
     blocks?: unknown[],
-  ) => invoke<Sent>("send_message", { conversationId, text, threadTs, broadcast, clientMsgId, blocks }),
+  ) =>
+    invoke<Sent>("send_message", {
+      conversationId,
+      text,
+      threadTs,
+      broadcast,
+      clientMsgId,
+      blocks,
+    }),
 };
 
 export const onStatus = (f: (s: Status) => void): Promise<UnlistenFn> =>
@@ -218,7 +298,9 @@ export const tsDate = (ts: string) => new Date(parseFloat(ts) * 1000);
 /// URL of something the app's `flekfile` protocol serves
 /// (crates/app/src/files.rs). WebView2 maps custom schemes to http.
 let cacheUrl = (path: string) =>
-  (navigator.userAgent.includes("Windows") ? "http://flekfile.localhost/" : "flekfile://localhost/") + path;
+  (navigator.userAgent.includes("Windows")
+    ? "http://flekfile.localhost/"
+    : "flekfile://localhost/") + path;
 
 /// A cached file, or its preview (first page of a PDF, a video frame).
 export const fileUrl = (id: string, preview = false) =>

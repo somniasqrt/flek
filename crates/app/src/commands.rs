@@ -430,3 +430,125 @@ pub async fn end_snooze(state: State<'_, AppState>) -> CmdResult<()> {
         .await
         .map_err(text)
 }
+
+#[tauri::command]
+pub async fn team_icon(state: State<'_, AppState>) -> CmdResult<Option<String>> {
+    let Some(team) = state.team_id() else {
+        return Ok(None);
+    };
+    state
+        .store
+        .read(move |c| directory::team_icon(c, &team))
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn direct_messages(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<flek_core::rail::DirectMessage>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Vec::new());
+    };
+    state
+        .store
+        .read(move |c| flek_core::rail::direct_messages(c, &team))
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn activity(
+    state: State<'_, AppState>,
+    tab: String,
+    unread: bool,
+    limit: usize,
+    offset: usize,
+) -> CmdResult<flek_core::rail::ActivityPage> {
+    let team = state.team_id().ok_or("no stored workspace")?;
+    state
+        .store
+        .read(move |c| {
+            flek_core::rail::activity(c, &team, &tab, unread, limit.clamp(1, MAX_PAGE), offset)
+        })
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn browse_files(
+    state: State<'_, AppState>,
+    query: String,
+    kind: Option<String>,
+    sort: String,
+    mine: bool,
+    offset: usize,
+) -> CmdResult<Vec<flek_core::reads::File>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Vec::new());
+    };
+    state
+        .store
+        .read(move |c| {
+            flek_core::reads::files(
+                c,
+                &team,
+                &flek_core::reads::FileFilter {
+                    query: Some(query),
+                    kind,
+                    sort: Some(sort),
+                    mine,
+                    offset,
+                    limit: 100,
+                    other_includes_media: true,
+                    ..Default::default()
+                },
+            )
+        })
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn fetch_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+    reveal: bool,
+) -> CmdResult<()> {
+    let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    let path = match flek_core::files::stored_cached_path(&state.store, &cache, &file_id)
+        .await
+        .map_err(text)?
+    {
+        Some(path) => path,
+        None => {
+            let client = state.client().ok_or("not signed in to Slack")?;
+            flek_core::files::fetch_stored(&client, &state.store, &cache, &file_id)
+                .await
+                .map_err(text)?
+        }
+    };
+    let shares = state
+        .store
+        .read(move |c| {
+            let mut stmt =
+                c.prepare("SELECT conversation_id,ts FROM message_files WHERE file_id=?1")?;
+            let rows = stmt.query_map([file_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })?;
+            Ok(rows.collect::<std::result::Result<Vec<_>, _>>()?)
+        })
+        .await
+        .map_err(text)?;
+    for (conversation_id, ts) in shares {
+        let _ = state.bus.send(flek_core::sync::live::Change::Message {
+            conversation_id,
+            ts,
+        });
+    }
+    if reveal {
+        app.opener().reveal_item_in_dir(path).map_err(text)?;
+    }
+    Ok(())
+}

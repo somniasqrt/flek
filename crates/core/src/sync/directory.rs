@@ -27,6 +27,20 @@ pub async fn sync_directory(
         .call(move |c| directory::upsert_team(c, &team_id, &team, &url, &me_id))
         .await?;
 
+    match client.team_info().await {
+        Ok(info) => {
+            let team = me.team_id.clone();
+            store
+                .call(move |c| directory::set_team_info(c, &team, &info))
+                .await?;
+            if let Ok(cache) = crate::files::default_cache_dir() {
+                super::files::download_team_icon(client, store, &cache, &me.team_id).await?;
+            }
+        }
+        Err(e) if e.is_auth_error() => return Err(e),
+        Err(_) => tracing::debug!("team.info unavailable; keeping cached workspace icon"),
+    }
+
     let users = client.users_list().await?;
     tracing::info!(count = users.len(), "fetched users");
     let convs = client.users_conversations().await?;

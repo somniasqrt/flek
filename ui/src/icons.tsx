@@ -80,5 +80,23 @@ export const CopyMessage = (p: { size?: number }) => (
 );
 
 export const Moon = (p: { size?: number }) => (
-  <Icon size={p.size}><path d="M16.5 12.5A7 7 0 0 1 7.5 3.5a7.25 7.25 0 1 0 9 9Z" /></Icon>
+  <Icon size={p.size}>
+    <path d="M16.5 12.5A7 7 0 0 1 7.5 3.5a7.25 7.25 0 1 0 9 9Z" />
+  </Icon>
+);
+
+export const Activity = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M5 13V8a5 5 0 0 1 10 0v5l2 2H3l2-2ZM8 17h4" />
+  </Icon>
+);
+export const Document = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M5 2h7l4 4v12H5zM12 2v5h4M8 10h5M8 13h5" />
+  </Icon>
+);
+export const Plus = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M10 3v14M3 10h14" />
+  </Icon>
 );

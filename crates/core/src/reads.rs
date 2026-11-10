@@ -392,6 +392,20 @@ pub fn unread(
     ))
 }
 
+/// The indexed mention candidate source, shared by mentions and Activity.
+/// Arguments are internal SQL expressions, never user input.
+pub(crate) fn mention_source(terms: &str, team: &str, me: &str, broadcasts: &str) -> String {
+    format!(
+        "FROM messages_fts f JOIN messages m ON m.id=f.rowid
+         JOIN conversations c ON c.id=m.conversation_id
+         WHERE messages_fts MATCH {terms} AND c.team_id={team} AND m.deleted=0
+           AND m.user_id IS NOT {me}
+           AND (instr(m.text,'<@'||{me}||'>')>0 OR ({broadcasts} AND (
+               instr(m.text,'<!here>')>0 OR instr(m.text,'<!channel>')>0
+               OR instr(m.text,'<!everyone>')>0)))"
+    )
+}
+
 pub fn mentions(
     c: &Connection,
     team: &str,
@@ -407,19 +421,16 @@ pub fn mentions(
         .optional()?
         .flatten();
     let me = me.ok_or_else(|| Error::NotFound("no stored self user id for mentions".into()))?;
-    let token = format!("<@{me}>");
     let mut terms = vec![format!("\"{}\"", me.replace('"', "\"\""))];
     if broadcasts {
         terms.extend(["here", "channel", "everyone"].map(|x| format!("\"{x}\"")));
     }
-    let mut stmt = c.prepare(
-        "SELECT m.conversation_id,m.ts FROM messages_fts f JOIN messages m ON m.id=f.rowid JOIN conversations
-         c ON c.id=m.conversation_id
-         WHERE messages_fts MATCH ?1 AND c.team_id=?2 AND m.deleted=0 AND m.user_id IS NOT ?3 AND m.ts>=?4
-         AND (?5 IS NULL OR m.ts<=?5)
-         AND (instr(m.text,?6)>0 OR (?7 AND (instr(m.text,'<!here>')>0 OR instr(m.text,'<!channel>')>0 OR
-         instr(m.text,'<!everyone>')>0))) ORDER BY m.ts DESC,m.conversation_id LIMIT ?8",
-    )?;
+    let source = mention_source("?1", "?2", "?3", "?6");
+    let mut stmt = c.prepare(&format!(
+        "SELECT m.conversation_id,m.ts {source}
+         AND m.ts>=?4 AND (?5 IS NULL OR m.ts<=?5)
+         ORDER BY m.ts DESC,m.conversation_id LIMIT ?7"
+    ))?;
     let keys = stmt
         .query_map(
             params![
@@ -428,7 +439,6 @@ pub fn mentions(
                 me,
                 since,
                 until,
-                token,
                 broadcasts,
                 i64::try_from(limit).unwrap_or(i64::MAX)
             ],
@@ -447,6 +457,7 @@ pub struct File {
     pub user_id: Option<String>,
     pub permalink: Option<String>,
     pub hidden_by_limit: bool,
+    pub title: Option<String>,
 }
 #[derive(Default)]
 pub struct FileFilter {
@@ -457,6 +468,11 @@ pub struct FileFilter {
     pub since: Option<String>,
     pub until: Option<String>,
     pub limit: usize,
+    pub query: Option<String>,
+    pub sort: Option<String>,
+    pub mine: bool,
+    pub offset: usize,
+    pub other_includes_media: bool,
 }
 pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
     if f.kind.as_deref().is_some_and(|k| {
@@ -470,7 +486,8 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
 
     let mut stmt = c.prepare(
         "SELECT
-         f.id,f.name,f.mimetype,f.size,f.local_path,m.conversation_id,m.ts,m.user_id,t.url,f.hidden_by_limit,m.thread_ts
+         f.id,f.name,f.mimetype,f.size,f.local_path,m.conversation_id,
+         m.ts,m.user_id,t.url,f.hidden_by_limit,m.thread_ts,f.title
          FROM message_files mf JOIN files f ON f.id=mf.file_id JOIN messages m ON
          m.conversation_id=mf.conversation_id AND m.ts=mf.ts JOIN conversations c ON c.id=m.conversation_id
          JOIN teams t ON t.id=c.team_id
@@ -485,8 +502,13 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
          WHEN f.mimetype LIKE 'text/%' OR f.mimetype LIKE '%word%' OR f.mimetype LIKE '%document%'
          OR f.mimetype LIKE '%excel%' OR f.mimetype LIKE '%spreadsheet%' OR f.mimetype LIKE '%presentation%'
          OR f.mimetype LIKE '%powerpoint%' THEN 'doc'
-         ELSE 'other' END=?7)
-         ORDER BY m.ts DESC,f.id LIMIT ?8",
+         ELSE 'other' END=?7
+         OR (?13 AND ?7='other' AND (f.mimetype LIKE 'video/%' OR f.mimetype LIKE 'audio/%')))
+         AND (?9 IS NULL OR instr(lower(COALESCE(f.name,'')||' '||COALESCE(f.title,'')),lower(?9))>0)
+         AND (NOT ?10 OR m.user_id=t.self_user_id)
+         ORDER BY CASE WHEN ?11='name' THEN lower(COALESCE(f.title,f.name)) END,
+                  CASE WHEN ?11='size' THEN f.size END DESC,m.ts DESC,f.id
+         LIMIT ?8 OFFSET ?12",
     )?;
     let rows = stmt.query_map(
         params![
@@ -497,7 +519,12 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
             f.until,
             f.id,
             f.kind,
-            i64::try_from(f.limit).unwrap_or(i64::MAX)
+            i64::try_from(f.limit).unwrap_or(i64::MAX),
+            f.query,
+            f.mine,
+            f.sort,
+            f.offset as i64,
+            f.other_includes_media
         ],
         |r| {
             let id: String = r.get(5)?;
@@ -529,6 +556,7 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
                 ts: Some(ts),
                 user_id: r.get(7)?,
                 hidden_by_limit: r.get(9)?,
+                title: r.get(11)?,
             })
         },
     )?;

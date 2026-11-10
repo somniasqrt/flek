@@ -5,7 +5,8 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
 import type { Presence } from "./presence";
-import { overrideCacheUrl, type Conversation, type FileRef, type Hit, type Message, type Profile } from "./api";
+import { overrideCacheUrl, type ActivityItem, type DirectMessage, type StoredFile, type Conversation, type FileRef, type Hit, type Message, type Profile } from "./api";
+import { fileType } from "./rail-model";
 import { MARK_CLOSE as C, MARK_OPEN as O } from "./snippet";
 import "./styles.css";
 
@@ -20,6 +21,10 @@ const conversations: Conversation[] = [
 conversations.push(
   { ...conversations[2], id: "D2", label: people.U2, dm_user_id: "U2", unread: 0 },
   { ...conversations[2], id: "D4", label: people.U4, dm_user_id: "U4", unread: 0 },
+);
+conversations.push(
+  { ...conversations[2], id: "D3", label: "Me", dm_user_id: "U3", unread: 0 },
+  { ...conversations[2], id: "G1", kind: "mpim", label: "Olena, Taras", dm_user_id: null, unread: 2 },
 );
 const file = (f: Partial<FileRef>): FileRef => ({
   id: "F", name: null, title: null, mimetype: null, filetype: null, size: null, local_path: null,
@@ -109,7 +114,11 @@ const profiles: Record<string, Profile> = {
 };
 
 // Messages "sent" from the preview into conversations other than C1.
-const elsewhere: (Message & { conversation_id: string })[] = [];
+const elsewhere: (Message & { conversation_id: string })[] = [
+  { ...msg(now - 600, "U1", "Hi <@U3>, have you seen the updated *plan*?"), conversation_id: "D1" },
+  { ...msg(now - 1200, "U3", "Notes for tomorrow"), conversation_id: "D3" },
+  { ...msg(now - 1500, "U2", "We can review the slides here."), conversation_id: "G1" },
+];
 const w = window as unknown as { __sendDelay: number };
 w.__sendDelay = 700;
 
@@ -149,9 +158,81 @@ const presence: Record<string, Presence> = Object.fromEntries(["U1", "U2", "U3",
   presence_fresh: true, dnd_fresh: true, updated_at: now,
 }]));
 
+messages.push(
+  msg(now - 1800, "U3", "I have shared the notes", { reactions: ":eyes: 1" }),
+  msg(now - 86400, "U2", "<@U3> could you take a look?"),
+);
+messages.sort((a, b) => a.ts.localeCompare(b.ts));
+
+const directRows = (): DirectMessage[] => conversations
+  .filter((c) => c.kind === "im" || c.kind === "mpim")
+  .map((c) => {
+    const m = elsewhere.filter((m) => m.conversation_id === c.id).at(-1);
+    return {
+      id: c.id,
+      label: c.label,
+      kind: c.kind,
+      partner_id: c.dm_user_id,
+      members: c.kind === "mpim" ? ["U1", "U2"] : [],
+      unread: c.unread,
+      ts: m?.ts ?? null,
+      user_id: m?.user_id ?? null,
+      text: m?.text ?? "",
+      file_name: null,
+      hidden_by_limit: false,
+    };
+  }).sort((a, b) => (b.ts ?? "").localeCompare(a.ts ?? ""));
+const activityRows: ActivityItem[] = [
+  { kind: "dm", conversation_id: "D1", ts: `${now - 600}.000000`,
+    event_ts: `${now - 600}.000000`, thread_ts: null, user_id: "U1",
+    text: "Hi <@U3>, can we review the plan?", file_name: null, hidden_by_limit: false,
+    reaction: null, unread: true, unread_count: 1 },
+  { kind: "reaction", conversation_id: "C1", ts: `${now - 1800}.000000`,
+    event_ts: `${now - 1200}.000000`, thread_ts: null, user_id: "U2",
+    text: "I have shared the notes", file_name: null, hidden_by_limit: false,
+    reaction: "eyes", unread: true, unread_count: 1 },
+  { kind: "thread", conversation_id: "C1", ts: replies[2].ts,
+    event_ts: replies[2].ts, thread_ts: ROOT, user_id: "U4", text: replies[2].text,
+    file_name: null, hidden_by_limit: false, reaction: null, unread: true, unread_count: 1 },
+  { kind: "mention", conversation_id: "C1", ts: `${now - 86400}.000000`,
+    event_ts: `${now - 86400}.000000`, thread_ts: null, user_id: "U2",
+    text: "<@U3> could you take a look?", file_name: null, hidden_by_limit: false,
+    reaction: null, unread: false, unread_count: 0 },
+];
+const storedFiles = (): StoredFile[] => messages.flatMap((m) => m.files.map((f) => ({
+  id: f.id, title: f.title, name: f.name, mimetype: f.mimetype, size: f.size,
+  local_path: f.local_path, conversation_id: "C1", ts: m.ts, user_id: m.user_id,
+  hidden_by_limit: f.hidden_by_limit, permalink: f.permalink,
+})));
+
 mockIPC(async (cmd, args) => {
   const a = args as Record<string, string | null>;
   switch (cmd) {
+    case "team_icon": return "a1";
+    case "direct_messages": return directRows();
+    case "activity": {
+      const request = args as { tab: string; unread: boolean; limit: number; offset: number };
+      const rows = activityRows.filter((r) => (request.tab === "all" || r.kind === request.tab)
+        && (!request.unread || r.unread));
+      return {
+        items: rows.slice(request.offset, request.offset + request.limit),
+        unread_count: activityRows.filter((r) => r.unread).length,
+        has_more: rows.length > request.offset + request.limit,
+      };
+    }
+    case "browse_files": {
+      const request = args as { query: string; kind: string | null; sort: string; mine: boolean; offset: number };
+      const rows = storedFiles().filter((f) => (!request.mine || f.user_id === "U3")
+        && (!request.kind || fileType(f.mimetype) === request.kind)
+        && `${f.name ?? ""} ${f.title ?? ""}`.toLowerCase().includes(request.query.toLowerCase()));
+      rows.sort((a, b) => {
+        if (request.sort === "name") return (a.name ?? "").localeCompare(b.name ?? "");
+        if (request.sort === "size") return (b.size ?? 0) - (a.size ?? 0);
+        return (b.ts ?? "").localeCompare(a.ts ?? "");
+      });
+      return rows.slice(request.offset, request.offset + 100);
+    }
+    case "fetch_file": return;
     case "subscribe_presence": return;
     case "presence_for": return JSON.parse(JSON.stringify((args as { ids: string[] }).ids.map((id) => presence[id]).filter(Boolean)));
     case "statuses_for": return JSON.parse(JSON.stringify(Object.fromEntries((args as { ids: string[] }).ids.map((id) => [id, profiles[id] ?? null]))));

@@ -19,3 +19,5 @@ pub mod reads;
 pub mod time;
 
 pub mod search;
+
+pub mod rail;

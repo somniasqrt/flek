@@ -315,3 +315,45 @@ override and show grey until live state arrives. No new undocumented endpoint
 or workspace-wide fallback is used: denied snapshots remain grey, and existing
 message/history sync continues. Owners can use the official client if a setter
 is unsupported by their session.
+
+
+## Workspace icon and local rail views (M6.8, 2026-11-10)
+
+[`team.info`](https://docs.slack.dev/reference/methods/team.info/) is documented
+(`team:read`). Directory sync requests the current workspace, stores only the
+returned `team` object in `teams.raw_json`, and selects `icon.image_132`, falling
+back to `icon.image_88`. `icon.image_default=true` is ignored. The image uses the
+same public, session-free CDN downloader and `link_images` cache as avatars.
+The UI reads only a cached hash; missing metadata, failed downloads or an
+unsupported method leave the initials fallback. No render triggers team.info.
+**Verified only with synthetic payloads/wiremock; xoxc+d support remains
+unverified. No real Slack or Keychain was used.**
+
+Activity is entirely local (`core::rail::activity`), paginated and reusable by a
+future CLI command. Mentions share the indexed candidate query with
+`reads::mentions`; only direct `<@ME>` mentions are included. User-group
+membership is not stored, so group/broadcast mentions are not inferred. DMs
+and threads each contribute one latest message from someone else per
+conversation/thread. Thread participation includes roots and stored replies
+by the viewer. Unread uses the conversation's `last_read`; this approximates
+thread unread state because per-thread read markers are not stored. Unknown
+read markers do not manufacture unread badges.
+
+[`reaction_added`](https://docs.slack.dev/reference/events/reaction_added/)
+already identifies the reacting `user`; migration 0015 adds nullable
+`reactions.event_ts` and rail query indexes. The first observed live event time
+survives duplicate events and history refreshes for a retained reaction.
+Backfilled/old reactions have no event time: display them at the message time,
+always read. Removed reactions disappear; the viewer's own actions are excluded.
+The Activity badge counts unread items across kinds (an item may be both a
+mention and a thread reply).
+
+Files extends the existing `reads::files` reader with literal name/title search,
+newest/name/size sort, viewer filtering and offset pagination. The UI's Other
+category includes audio/video; existing CLI type semantics remain unchanged.
+The additive `title` field preserves the original `name` in the CLI contract.
+Downloads reuse the stored-file cache path and existing authenticated fetch;
+paths are persisted and change events published before UI re-reads. Hidden
+files may open/download from an existing cache, but cannot trigger a fetch.
+The compose picker selects an existing local conversation; creating a DM with
+a person outside the stored conversation list remains a separate feature.

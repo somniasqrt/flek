@@ -129,10 +129,16 @@ fn write_messages_in_transaction(
                 author_name = COALESCE(excluded.author_name, messages.author_name)
              WHERE {guard}"
         ))?;
-        let mut clear_reactions =
-            tx.prepare("DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2")?;
-        let mut add_reaction =
-            tx.prepare("INSERT OR IGNORE INTO reactions VALUES (?1, ?2, ?3, ?4)")?;
+        let mut clear_reactions = tx.prepare(
+            "DELETE FROM reactions WHERE conversation_id=?1 AND ts=?2
+             AND NOT EXISTS (SELECT 1 FROM json_each(?3) j
+               WHERE json_extract(j.value,'$[0]')=reactions.name
+                 AND json_extract(j.value,'$[1]')=reactions.user_id)",
+        )?;
+        let mut add_reaction = tx.prepare(
+            "INSERT OR IGNORE INTO reactions (conversation_id, ts, name, user_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+        )?;
         let mut clear_files =
             tx.prepare("DELETE FROM message_files WHERE conversation_id = ?1 AND ts = ?2")?;
         let mut link_file =
@@ -161,7 +167,8 @@ fn write_messages_in_transaction(
             total += 1;
             // Sync carries Slack's full set; an archive adds to what is stored.
             if mode == Mode::Sync {
-                clear_reactions.execute(params![conversation_id, r.ts])?;
+                let keep = serde_json::to_string(&r.reactions)?;
+                clear_reactions.execute(params![conversation_id, r.ts, keep])?;
             }
             for (name, user) in &r.reactions {
                 add_reaction.execute(params![conversation_id, r.ts, name, user])?;
@@ -393,7 +400,7 @@ pub fn set_reaction(
     )?;
     if exists {
         let sql = if on {
-            "INSERT OR IGNORE INTO reactions VALUES (?1, ?2, ?3, ?4)"
+            "INSERT OR IGNORE INTO reactions (conversation_id, ts, name, user_id) VALUES (?1, ?2, ?3, ?4)"
         } else {
             "DELETE FROM reactions WHERE conversation_id = ?1 AND ts = ?2 AND name = ?3 AND user_id = ?4"
         };

@@ -6,16 +6,26 @@ import { Hash, Lock } from "./icons";
 import Composer from "./Composer";
 import MessageRow, { repliesLabel } from "./MessageRow";
 import { pendingFor } from "./outbox";
+import type { Jump } from "./Search";
 
 export default function Thread(props: {
   conversation: Conversation;
   ts: string;
+  jump?: Jump | null;
   change: Change | null;
   onClose: () => void;
 }) {
   const [rows, setRows] = createStore<Message[]>([]);
   const [loaded, setLoaded] = createSignal(false);
   let scroller!: HTMLDivElement;
+
+  const reveal = () =>
+    requestAnimationFrame(() => {
+      const ts = props.jump?.ts;
+      if (!ts) return;
+      scroller.querySelector(`[data-ts="${CSS.escape(ts)}"]`)?.scrollIntoView({ block: "center" });
+    });
+  createEffect(on(() => props.jump, reveal, { defer: true }));
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
 
@@ -28,7 +38,8 @@ export default function Thread(props: {
     if (id !== props.conversation.id || ts !== props.ts) return;
     setRows(reconcile(list, { key: "ts" }));
     setLoaded(true);
-    if (stick) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
+    if (props.jump?.thread_ts === props.ts) reveal();
+    else if (stick) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
   };
 
   createEffect(
@@ -92,14 +103,23 @@ export default function Thread(props: {
         </button>
       </header>
       <div class="thread-scroller" ref={scroller}>
-        <Show when={root()}>{(m) => <MessageRow m={m()} conversationId={props.conversation.id} />}</Show>
+        <Show when={root()}>
+          {(m) => <MessageRow m={m()} conversationId={props.conversation.id} />}
+        </Show>
         <Show when={replies().length > 0}>
           <div class="thread-divider">
             <span>{repliesLabel(replies().length)}</span>
           </div>
         </Show>
         <For each={replies()}>
-          {(m, i) => <MessageRow m={m} conversationId={props.conversation.id} prev={i() > 0 ? replies()[i() - 1] : undefined} />}
+          {(m, i) => (
+            <MessageRow
+              m={m}
+              conversationId={props.conversation.id}
+              flash={props.jump?.ts === m.ts}
+              prev={i() > 0 ? replies()[i() - 1] : undefined}
+            />
+          )}
         </For>
         <Show when={loaded() && rows.length === 0}>
           <div class="start muted">This thread is no longer available.</div>

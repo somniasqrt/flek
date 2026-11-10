@@ -8,6 +8,11 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "allow-team-icon",
+    "allow-direct-messages",
+    "allow-activity",
+    "allow-browse-files",
+    "allow-fetch-file",
     "allow-status",
     "allow-progress",
     "allow-conversations",
