@@ -3,10 +3,14 @@
 //!
 //! A pass:
 //! 1. directory (users, conversations, read markers);
-//! 2. fast pass over every conversation: only what is new (plus the refresh
-//!    window on the first pass after start), priority conversations first;
+//! 2. fast pass: only what is new, priority conversations first; ones whose
+//!    stored history already reaches Slack's newest message (`client.counts`)
+//!    are skipped without a request;
 //! 3. files into the cache;
-//! 4. deep pass: older history and threads, slowly, in the background.
+//! 4. deep pass: older history and stale threads, slowly, in the background;
+//! 5. on the first pass after start, at most every `refresh_every`: the
+//!    refresh window (edits, reactions, deletions made while we were
+//!    offline), quietly, without progress events.
 //!
 //! With `follow`, a pass runs after every (re)connect of the live stream and
 //! events are applied in between (see [`super::follow`]). Progress goes to
@@ -19,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::watch;
 
 use crate::api::{AuthTest, Client};
-use crate::store::{directory, Store};
+use crate::store::{directory, messages, Store};
 use crate::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
 use crate::sync::directory::{sync_custom_emoji, sync_directory, EMOJI_MAX_AGE};
 use crate::sync::files::download_files;
@@ -33,6 +37,8 @@ use crate::{Error, Result};
 pub struct EngineOptions {
     /// Refresh window on the first pass (days, 0 = off).
     pub refresh_days: u32,
+    /// Re-read the refresh window no more often than this (zero = every start).
+    pub refresh_every: std::time::Duration,
     pub full: bool,
     /// Download files: cache directory and size cap in bytes.
     pub files: Option<(PathBuf, Option<i64>)>,
@@ -51,6 +57,7 @@ impl Default for EngineOptions {
     fn default() -> Self {
         Self {
             refresh_days: 7,
+            refresh_every: std::time::Duration::ZERO,
             full: false,
             files: None,
             only: None,
@@ -60,6 +67,15 @@ impl Default for EngineOptions {
             image_proxy: None,
         }
     }
+}
+
+/// Which walk over the conversations: decides the progress shown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Walk {
+    Fast,
+    Deep,
+    /// The refresh window: no progress events, so nothing looks busy.
+    Quiet,
 }
 
 /// Totals of one pass.
@@ -133,7 +149,7 @@ impl Engine {
         Ok(first.into_inner().ok().flatten().unwrap_or_default())
     }
 
-    /// Directory, fast pass, files, deep pass. `first` adds the refresh window.
+    /// Directory, fast pass, files, deep pass; `first` may add the refresh window.
     pub async fn pass(&self, limiter: &mut RateLimiter, first: bool) -> Result<PassStats> {
         let o = &self.options;
         self.progress(Progress::Directory);
@@ -148,9 +164,14 @@ impl Engine {
         let _ = self.bus.send(Change::Directory);
 
         let team = self.me.team_id.clone();
-        let mut convs = self
+        let (mut convs, unchanged) = self
             .store
-            .call(move |c| directory::conversation_activity(c, &team))
+            .call(move |c| {
+                Ok((
+                    directory::conversation_activity(c, &team)?,
+                    directory::unchanged_conversations(c, &team)?,
+                ))
+            })
             .await?;
         if let Some(only) = &o.only {
             convs.retain(|(id, _)| only.contains(id));
@@ -160,16 +181,18 @@ impl Engine {
             ..Default::default()
         };
 
+        // A full re-read walks everything; otherwise nothing new means no request.
+        let fresh: Vec<_> = convs
+            .iter()
+            .filter(|(id, _)| (o.full && first) || !unchanged.contains(id))
+            .cloned()
+            .collect();
         let fast = SyncOptions {
-            refresh_since: if first {
-                SyncOptions::refresh_days(o.refresh_days).refresh_since
-            } else {
-                None
-            },
-            full: false,
             catch_up_only: true,
+            ..Default::default()
         };
-        self.walk(limiter, &convs, &fast, false, &mut stats).await?;
+        self.walk(limiter, &fresh, &fast, Walk::Fast, &mut stats)
+            .await?;
 
         if let Some((cache, max)) = &o.files {
             let bus = self.bus.clone();
@@ -209,14 +232,53 @@ impl Engine {
             }
         }
 
+        // Older history and stale threads; complete conversations cost nothing.
         let deep = SyncOptions {
-            refresh_since: fast.refresh_since.clone(),
             full: o.full && first,
-            catch_up_only: false,
+            skip_catch_up: true,
+            ..Default::default()
         };
-        self.walk(limiter, &convs, &deep, true, &mut stats).await?;
+        self.walk(limiter, &convs, &deep, Walk::Deep, &mut stats)
+            .await?;
         self.progress(Progress::Idle);
+
+        if first && o.refresh_days > 0 && self.refresh_due().await? {
+            let refresh = SyncOptions {
+                catch_up_only: true,
+                ..SyncOptions::refresh_days(o.refresh_days)
+            };
+            let mut quiet = PassStats::default();
+            self.walk(limiter, &convs, &refresh, Walk::Quiet, &mut quiet)
+                .await?;
+            stats.messages += quiet.messages;
+            stats.deleted += quiet.deleted;
+            stats.failed += quiet.failed;
+            // A partial refresh is retried on the next start.
+            if quiet.failed == 0 {
+                let team = self.me.team_id.clone();
+                self.store
+                    .call(move |c| messages::set_refreshed(c, &team))
+                    .await?;
+            }
+        }
         Ok(stats)
+    }
+
+    /// Whether the refresh window was last re-read `refresh_every` or longer ago.
+    async fn refresh_due(&self) -> Result<bool> {
+        let every = self.options.refresh_every;
+        if every.is_zero() {
+            return Ok(true);
+        }
+        let team = self.me.team_id.clone();
+        let last = self
+            .store
+            .call(move |c| messages::refreshed_at(c, &team))
+            .await?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs() as i64);
+        Ok(last.is_none_or(|t| now - t >= every.as_secs() as i64))
     }
 
     async fn walk(
@@ -224,7 +286,7 @@ impl Engine {
         limiter: &mut RateLimiter,
         convs: &[(String, String)],
         opts: &SyncOptions,
-        deep: bool,
+        kind: Walk,
         stats: &mut PassStats,
     ) -> Result<()> {
         let labels: std::collections::HashMap<&str, &str> = convs
@@ -243,12 +305,14 @@ impl Engine {
                 },
             };
             pending.remove(&id);
-            self.progress(Progress::Conversations {
-                done: total - pending.len() - 1,
-                total,
-                current: labels.get(id.as_str()).copied().unwrap_or(&id).to_owned(),
-                deep,
-            });
+            if kind != Walk::Quiet {
+                self.progress(Progress::Conversations {
+                    done: total - pending.len() - 1,
+                    total,
+                    current: labels.get(id.as_str()).copied().unwrap_or(&id).to_owned(),
+                    deep: kind == Walk::Deep,
+                });
+            }
             let result = async {
                 let b =
                     backfill_conversation(&self.client, &self.store, limiter, &id, opts).await?;

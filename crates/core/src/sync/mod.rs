@@ -24,6 +24,9 @@ pub struct SyncOptions {
     /// Only fetch what is newer than the stored history (no deep backfill);
     /// the engine's first, fast pass.
     pub catch_up_only: bool,
+    /// Leave out the catch-up above the stored history (the fast pass just
+    /// did it); the deep pass.
+    pub skip_catch_up: bool,
 }
 
 impl SyncOptions {

@@ -20,6 +20,9 @@ pub const STATUS_EVENT: &str = "flek://status";
 
 /// Largest file the engine downloads into the cache.
 const MAX_FILE_BYTES: i64 = 100 * 1024 * 1024;
+/// Edits and reactions made while the app was closed are re-read at most this
+/// often; each start otherwise fetches only conversations with new messages.
+const REFRESH_EVERY: std::time::Duration = std::time::Duration::from_secs(3 * 60 * 60);
 
 /// Where the app is in its life: the UI renders one screen per phase.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -277,6 +280,7 @@ pub fn start(app: &AppHandle, session: Session) {
         options: EngineOptions {
             files,
             follow: true,
+            refresh_every: REFRESH_EVERY,
             ..Default::default()
         },
     };

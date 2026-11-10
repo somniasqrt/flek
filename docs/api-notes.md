@@ -46,9 +46,15 @@ fake ones before writing anything down.
   `last_read` for 23 of 28 conversations (the rest have no marker yet).
 - **Used for:** `conversations.last_read`, from which `flek channels` counts unread
   messages locally. One call instead of one `conversations.info` per conversation.
+  `latest` goes to `conversations.remote_latest`: a sync pass skips a conversation
+  whose stored history (`sync_state.newest_ts`) already reaches it, so a start
+  with nothing new makes no `conversations.history` request at all. Whether
+  `ims`/`mpims` carry `latest` too is not confirmed yet; where it is missing the
+  conversation is simply fetched as before.
 - **Fallback:** any error except an auth error is logged and ignored; unread counts
-  are then shown as unknown (`-`). Live `channel_marked` events (M2) update the
-  same column.
+  are then shown as unknown (`-`), and every conversation is caught up as before
+  (`remote_latest` is cleared). A `latest` that is not a ts string counts as
+  unknown. Live `channel_marked` events (M2) update the read marker column.
 - **Code:** `crates/core/src/api/internal.rs` → `Client::client_counts`.
 - **Date checked:** 2026-11-08.
 

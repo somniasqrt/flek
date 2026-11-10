@@ -81,7 +81,8 @@ pub async fn backfill_conversation(
     let catch_up_from = state
         .newest_ts
         .clone()
-        .or_else(|| state.complete.then(|| EPOCH_TS.to_owned()));
+        .or_else(|| state.complete.then(|| EPOCH_TS.to_owned()))
+        .filter(|_| !opts.skip_catch_up);
     if let Some(newest) = catch_up_from {
         let lower = match &opts.refresh_since {
             Some(since) if *since < newest => since.clone(),

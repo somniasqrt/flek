@@ -141,3 +141,165 @@ async fn fast_pass_then_deep_with_priority() {
         );
     }
 }
+
+/// Slack ts `secs` seconds ago.
+fn ago(secs: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    format!("{}.000100", now - secs)
+}
+
+/// One channel with two recent messages; `counts` is the `client.counts` reply.
+async fn quiet_slack(counts: ResponseTemplate) -> MockServer {
+    let s = MockServer::start().await;
+    Mock::given(path("/users.list"))
+        .respond_with(ok(json!({"members": []})))
+        .mount(&s)
+        .await;
+    Mock::given(path("/client.counts"))
+        .respond_with(counts)
+        .mount(&s)
+        .await;
+    Mock::given(path("/users.conversations"))
+        .respond_with(ok(
+            json!({"channels": [{"id": "C1", "name": "alpha", "is_channel": true}]}),
+        ))
+        .mount(&s)
+        .await;
+    Mock::given(path("/conversations.history"))
+        .respond_with(ok(json!({"has_more": false, "messages": [
+            {"ts": ago(7200), "user": "U1", "text": "older"},
+            {"ts": ago(3600), "user": "U1", "text": "newest"}
+        ]})))
+        .mount(&s)
+        .await;
+    s
+}
+
+fn engine(
+    server: &MockServer,
+    store: &Store,
+    bus: &flek_core::sync::live::Bus,
+    refresh_every: u64,
+) -> Engine {
+    Engine {
+        client: Client::with_base_url(
+            Secret::new("xoxc-fake"),
+            Secret::new("xoxd-fake"),
+            &server.uri(),
+        )
+        .unwrap()
+        .without_pacing(),
+        store: store.clone(),
+        me: AuthTest {
+            url: "https://fake.slack.com/".into(),
+            team: "Fake".into(),
+            user: "me".into(),
+            team_id: "T1".into(),
+            user_id: "U0ME".into(),
+            enterprise_id: None,
+        },
+        bus: bus.clone(),
+        priority: Priority::default(),
+        options: EngineOptions {
+            refresh_days: 7,
+            refresh_every: std::time::Duration::from_secs(refresh_every),
+            history_interval: std::time::Duration::ZERO,
+            ..Default::default()
+        },
+    }
+}
+
+async fn history_requests(server: &MockServer) -> usize {
+    server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/conversations.history")
+        .count()
+}
+
+async fn start(e: &Engine) {
+    e.run(tokio::sync::watch::channel(false).1).await.unwrap();
+}
+
+#[tokio::test]
+async fn unchanged_conversations_cost_no_request_and_refresh_is_rare_and_quiet() {
+    let latest = ago(3600);
+    let server = quiet_slack(ok(json!({"channels": [{"id": "C1", "latest": latest}]}))).await;
+    let store = Store::open_in_memory().unwrap();
+    let bus = bus();
+
+    // First start: history, then the refresh window (never read before).
+    start(&engine(&server, &store, &bus, 3600)).await;
+    let first = history_requests(&server).await;
+    assert_eq!(first, 2, "one page of history, one refresh");
+
+    // Next start: Slack's newest message is stored, refresh is not due yet.
+    let mut rx = bus.subscribe();
+    start(&engine(&server, &store, &bus, 3600)).await;
+    assert_eq!(history_requests(&server).await, first);
+    while let Ok(change) = rx.try_recv() {
+        if let Change::Progress(Progress::Conversations { deep, .. }) = change {
+            assert!(deep, "an unchanged conversation showed up in the fast pass");
+        }
+    }
+
+    // Refresh due again: it runs, but after Idle and without any progress.
+    let mut rx = bus.subscribe();
+    start(&engine(&server, &store, &bus, 0)).await;
+    assert_eq!(history_requests(&server).await, first + 1);
+    let mut idle = false;
+    while let Ok(change) = rx.try_recv() {
+        match change {
+            Change::Progress(Progress::Idle) => idle = true,
+            Change::Progress(p) => assert!(!idle, "progress during the refresh: {p:?}"),
+            _ => {}
+        }
+    }
+    assert!(idle);
+}
+
+#[tokio::test]
+async fn new_messages_or_unknown_latest_are_fetched() {
+    // Newer than what gets stored: fetched every start.
+    let server = quiet_slack(ok(json!({"channels": [{"id": "C1", "latest": ago(60)}]}))).await;
+    let store = Store::open_in_memory().unwrap();
+    let bus = bus();
+    start(&engine(&server, &store, &bus, 3600)).await;
+    let before = history_requests(&server).await;
+    start(&engine(&server, &store, &bus, 3600)).await;
+    assert_eq!(history_requests(&server).await, before + 1);
+
+    // An unexpected `latest` shape: read markers survive, nothing is skipped.
+    let server = quiet_slack(ok(json!({"channels": [
+        {"id": "C1", "last_read": "5.000000", "latest": {"ts": ago(3600)}}
+    ]})))
+    .await;
+    let store = Store::open_in_memory().unwrap();
+    start(&engine(&server, &store, &bus, 3600)).await;
+    let before = history_requests(&server).await;
+    start(&engine(&server, &store, &bus, 3600)).await;
+    assert_eq!(history_requests(&server).await, before + 1);
+    let last_read: Option<String> = store
+        .with_conn(|c| {
+            Ok(c.query_row(
+                "SELECT last_read FROM conversations WHERE id = 'C1'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    assert_eq!(last_read.as_deref(), Some("5.000000"));
+
+    // client.counts failing: back to fetching every conversation.
+    let server = quiet_slack(ResponseTemplate::new(500)).await;
+    let store = Store::open_in_memory().unwrap();
+    start(&engine(&server, &store, &bus, 3600)).await;
+    let before = history_requests(&server).await;
+    start(&engine(&server, &store, &bus, 3600)).await;
+    assert_eq!(history_requests(&server).await, before + 1);
+}

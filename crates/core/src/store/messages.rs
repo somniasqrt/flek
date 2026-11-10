@@ -200,6 +200,26 @@ pub fn set_sync_state(conn: &Connection, conversation_id: &str, s: &SyncState) -
     Ok(())
 }
 
+/// Unix time the refresh window was last re-read in full for a team.
+pub fn refreshed_at(conn: &Connection, team_id: &str) -> Result<Option<i64>> {
+    Ok(conn
+        .query_row(
+            "SELECT refreshed_at FROM refresh_runs WHERE team_id = ?1",
+            [team_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+pub fn set_refreshed(conn: &Connection, team_id: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO refresh_runs (team_id, refreshed_at) VALUES (?1, unixepoch())
+         ON CONFLICT(team_id) DO UPDATE SET refreshed_at = excluded.refreshed_at",
+        [team_id],
+    )?;
+    Ok(())
+}
+
 /// Thread roots of a conversation whose replies are missing or stale:
 /// never synced, or the root's `latest_reply` is newer than what was fetched.
 /// Roots hidden by the Free limit are skipped (their replies are hidden too).

@@ -44,15 +44,28 @@ pub async fn sync_directory(
         })
         .await?;
     // Undocumented; unread counts just stay unknown if it fails.
+    // Its `latest` also lets sync skip conversations with nothing new.
+    let team_id = me.team_id.clone();
     match client.client_counts().await {
         Ok(markers) => {
-            let markers: Vec<_> = markers.into_iter().map(|m| (m.id, m.last_read)).collect();
+            let (markers, latest): (Vec<_>, Vec<_>) = markers
+                .into_iter()
+                .map(|m| ((m.id.clone(), m.last_read), (m.id, m.latest)))
+                .unzip();
             store
-                .call(move |c| directory::set_read_markers(c, &markers))
+                .call(move |c| {
+                    directory::set_read_markers(c, &markers)?;
+                    directory::set_remote_latest(c, &team_id, Some(&latest))
+                })
                 .await?;
         }
         Err(e) if e.is_auth_error() => return Err(e),
-        Err(e) => tracing::warn!(error = %e, "client.counts failed; unread counts unavailable"),
+        Err(e) => {
+            tracing::warn!(error = %e, "client.counts failed; unread counts unavailable");
+            store
+                .call(move |c| directory::set_remote_latest(c, &team_id, None))
+                .await?;
+        }
     }
     Ok(stats)
 }

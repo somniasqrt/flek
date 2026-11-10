@@ -18,6 +18,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (9, include_str!("migrations/0009_link_images.sql")),
     (10, include_str!("migrations/0010_files_from_history.sql")),
     (11, include_str!("migrations/0011_custom_emoji.sql")),
+    (12, include_str!("migrations/0012_sync_skip.sql")),
 ];
 
 /// Latest schema version this build knows.

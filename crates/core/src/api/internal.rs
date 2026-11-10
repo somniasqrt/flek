@@ -16,6 +16,17 @@ pub struct ReadMarker {
     pub mention_count: i64,
     #[serde(default)]
     pub has_unreads: bool,
+    /// Ts of the newest message; anything but a ts string counts as unknown,
+    /// so an unexpected shape never loses the read markers.
+    #[serde(default, deserialize_with = "ts_or_none")]
+    pub latest: Option<String>,
+}
+
+fn ts_or_none<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::String(ts) if !ts.is_empty() => Some(ts),
+        _ => None,
+    })
 }
 
 impl Client {
