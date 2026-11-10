@@ -209,16 +209,24 @@ pub struct ConversationRow {
 /// Conversations of a team: channels first, then group DMs and DMs, by label.
 /// Counts come from stored counters (migration 0007), never from `COUNT(*)`.
 pub fn list_conversations(conn: &Connection, team_id: &str) -> Result<Vec<ConversationRow>> {
+    list_conversations_including(conn, team_id, false)
+}
+
+pub fn list_conversations_including(
+    conn: &Connection,
+    team_id: &str,
+    non_member: bool,
+) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
                 message_count, unread_count, latest_ts, dm_user_id
          FROM conversations
-         WHERE team_id = ?1
+         WHERE team_id = ?1 AND (?2 OR is_member = 1)
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
                   is_archived, lower(COALESCE(label, name, id))",
     )?;
     let rows = stmt
-        .query_map([team_id], |r| {
+        .query_map(params![team_id, non_member], |r| {
             Ok(ConversationRow {
                 id: r.get(0)?,
                 kind: r.get(1)?,
@@ -319,7 +327,7 @@ pub fn set_remote_latest(
 pub fn unchanged_conversations(conn: &Connection, team_id: &str) -> Result<HashSet<String>> {
     let mut stmt = conn.prepare(
         "SELECT c.id FROM conversations c JOIN sync_state s ON s.conversation_id = c.id
-         WHERE c.team_id = ?1 AND c.remote_latest IS NOT NULL
+         WHERE c.team_id = ?1 AND c.is_member = 1 AND c.remote_latest IS NOT NULL
            AND s.newest_ts IS NOT NULL AND c.remote_latest <= s.newest_ts",
     )?;
     let ids = stmt

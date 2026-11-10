@@ -25,3 +25,6 @@ pub use users::{Profile, User};
 
 mod channel_details;
 pub use channel_details::Pin;
+
+mod search;
+pub use search::{SearchMatch, SearchPage, SearchSort};

@@ -89,12 +89,8 @@ enum Command {
         /// Query, e.g. `grades sheet in:#general after:2024-01-01`.
         #[arg(required = true, num_args = 1..)]
         query: Vec<String>,
-        /// Maximum number of results.
-        #[arg(long, default_value_t = 20)]
-        limit: usize,
-        /// Newest first instead of best match first.
-        #[arg(long)]
-        recent: bool,
+        #[command(flatten)]
+        options: search_commands::Options,
     },
     /// Import an existing archive (simple JSON or Slack export / slackdump).
     Import {
@@ -122,6 +118,9 @@ enum Command {
         /// Include archived channels.
         #[arg(long)]
         archived: bool,
+        /// Include conversations discovered by search without joining them.
+        #[arg(long)]
+        include_non_member: bool,
     },
 }
 
@@ -195,11 +194,9 @@ async fn run(cli: Cli) -> Result<()> {
         Command::History { channel, options } => {
             read_commands::history(&store, g, &channel, options).await
         }
-        Command::Search {
-            query,
-            limit,
-            recent,
-        } => search(g, &query.join(" "), limit, recent),
+        Command::Search { query, options } => {
+            search_commands::run(&store, g, &query.join(" "), options).await
+        }
         Command::Import { path, channel } => import_archive(g, &path, channel.as_deref()),
         Command::Send {
             channel,
@@ -207,7 +204,10 @@ async fn run(cli: Cli) -> Result<()> {
             thread,
             broadcast,
         } => send(&store, g, &channel, text, thread, broadcast).await,
-        Command::Channels { archived } => channels(g, archived),
+        Command::Channels {
+            archived,
+            include_non_member,
+        } => channels(g, archived, include_non_member),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
         Command::Auth(AuthCommand::Logout { all }) => logout(&store, g, all),
@@ -559,57 +559,6 @@ fn say(bar: &indicatif::ProgressBar, line: String) {
     }
 }
 
-fn search(g: &Global, query: &str, limit: usize, recent: bool) -> Result<()> {
-    use flek_core::store::search::{self, Sort};
-    use std::io::IsTerminal;
-
-    let db = open_db(g)?;
-    let team = default_team(&db, g)?;
-    let q = search::parse(query).map_err(|e| flek_core::Error::Usage(e.to_string()))?;
-    let sort = if recent {
-        Sort::Recent
-    } else {
-        Sort::Relevance
-    };
-    let markers = if g.json {
-        ("**", "**")
-    } else if std::io::stdout().is_terminal() {
-        ("\x1b[1;33m", "\x1b[0m")
-    } else {
-        ("", "")
-    };
-    let hits = db.with_read(|c| search::search(c, &team, &q, sort, limit, markers))?;
-    if g.json {
-        let results = db.with_read(|c| views::search_results(c, &hits))?;
-        emit(json!({"results":results}));
-        return Ok(());
-    }
-    if hits.is_empty() {
-        println!("nothing found");
-    }
-    for h in hits {
-        let (day, time) = format_ts(&h.ts);
-        let author = h.author.unwrap_or_else(|| "?".into());
-        let hidden = if h.hidden_by_limit {
-            " [hidden in Slack]"
-        } else {
-            ""
-        };
-        let snippet = h.snippet.replace('\n', " ");
-        println!(
-            "{} {day} {time}  {author}: {snippet}{hidden}",
-            h.conversation
-        );
-        if let Some(t) = h.thread_ts.filter(|t| *t != h.ts) {
-            println!(
-                "    in thread: flek history {} --thread {t}",
-                h.conversation_id
-            );
-        }
-    }
-    Ok(())
-}
-
 fn import_archive(g: &Global, path: &std::path::Path, channel: Option<&str>) -> Result<()> {
     let db = open_db(g)?;
     let team = default_team(&db, g)?;
@@ -675,16 +624,19 @@ fn format_ts(ts: &str) -> (String, String) {
     }
 }
 
-fn channels(g: &Global, archived: bool) -> Result<()> {
+fn channels(g: &Global, archived: bool, non_member: bool) -> Result<()> {
     let db = open_db(g)?;
     let team = default_team(&db, g)?;
     let rows: Vec<_> = db
-        .with_read(|c| flek_core::store::directory::list_conversations(c, &team))?
+        .with_read(|c| {
+            flek_core::store::directory::list_conversations_including(c, &team, non_member)
+        })?
         .into_iter()
         .filter(|r| archived || !r.is_archived)
         .collect();
     if g.json {
-        let conversations = db.with_read(|c| views::conversations(c, &team, archived))?;
+        let conversations =
+            db.with_read(|c| views::conversations_including(c, &team, archived, non_member))?;
         emit(json!({"conversations":conversations}));
         return Ok(());
     }
@@ -802,3 +754,5 @@ fn logout(store: &CredentialStore, g: &Global, all: bool) -> Result<()> {
     }
     Ok(())
 }
+
+mod search_commands;

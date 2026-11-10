@@ -126,7 +126,7 @@ Examples use fictional destinations and timestamps; replace them with your own.
 | `whoami` | Show the current team and user; import a session if needed. | `flek whoami` |
 | `db` | Open, create or migrate the local DB and show its path and schema version. | `flek db --db /tmp/flek-demo.db` |
 | `sync` | Fetch users, conversations, history, threads and files. `--channel <CHANNEL>` selects one exact conversation; `--follow` stays connected until Ctrl+C; `--full` re-reads all history and threads. `--refresh-days <DAYS>` defaults to 7 (0 disables refresh); `--no-files` skips downloads; `--max-file-size <MB>` defaults to 100 (0 means no limit). | `flek sync --channel '#project-demo' --follow --max-file-size 25` |
-| `channels` | List stored conversations with message/unread counts; `--archived` includes archived channels. | `flek channels --archived` |
+| `channels` | List stored conversations with message/unread counts; `--archived` includes archived channels; `--include-non-member` includes conversations discovered by search. | `flek channels --archived` |
 | `history <CHANNEL>` | Read recent stored messages; `--limit <LIMIT>` defaults to 30. `--thread <TS>` pages a thread. `--since/--until`, `--around <TS or permalink>`, `--cursor` select windows/pages; JSON returns older/newer cursors. `--fresh` catches up first. | `flek history '#project-demo' --limit 20` |
 | `unread` | DMs and mentions first; `--messages N` attaches oldest unread messages; `--include-unknown` lists unknown read markers separately; `--fresh` refreshes directory and catches up activity. | `flek unread --messages 3 --json` |
 | `thread <REF> [TS]` | Root and all stored replies; accepts a reply permalink; `--fresh` fetches the thread. | `flek thread C0FAKE 1700000000.123456` |
@@ -136,7 +136,7 @@ Examples use fictional destinations and timestamps; replace them with your own.
 | `mentions` | Local mentions, newest first; `--since` defaults to 7d, `--until`, `--limit` defaults to 50; `--include-broadcasts` adds here/channel/everyone. | `flek mentions --since 12h --json` |
 | `files` | Local file shares; `--channel`, `--from`, `--type`, `--since`, `--until`, `--limit` (default 50). Types: image/pdf/video/audio/doc/other or MIME prefix. | `flek files --channel '#project-demo' --type image` |
 | `file get <ID>` | Print cache path; download only if missing; `--to PATH` copies it. | `flek file get F0FAKE --to ./notes.pdf` |
-| `search <QUERY>...` | Search the local archive, including history hidden in Slack. `--limit <LIMIT>` defaults to 20; `--recent` sorts newest first instead of by relevance. | `flek search 'release in:#project-demo after:2026-01-01' --recent --limit 10` |
+| `search <QUERY>...` | Search the local archive, including history hidden in Slack. `--limit` defaults to 20; `--recent` sorts newest first. `--since/--until`, `--context N`, `--offset` or `--cursor` select windows/context/pages. `--remote` stores Slack search candidates before reading merged SQLite results; JSON includes parsed filters, sources and remote status. | `flek search 'release in:#project-demo after:2026-01-01' --recent --limit 10` |
 | `send <CHANNEL> <TEXT>` | Send as you, using Slack mrkdwn (`&`, `<`, `>` are escaped). `--thread <TS>` replies to a thread; `--broadcast` requires it and also shows the reply in the channel. Writes require an exact name or id. | `flek send '#project-demo' 'The release notes are ready.' --thread 1700000000.123456 --broadcast` |
 | `import <PATH>` | Import a simple JSON file or Slack export / slackdump file or directory. `--channel <CHANNEL>` puts every message of a single-file archive into that conversation. | `flek import ./archives/project-demo.json --channel C0FAKE` |
 | `auth import` | Explicitly import desktop sessions into Keychain. | `flek auth import` |
@@ -147,6 +147,14 @@ Examples use fictional destinations and timestamps; replace them with your own.
 refresh window for edits, reactions, deletions and thread replies. The app
 re-reads that window at most once every 3 hours. `--full` merges without
 losing stored history, including messages Slack no longer returns.
+
+Search is offline without `--remote`, including JSON, context and paging. Remote
+search can discover public non-member channels and unsynced messages, while local
+archives retain older history. Server search with this web-session type is
+unverified; non-auth remote failures keep local results and report a warning
+(`remote.error` in JSON). Search preserves fuller stored messages and doesn't
+start syncing discovered channels. See [the JSON contract](docs/cli-json.md#agent-search-m83-additive-version-1)
+for bounds, cursors and unsupported remote filters.
 
 Search supports `from:<person>`, `in:<channel>`, `has:link`, `has:file`,
 `before:YYYY-MM-DD`, `after:YYYY-MM-DD`, trailing prefix `*` (`release*`),

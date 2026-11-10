@@ -73,6 +73,49 @@ async fn fast_pass_then_deep_with_priority() {
     .unwrap()
     .without_pacing();
     let store = Store::open_in_memory().unwrap();
+    store
+        .with_conn(|c| {
+            flek_core::store::directory::upsert_team(
+                c,
+                "T1",
+                "Fake",
+                "https://fake.slack.com/",
+                "U0ME",
+            )
+        })
+        .unwrap();
+    Mock::given(path("/search.messages"))
+        .respond_with(ok(json!({"messages":{"total":1,"matches":[
+            {"channel":{"id":"CSEARCH","name":"discovered"},"ts":"1700000000.000001","text":"remote evidence"}
+        ]}}))).mount(&server).await;
+    let options = flek_core::search::Options {
+        limit: 1,
+        ..Default::default()
+    };
+    let prepared = store
+        .with_read(|c| flek_core::search::prepare(c, "T1", "remote", &options))
+        .unwrap();
+    flek_core::search::run(&store, "T1", prepared, &options, Some(&client), ("", ""))
+        .await
+        .unwrap();
+    Mock::given(path("/conversations.history"))
+        .and(field("channel", "CSEARCH"))
+        .respond_with(ok(json!({"messages":[]})))
+        .with_priority(1)
+        .expect(0)
+        .mount(&server)
+        .await;
+    store
+        .with_read(|c| {
+            assert!(!flek_core::store::directory::list_conversations(c, "T1")?
+                .iter()
+                .any(|v| v.id == "CSEARCH"));
+            assert!(!flek_core::views::conversations(c, "T1", true)?
+                .iter()
+                .any(|v| v.id == "CSEARCH"));
+            Ok(())
+        })
+        .unwrap();
     let bus = bus();
     let mut rx = bus.subscribe();
     let priority = Priority::default();

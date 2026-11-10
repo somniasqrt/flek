@@ -79,10 +79,17 @@ fn offline_json_contracts() {
     );
     let mut hit = message.clone();
     hit["snippet"] = json!("**hello** offline");
+    let search = success(&path, &["search", "hello"]);
+    hit["before"] = json!([]);
+    hit["after"] = json!([]);
+    hit["source"] = json!("local");
+    assert_eq!(search["results"], json!([hit]));
+    assert_eq!(search["query"]["terms"], json!(["hello"]));
     assert_eq!(
-        success(&path, &["search", "hello"]),
-        json!({"schema_version":1,"results":[hit]})
+        search["remote"],
+        json!({"searched":false,"total":0,"pages":0,"error":null})
     );
+    assert!(search["next_cursor"].is_null());
     assert!(
         success(&path, &["db"])["db_schema_version"]
             .as_u64()
@@ -409,4 +416,110 @@ fn agent_read_errors_are_typed() {
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["error"]["code"], kind, "{args:?}");
     }
+}
+
+#[test]
+fn agent_search_context_cursor_filters_and_non_member_channels() {
+    let (_dir, path) = read_fixture();
+    let first = success(
+        &path,
+        &[
+            "search",
+            "hello in:#general from:alice",
+            "--context",
+            "1",
+            "--limit",
+            "1",
+        ],
+    );
+    assert_eq!(first["query"]["from"], json!([{"id":"U2","label":"Alice"}]));
+    assert_eq!(
+        first["query"]["in_conversations"],
+        json!([{"id":"C1","label":"general"}])
+    );
+    assert_eq!(first["results"][0]["before"][0]["text"], "hello offline");
+    let first = success(&path, &["search", "hello", "--recent", "--limit", "1"]);
+    let cursor = first["next_cursor"].as_str().unwrap();
+    let next = success(
+        &path,
+        &[
+            "search", "hello", "--recent", "--limit", "1", "--cursor", cursor,
+        ],
+    );
+    assert_eq!(next["results"][0]["text"], "hello offline");
+    assert!(next["next_cursor"].is_null());
+    assert_eq!(
+        success(&path, &["search", "hello", "--recent", "--offset", "1"])["results"],
+        next["results"]
+    );
+    assert_eq!(
+        success(
+            &path,
+            &[
+                "search",
+                "hello",
+                "--since",
+                "1700000001.000001",
+                "--until",
+                "1700000002.000001"
+            ]
+        )["results"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    for (query, code, kind) in [
+        ("hello in:missing", 3, "not_found"),
+        ("hello in:gen", 4, "ambiguous"),
+        ("hello from:nobody", 3, "not_found"),
+    ] {
+        let output = command(&path)
+            .args(["search", query])
+            .assert()
+            .code(code)
+            .get_output()
+            .clone();
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], kind);
+    }
+    for args in [
+        vec!["search", "hello", "--cursor", "bad"],
+        vec![
+            "search", "hello", "--cursor", cursor, "--recent", "--offset", "1",
+        ],
+    ] {
+        command(&path).args(args).assert().code(2);
+    }
+    let db = Store::open(&path).unwrap();
+    db.with_conn(|c| {
+        c.execute(
+            "INSERT INTO conversations(id, team_id, kind, name, label, is_member)
+             VALUES ('CSEARCH', 'T1', 'public_channel', 'discovered', 'discovered', 0)",
+            [],
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let normal = success(&path, &["channels"]);
+    assert_eq!(normal["conversations"].as_array().unwrap().len(), 3);
+    let all = success(&path, &["channels", "--include-non-member"]);
+    assert_eq!(all["conversations"].as_array().unwrap().len(), 4);
+    assert!(all["conversations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|c| c["id"] == "CSEARCH" && c["is_member"] == false));
+    let output = Command::new(assert_cmd::cargo::cargo_bin!("flek"))
+        .arg("--db")
+        .arg(&path)
+        .args(["--team", "T1", "channels"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    assert!(!String::from_utf8(output.stdout)
+        .unwrap()
+        .contains("discovered"));
 }

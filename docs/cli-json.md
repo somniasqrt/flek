@@ -328,3 +328,88 @@ digits, a date `YYYY-MM-DD` at local midnight, RFC3339 (with timezone), or a
 non-negative integer duration ending in `m`, `h`, `d`, relative to now.
 Invalid/out-of-range times or reversed bounds fail as `usage` (2). Date midnights
 that are ambiguous/nonexistent in the local timezone also fail as `usage`.
+
+## Agent search (M8.3, additive version 1)
+
+`search <query> [--since TIME] [--until TIME] [--context N] [--limit N]
+[--offset N | --cursor CURSOR] [--recent] [--remote]` adds these envelope fields:
+
+| Field | Meaning |
+|---|---|
+| `query` | Parsed interpretation described below |
+| `next_cursor` | Opaque cursor for the next stored result page, or null |
+| `remote` | `{searched: boolean, total: integer, pages: integer, error: null or {code: string, message: string}}` |
+| `remote_unsupported_filters` | Strings identifying syntax that cannot be represented exactly in the remote query; also available as a translation preview on offline reads |
+
+`results` retains every Message field and `snippet` (`**` match markers).
+Each result additionally has `before: Message[]`, `after: Message[]`, and
+`source: "local" | "remote" | "both"`. Context defaults to zero; arrays are
+oldest first and contain up to N neighbours from the same timeline. Replies
+use their thread, including the root; top-level messages use the conversation
+without ordinary replies. Deleted neighbours are excluded. Context does not
+inherit the search text/date/author filters.
+
+`query` has `fts: string` (the actual SQLite MATCH expression), `terms: string[]`
+(original free-text tokens including quotes, `prefix*` and `-excluded`),
+`from: {id, label}[]`, `in_conversations: {id, label}[]`, `has_link: boolean`,
+`has_file: boolean`, `before`, `after`, `since`, `until` (original strings or
+null), and `since_ts`, `until_ts` (effective normalized bounds or null).
+The original parser's `before:` day starts at UTC midnight (exclusive upper
+bound); `after:` starts at UTC midnight the following day (inclusive lower
+bound). Invalid calendar dates fail as usage. `--since`/`--until` use the shared
+TIME parser, including local-midnight dates, Slack timestamps, RFC3339 and
+relative durations. For search these bounds are lower-inclusive and
+upper-exclusive, just like the parser's normalized bounds. Flags refine query
+bounds: the later lower bound and earlier upper bound win. Reversed bounds
+are usage errors. Repeated from/in filters retain the parser's OR semantics.
+Unresolved references fail with `not_found`, and tied prefixes with `ambiguous`,
+using the M8.1 resolvers before any credentials are accessed.
+
+Limit defaults to 20, offset to 0. Cursor and offset conflict. Cursors are bound
+to team, normalized query and sort; garbage/mismatched cursors fail as usage.
+Absolute times are needed for stable cursor reuse; relative times are evaluated
+anew. Ties are broken by timestamp descending, then conversation id. A zero
+limit yields no results and a null cursor. Paging reflects the current database,
+not a retained snapshot; new writes or a repeated remote search can change ranks.
+A null cursor means no more **stored** matches, not that Slack search was exhausted.
+
+Without `--remote`, search never accesses Keychain or the network. With it,
+`search.messages` candidates are stored first, then SQLite runs the same query
+and hydrates all views. Deduplication uses `(conversation_id, ts)`. Source is
+per invocation: a returned remote key already stored before ingestion is `both`,
+a new remote key is `remote`, and other stored matches are `local`. Remote-only
+messages that do not satisfy the local query after ingestion are filtered out.
+All merged matches use local BM25 relevance (default) or timestamp (`--recent`),
+so Slack scores never compete with local BM25 scores.
+
+Remote fetching requests at most `offset + limit + 5` candidates (rounded up
+by at most two for fixed-size numbered pages), capped at 300 and three pages.
+Page size is at most 100; continuation requests wait at least three seconds,
+and the shared client's Retry-After handling remains active. `remote.total` is
+Slack's reported total, `pages` counts successfully ingested pages, and
+`searched` means a remote request was attempted (false for limit zero).
+Non-auth remote failures return stored results, `remote.error`, and exit 0;
+human output warns on stderr. Auth failures retain exit 5. JSON warnings are
+carried only in `remote.error`. A failure after an earlier successful page
+retains that page's stored evidence. Database failures still fail the command.
+
+Remote translation retains phrases, exclusions, from/in ids (`from:<@UFAKE>`,
+`in:<#CFAKE>`), has filters and query dates. Explicit prefixes are omitted and
+listed verbatim in `remote_unsupported_filters`; bare words are sent but their
+local stemming differences are listed as `local_stemming:<word>`. Multiple
+from/in filters are omitted remotely and listed as `from:multiple`/`in:multiple`
+to avoid changing the local OR into remote AND. Exact TIME flag bounds are
+omitted and listed as `--since`/`--until`; SQLite still enforces them precisely.
+These omissions can reduce recall within the bounded remote candidate budget.
+
+Search payloads can omit full history fields. Ingestion therefore uses the
+existing gap-filling message merge: complete local messages, attached files,
+reactions and metadata are retained; new rows and content-stripped gaps are
+filled. Normal history sync remains responsible for updating complete messages.
+Search never advances history/thread sync markers. Unknown users are stored
+when a profile/username is present; otherwise views retain their ids.
+Unknown conversations are stored with `is_member = 0`; existing membership is
+preserved. They remain searchable/resolvable but are excluded from the app
+sidebar, default `channels`, unread listings and the engine's conversation walks.
+`channels --include-non-member` explicitly includes them (combine with
+`--archived` to also include archived records).

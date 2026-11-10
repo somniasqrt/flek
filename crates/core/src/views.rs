@@ -65,9 +65,29 @@ pub fn conversation(conn: &Connection, id: &str) -> Result<Option<Conversation>>
         .optional()?)
 }
 pub fn conversations(conn: &Connection, team: &str, archived: bool) -> Result<Vec<Conversation>> {
-    let mut stmt=conn.prepare(&format!("{CONVERSATION_SELECT} WHERE c.team_id=?1 AND (?2 OR NOT c.is_archived) ORDER BY CASE c.kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,c.is_archived,lower(COALESCE(c.label,c.name,c.id))"))?;
+    conversations_including(conn, team, archived, false)
+}
+
+pub fn conversations_including(
+    conn: &Connection,
+    team: &str,
+    archived: bool,
+    non_member: bool,
+) -> Result<Vec<Conversation>> {
+    let mut stmt = conn.prepare(&format!(
+        "{CONVERSATION_SELECT}
+         WHERE c.team_id = ?1 AND (?3 OR c.is_member = 1)
+           AND (?2 OR NOT c.is_archived)
+         ORDER BY CASE c.kind
+             WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0
+             WHEN 'mpim' THEN 1 ELSE 2 END,
+             c.is_archived, lower(COALESCE(c.label, c.name, c.id))"
+    ))?;
     let rows = stmt
-        .query_map(rusqlite::params![team, archived], conversation_row)?
+        .query_map(
+            rusqlite::params![team, archived, non_member],
+            conversation_row,
+        )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
 }

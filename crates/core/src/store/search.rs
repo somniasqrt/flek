@@ -11,6 +11,15 @@ use crate::{Error, Result};
 pub struct Query {
     /// FTS5 MATCH expression built from the free-text part (empty = filters only).
     pub fts: String,
+    /// Original free-text tokens, including quotes, exclusions and explicit prefixes.
+    pub terms: Vec<String>,
+    pub before_date: Option<String>,
+    pub after_date: Option<String>,
+    /// Agent callers resolve filters to ids before executing.
+    pub resolved: bool,
+    /// Original references retain sigils/case for ranked identity resolution.
+    pub from_references: Vec<String>,
+    pub conversation_references: Vec<String>,
     pub from: Vec<String>,
     pub in_conversations: Vec<String>,
     pub has_link: bool,
@@ -40,10 +49,15 @@ pub fn parse(input: &str) -> Result<Query> {
             _ => (String::new(), token.as_str()),
         };
         match key.as_str() {
-            "from" => q.from.push(value.trim_start_matches('@').to_lowercase()),
-            "in" => q
-                .in_conversations
-                .push(value.trim_start_matches(['#', '@']).to_lowercase()),
+            "from" => {
+                q.from_references.push(value.into());
+                q.from.push(value.trim_start_matches('@').to_lowercase());
+            }
+            "in" => {
+                q.conversation_references.push(value.into());
+                q.in_conversations
+                    .push(value.trim_start_matches(['#', '@']).to_lowercase());
+            }
             "has" => match value.to_ascii_lowercase().as_str() {
                 "link" => q.has_link = true,
                 "file" => q.has_file = true,
@@ -53,9 +67,16 @@ pub fn parse(input: &str) -> Result<Query> {
                     )))
                 }
             },
-            "before" => q.before = Some(day_ts(value, 0)?),
-            "after" => q.after = Some(day_ts(value, 1)?),
+            "before" => {
+                q.before = Some(day_ts(value, 0)?);
+                q.before_date = Some(value.into());
+            }
+            "after" => {
+                q.after = Some(day_ts(value, 1)?);
+                q.after_date = Some(value.into());
+            }
             _ => {
+                q.terms.push(token.clone());
                 if let Some(neg) = token.strip_prefix('-').filter(|t| !t.is_empty()) {
                     exclude.push(fts_term(neg));
                 } else {
@@ -145,30 +166,18 @@ fn fts_term(token: &str) -> String {
 /// `YYYY-MM-DD` (+ `plus_days`) → ts of that day's midnight, UTC.
 fn day_ts(date: &str, plus_days: i64) -> Result<String> {
     let bad = || Error::Store(format!("bad date {date:?}, expected YYYY-MM-DD"));
-    let mut parts = date
-        .splitn(3, '-')
-        .map(|p| p.parse::<i64>().map_err(|_| bad()));
-    let (y, m, d) = (
-        parts.next().ok_or_else(bad)??,
-        parts.next().ok_or_else(bad)??,
-        parts.next().ok_or_else(bad)??,
-    );
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+    let date = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
+        .ok()
+        .filter(|d| d.format("%Y-%m-%d").to_string() == date)
+        .ok_or_else(bad)?;
+    let date = date
+        .checked_add_signed(chrono::Duration::days(plus_days))
+        .ok_or_else(bad)?;
+    let ts = date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    if ts < 0 {
         return Err(bad());
     }
-    let days = days_from_civil(y, m, d) + plus_days;
-    Ok(format!("{:010}.000000", (days * 86_400).max(0)))
-}
-
-/// Days since 1970-01-01 (Howard Hinnant's algorithm).
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = y.div_euclid(400);
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
+    Ok(format!("{ts:010}.000000"))
 }
 
 /// One search result.
@@ -201,6 +210,20 @@ pub fn search(
     q: &Query,
     sort: Sort,
     limit: usize,
+    markers: (&str, &str),
+) -> Result<Vec<Hit>> {
+    search_page(conn, team_id, q, sort, limit, 0, markers)
+}
+
+/// Offset-based page with deterministic tie-breaking for opaque agent cursors.
+#[allow(clippy::too_many_arguments)]
+pub fn search_page(
+    conn: &Connection,
+    team_id: &str,
+    q: &Query,
+    sort: Sort,
+    limit: usize,
+    offset: usize,
     markers: (&str, &str),
 ) -> Result<Vec<Hit>> {
     let mut args: Vec<SqlValue> = Vec::new();
@@ -243,7 +266,11 @@ pub fn search(
     if !q.from.is_empty() {
         let mut ors = Vec::new();
         for name in &q.from {
-            let p = arg(name.clone().into());
+            let p = arg(name.to_lowercase().into());
+            if q.resolved {
+                ors.push(format!("lower(m.user_id) = {p}"));
+                continue;
+            }
             ors.push(format!(
                 "m.user_id IN (SELECT id FROM users WHERE lower(name) = {p} OR lower(display_name) = {p}
                                OR lower(real_name) = {p} OR lower(id) = {p})
@@ -255,7 +282,11 @@ pub fn search(
     if !q.in_conversations.is_empty() {
         let mut ors = Vec::new();
         for name in &q.in_conversations {
-            let p = arg(name.clone().into());
+            let p = arg(name.to_lowercase().into());
+            if q.resolved {
+                ors.push(format!("lower(c.id) = {p}"));
+                continue;
+            }
             ors.push(format!(
                 "lower(c.label) = {p} OR lower(c.name) = {p} OR lower(c.id) = {p}"
             ));
@@ -278,11 +309,18 @@ pub fn search(
         sql.push_str(&format!(" AND m.ts >= {}", arg(a.clone().into())));
     }
     sql.push_str(match (sort, text_search) {
-        (Sort::Relevance, true) => " ORDER BY bm25(messages_fts), m.ts DESC",
-        _ => " ORDER BY m.ts DESC",
+        (Sort::Relevance, true) => " ORDER BY bm25(messages_fts), m.ts DESC, m.conversation_id",
+        _ => " ORDER BY m.ts DESC, m.conversation_id",
     });
-    sql.push_str(&format!(" LIMIT {}", arg((limit as i64).into())));
+    sql.push_str(&format!(
+        " LIMIT {}",
+        arg(i64::try_from(limit).unwrap_or(i64::MAX).into())
+    ));
 
+    sql.push_str(&format!(
+        " OFFSET {}",
+        arg(i64::try_from(offset).unwrap_or(i64::MAX).into())
+    ));
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
         .query_map(params_from_iter(args), |r| {
@@ -333,9 +371,11 @@ mod tests {
     }
 
     #[test]
-    fn civil_days() {
-        assert_eq!(days_from_civil(1970, 1, 1), 0);
-        assert_eq!(days_from_civil(2000, 3, 1), 11_017);
-        assert_eq!(days_from_civil(2024, 2, 29), 19_782);
+    fn date_bounds_validate_calendar_days() {
+        assert_eq!(day_ts("1970-01-01", 0).unwrap(), "0000000000.000000");
+        assert_eq!(day_ts("2024-02-29", 1).unwrap(), "1709251200.000000");
+        for date in ["2023-02-29", "2024-02-30", "2024-04-31", "2024-2-3"] {
+            assert!(day_ts(date, 0).is_err(), "{date}");
+        }
     }
 }

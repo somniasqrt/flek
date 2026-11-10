@@ -194,3 +194,47 @@ are merged into the message store before the membership/pin snapshot is
 replaced. Non-message pins are omitted. Both endpoints use the existing client,
 authentication and rate-limit handling. Behaviour with `xoxc` has **not** been
 verified on the real workspace; tests use wiremock and synthetic sessions only.
+
+### `search.messages` (M8.3 agent search)
+
+- **Documented:** [yes](https://docs.slack.dev/reference/methods/search.messages/).
+  Slack currently labels this a legacy method; Flek uses it as requested for
+  optional server-side discovery, with an offline fallback.
+- **Seen in:** not captured from the real web client; official response shapes
+  and synthetic wiremock payloads only.
+- **Request:** `POST /api/search.messages` through the existing authenticated
+  client; `query=release from:<@UFAKE> in:<#CFAKE>`, `page=1`, `count=25`,
+  `sort=score` (or `timestamp`), `sort_dir=desc`, `highlight=false`.
+  Numbered pagination is used, not the method's optional cursor mode.
+- **Response:** `messages.matches[]` carries a message plus `channel` metadata;
+  `messages.total`, `messages.paging.pages` or `messages.pagination.page_count`
+  describe remote coverage. Profiles/usernames are saved when supplied; unknown
+  user ids otherwise stay ids. Search results can omit blocks, files, reactions
+  and thread metadata, so they are treated as incomplete evidence.
+- **Storage:** every candidate uses the existing history-to-row conversion and
+  gap-filling merge. Complete local versions are preserved, including when a
+  candidate is empty or has a `hidden_by_limit` file. Unknown channels are stored
+  as non-members, with no automatic history sync or sidebar/default CLI listing.
+  History/thread sync markers do not advance. Output is always re-read from SQLite
+  and locally filtered/ranked; `(conversation_id, ts)` deduplicates matches.
+- **Limits:** documented Tier 2, at most 100 matches per page; Flek waits at
+  least three seconds before continuation pages, honours shared Retry-After
+  retries, and caps each command to three pages / 300 candidates, further
+  bounded by its requested result window plus a small margin.
+- **Coverage:** remote discovery may include public channels outside membership
+  and unsynced content. Free-plan coverage is limited to the recent 90-day
+  window; stored archives remain searchable locally. Real workspace behaviour
+  for this method and its date/timezone semantics remain unverified. Slack's
+  documentation also warns that UI search preferences affect user-token results
+  and nearby matches can be collapsed; remote totals are not local row counts.
+- **Translation:** phrases, negatives, from/in ids, has filters and query dates
+  are translated. Prefixes, repeated OR filters and exact timestamp/relative
+  flag bounds cannot be represented identically and are reported in
+  `remote_unsupported_filters`; all original filters still apply in SQLite.
+  See `docs/cli-json.md` for the precise output and candidate-budget semantics.
+- **Works with `xoxc` + `d` cookie:** **unverified**. No real API call made.
+- **Fallback:** network/non-auth Slack errors (including `missing_scope` and
+  `not_allowed_token_type`) return stored results plus `remote.error`, exit 0;
+  human mode warns on stderr. Authentication errors fail normally (exit 5).
+  No additional undocumented endpoint is attempted.
+- **Date checked:** 2026-11-10 (documentation and mock tests only).

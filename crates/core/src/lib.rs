@@ -17,3 +17,5 @@ pub mod views;
 
 pub mod reads;
 pub mod time;
+
+pub mod search;
