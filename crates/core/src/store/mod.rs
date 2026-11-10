@@ -51,22 +51,44 @@ pub struct Store {
 impl Store {
     /// Opens (creating if needed) the database at `path` and migrates it.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_with_busy_timeout(path, Duration::from_secs(5))
+    }
+
+    /// Opens a file store with a caller-selected startup/writer lock wait budget.
+    pub fn open_with_busy_timeout(path: &Path, timeout: Duration) -> Result<Self> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
         let conn = Connection::open(path)?;
-        conn.pragma_update(None, "journal_mode", "WAL")?;
+        conn.busy_timeout(timeout)?;
+        // SQLite can return SQLITE_BUSY immediately while two first-open
+        // connections switch journal mode, without invoking busy_timeout.
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            match conn.pragma_update(None, "journal_mode", "WAL") {
+                Err(rusqlite::Error::SqliteFailure(ref e, _))
+                    if e.code == rusqlite::ErrorCode::DatabaseBusy
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                result => {
+                    result?;
+                    break;
+                }
+            }
+        }
         conn.pragma_update(None, "synchronous", "NORMAL")?;
-        Self::init(conn, Some(path.to_owned()))
+        Self::init(conn, Some(path.to_owned()), timeout)
     }
 
     /// Private in-memory database, for tests.
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, None)
+        Self::init(Connection::open_in_memory()?, None, Duration::from_secs(5))
     }
 
-    fn init(mut conn: Connection, path: Option<PathBuf>) -> Result<Self> {
-        conn.busy_timeout(Duration::from_secs(5))?;
+    fn init(mut conn: Connection, path: Option<PathBuf>, timeout: Duration) -> Result<Self> {
+        conn.busy_timeout(timeout)?;
         // Table rebuilds in migrations must not cascade, so foreign keys are
         // checked once afterwards instead of during.
         conn.pragma_update(None, "foreign_keys", false)?;

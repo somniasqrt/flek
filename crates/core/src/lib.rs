@@ -11,3 +11,6 @@ pub mod sync;
 
 pub use error::{Error, Result};
 pub use secret::Secret;
+
+pub mod references;
+pub mod views;

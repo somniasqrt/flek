@@ -7,6 +7,16 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("{0}")]
+    NotFound(String),
+    #[error("ambiguous conversation reference: {}", .candidates.iter().map(|c| format!("{} ({}, {})", c.label, c.id, c.kind)).collect::<Vec<_>>().join(", "))]
+    Ambiguous {
+        candidates: Vec<crate::references::Candidate>,
+    },
+    #[error("{0}")]
+    Usage(String),
+    #[error("operation forbidden")]
+    Forbidden,
     #[error("Slack desktop app not found (looked in: {searched})")]
     DesktopNotFound { searched: String },
 
@@ -79,5 +89,51 @@ impl Error {
     /// The stored session is no longer accepted by Slack.
     pub fn is_auth_error(&self) -> bool {
         matches!(self, Error::Slack { code, .. } if code == "invalid_auth" || code == "token_revoked" || code == "not_authed")
+    }
+}
+
+/// Stable machine error categories, also usable outside the CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+#[repr(i32)]
+pub enum ErrorKind {
+    Internal = 1,
+    Usage = 2,
+    NotFound = 3,
+    Ambiguous = 4,
+    Auth = 5,
+    RateLimited = 6,
+    Network = 7,
+    Forbidden = 8,
+}
+impl ErrorKind {
+    pub fn exit_code(self) -> i32 {
+        self as i32
+    }
+}
+impl Error {
+    pub fn kind(&self) -> ErrorKind {
+        if self.is_auth_error() {
+            return ErrorKind::Auth;
+        }
+        match self {
+            Self::NotFound(_) => ErrorKind::NotFound,
+            Self::Ambiguous { .. } | Self::TeamSelection(_) => ErrorKind::Ambiguous,
+            Self::Usage(_) => ErrorKind::Usage,
+            Self::Forbidden => ErrorKind::Forbidden,
+            Self::NoCredentials
+            | Self::DesktopNotFound { .. }
+            | Self::DesktopNotLoggedIn
+            | Self::Keychain(_)
+            | Self::CookieDecrypt(_) => ErrorKind::Auth,
+            Self::Slack { code, .. } if code == "ratelimited" || code == "rate_limited" => {
+                ErrorKind::RateLimited
+            }
+            Self::HttpStatus(429) => ErrorKind::RateLimited,
+            Self::Slack { .. } | Self::Http(_) | Self::HttpStatus(_) | Self::WebSocket(_) => {
+                ErrorKind::Network
+            }
+            _ => ErrorKind::Internal,
+        }
     }
 }

@@ -43,37 +43,53 @@ pub async fn sync_threads(
     let mut stats = ThreadStats::default();
 
     for root in roots {
-        let mut cursor: Option<String> = None;
-        let mut latest = root.clone();
-        let mut seen = HashSet::new();
-        loop {
-            limiter.wait().await;
-            let page = client
-                .conversations_replies(conversation_id, &root, cursor.as_deref())
-                .await?;
-            if let Some(max) = page.messages.iter().map(|m| m.ts.as_str()).max() {
-                latest = latest.max(max.to_owned());
-            }
-            stats.replies += page.messages.iter().filter(|m| m.ts != root).count();
-            seen.extend(page.messages.iter().map(|m| m.ts.clone()));
-            save_page(store, conversation_id, &page.messages, None).await?;
-            match page.next_cursor {
-                Some(next) if page.has_more => cursor = Some(next),
-                _ => break,
-            }
-        }
-        let (id, root_ts) = (conversation_id.to_owned(), root.clone());
-        stats.deleted += store
-            .call(move |c| {
-                let gone: Vec<String> = messages::thread_replies(c, &id, &root_ts)?
-                    .into_iter()
-                    .filter(|ts| !seen.contains(ts))
-                    .collect();
-                messages::mark_thread_synced(c, &id, &root_ts, &latest)?;
-                messages::mark_deleted(c, &id, &gone)
-            })
-            .await?;
-        stats.threads += 1;
+        let fetched = sync_thread(client, store, limiter, conversation_id, &root).await?;
+        stats.threads += fetched.threads;
+        stats.replies += fetched.replies;
+        stats.deleted += fetched.deleted;
     }
+    Ok(stats)
+}
+
+/// Fetch one requested thread, including every page, even if its root is absent locally.
+pub async fn sync_thread(
+    client: &Client,
+    store: &Store,
+    limiter: &mut RateLimiter,
+    conversation_id: &str,
+    root: &str,
+) -> Result<ThreadStats> {
+    let mut stats = ThreadStats::default();
+    let mut cursor: Option<String> = None;
+    let mut latest = root.to_owned();
+    let mut seen = HashSet::new();
+    loop {
+        limiter.wait().await;
+        let page = client
+            .conversations_replies(conversation_id, root, cursor.as_deref())
+            .await?;
+        if let Some(max) = page.messages.iter().map(|m| m.ts.as_str()).max() {
+            latest = latest.max(max.to_owned());
+        }
+        stats.replies += page.messages.iter().filter(|m| m.ts != root).count();
+        seen.extend(page.messages.iter().map(|m| m.ts.clone()));
+        save_page(store, conversation_id, &page.messages, None).await?;
+        match page.next_cursor {
+            Some(next) if page.has_more => cursor = Some(next),
+            _ => break,
+        }
+    }
+    let (id, root_ts) = (conversation_id.to_owned(), root.to_owned());
+    stats.deleted += store
+        .call(move |c| {
+            let gone: Vec<String> = messages::thread_replies(c, &id, &root_ts)?
+                .into_iter()
+                .filter(|ts| !seen.contains(ts))
+                .collect();
+            messages::mark_thread_synced(c, &id, &root_ts, &latest)?;
+            messages::mark_deleted(c, &id, &gone)
+        })
+        .await?;
+    stats.threads = 1;
     Ok(stats)
 }

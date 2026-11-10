@@ -46,3 +46,28 @@ pub fn ts_days_ago(days: u32) -> String {
         .map_or(0, |d| d.as_secs());
     format!("{}.000000", now.saturating_sub(u64::from(days) * 86_400))
 }
+
+/// Catch up one conversation and its stale threads, or refresh a requested
+/// thread explicitly. All output is persisted before callers read it.
+pub async fn fresh_conversation(
+    client: &crate::api::Client,
+    store: &crate::store::Store,
+    conversation_id: &str,
+    thread: Option<&str>,
+) -> crate::Result<()> {
+    let mut limiter = backfill::RateLimiter::new(backfill::HISTORY_INTERVAL);
+    let opts = SyncOptions {
+        catch_up_only: true,
+        ..Default::default()
+    };
+    backfill::backfill_conversation(client, store, &mut limiter, conversation_id, &opts).await?;
+    match thread {
+        Some(root) => {
+            threads::sync_thread(client, store, &mut limiter, conversation_id, root).await?;
+        }
+        None => {
+            threads::sync_threads(client, store, &mut limiter, conversation_id, &opts).await?;
+        }
+    }
+    Ok(())
+}

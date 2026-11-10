@@ -267,10 +267,13 @@ pub fn find_conversation(
     team_id: &str,
     query: &str,
 ) -> Result<Option<ConversationRow>> {
-    let q = query.trim_start_matches(['#', '@']);
-    Ok(list_conversations(conn, team_id)?
-        .into_iter()
-        .find(|r| r.id.eq_ignore_ascii_case(q) || r.label.eq_ignore_ascii_case(q)))
+    match crate::references::resolve(conn, team_id, query, crate::references::Match::AllowPrefix)? {
+        crate::references::Resolution::Found(c) => Ok(Some(c)),
+        crate::references::Resolution::NotFound => Ok(None),
+        crate::references::Resolution::Ambiguous(candidates) => {
+            Err(crate::Error::Ambiguous { candidates })
+        }
+    }
 }
 
 /// Stores Slack's read markers (`client.counts`, later `channel_marked` events).

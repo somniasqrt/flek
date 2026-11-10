@@ -28,12 +28,14 @@ pub fn latest_version() -> u32 {
 
 /// Current schema version of the database (0 for a fresh one).
 pub fn current_version(conn: &Connection) -> Result<u32> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS schema_version (
-            version     INTEGER PRIMARY KEY,
-            applied_at  INTEGER NOT NULL
-        );",
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version')",
+        [],
+        |r| r.get(0),
     )?;
+    if !exists {
+        return Ok(0);
+    }
     Ok(conn.query_row(
         "SELECT COALESCE(MAX(version), 0) FROM schema_version",
         [],
@@ -41,7 +43,10 @@ pub fn current_version(conn: &Connection) -> Result<u32> {
     )?)
 }
 
-/// Applies every pending migration, each in its own transaction.
+/// Applies pending migrations under one immediate transaction.
+/// Up-to-date databases take no write lock. When pending, version inspection
+/// is repeated under the write lock with schema changes, so concurrent
+/// starters cannot both apply the same migration.
 /// Returns the versions that were applied.
 pub fn migrate(conn: &mut Connection) -> Result<Vec<u32>> {
     migrate_to(conn, latest_version())
@@ -56,21 +61,36 @@ pub fn migrate_to(conn: &mut Connection, target: u32) -> Result<Vec<u32>> {
             latest_version()
         )));
     }
+    if current >= target.min(latest_version()) {
+        return Ok(Vec::new());
+    }
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let current = current_version(&tx)?;
+    if current > latest_version() {
+        return Err(crate::Error::Store(format!(
+            "database schema v{current} is newer than this build (v{})",
+            latest_version()
+        )));
+    }
 
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL
+    )",
+    )?;
     let mut applied = Vec::new();
     for &(version, sql) in MIGRATIONS
         .iter()
         .filter(|(v, _)| *v > current && *v <= target)
     {
-        let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
         tx.execute(
             "INSERT INTO schema_version (version, applied_at) VALUES (?1, unixepoch())",
             params![version],
         )?;
-        tx.commit()?;
         tracing::info!(version, "applied migration");
         applied.push(version);
     }
+    tx.commit()?;
     Ok(applied)
 }

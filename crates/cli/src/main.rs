@@ -1,7 +1,14 @@
 //! `flek`: command-line client on top of `flek-core`.
 
+mod output;
+
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
+use flek_core::{
+    references::{self, Match, Resolution},
+    views,
+};
+use output::emit;
 use std::path::PathBuf;
 
 use flek_core::auth::{self, CredentialStore, ImportedTeam, Session};
@@ -26,7 +33,7 @@ struct Global {
     /// More logging (-v info, -vv debug, -vvv trace). RUST_LOG overrides.
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
     verbose: u8,
-    /// Team id to act on (defaults to the first stored team).
+    /// Team id (offline: the only team in the database; online: stored session).
     #[arg(long, global = true, value_name = "TEAM_ID")]
     team: Option<String>,
     /// Database file (default: ~/Library/Application Support/flek/flek.db).
@@ -74,6 +81,9 @@ enum Command {
         /// Show one thread (root ts, as printed next to "replies").
         #[arg(long, value_name = "TS")]
         thread: Option<String>,
+        /// Catch up this conversation before reading (requires a session).
+        #[arg(long)]
+        fresh: bool,
     },
     /// Search the local archive (works offline, includes messages Slack hides).
     ///
@@ -134,9 +144,31 @@ enum AuthCommand {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    let cli = Cli::parse();
-    init_tracing(cli.global.verbose);
+async fn main() {
+    let json_output = std::env::args().any(|a| a == "--json");
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) if json_output && e.exit_code() != 0 => {
+            let error = anyhow::Error::new(flek_core::Error::Usage(
+                e.render()
+                    .to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or("invalid arguments")
+                    .to_owned(),
+            ));
+            std::process::exit(output::report(&error, true));
+        }
+        Err(e) => e.exit(),
+    };
+    let json_output = cli.global.json;
+    if let Err(error) = run(cli).await {
+        std::process::exit(output::report(&error, json_output));
+    }
+}
+
+async fn run(cli: Cli) -> Result<()> {
+    init_tracing(cli.global.verbose, cli.global.json);
     let store = CredentialStore::keychain();
     let g = &cli.global;
 
@@ -167,34 +199,39 @@ async fn main() -> Result<()> {
             channel,
             limit,
             thread,
-        } => history(&store, g, &channel, limit, thread.as_deref()),
+            fresh,
+        } => history(&store, g, &channel, limit, thread.as_deref(), fresh).await,
         Command::Search {
             query,
             limit,
             recent,
-        } => search(&store, g, &query.join(" "), limit, recent),
-        Command::Import { path, channel } => import_archive(&store, g, &path, channel.as_deref()),
+        } => search(g, &query.join(" "), limit, recent),
+        Command::Import { path, channel } => import_archive(g, &path, channel.as_deref()),
         Command::Send {
             channel,
             text,
             thread,
             broadcast,
         } => send(&store, g, &channel, text, thread, broadcast).await,
-        Command::Channels { archived } => channels(&store, g, archived),
+        Command::Channels { archived } => channels(g, archived),
         Command::Auth(AuthCommand::Import) => import(&store, g).await,
         Command::Auth(AuthCommand::List) => list(&store, g),
         Command::Auth(AuthCommand::Logout { all }) => logout(&store, g, all),
     }
 }
 
-fn init_tracing(verbose: u8) {
+fn init_tracing(verbose: u8, json: bool) {
     let default = match verbose {
         0 => "warn",
         1 => "info",
         2 => "debug",
         _ => "trace",
     };
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default));
+    let filter = if json {
+        EnvFilter::new("off")
+    } else {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default))
+    };
     tracing_subscriber::fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
@@ -215,12 +252,15 @@ async fn whoami(store: &CredentialStore, g: &Global) -> Result<()> {
         .map_or_else(|| "unknown (generic Chrome)".to_owned(), |o| o.describe());
     if g.json {
         let mut v = serde_json::to_value(identity)?;
+        let db = open_db(g)?;
+        v["user"] = serde_json::to_value(db.with_read(|c| views::user(c, &identity.user_id))?)?;
+        v["user_name"] = json!(identity.user);
         v["client"] = json!({
             "issuer": issuer,
             "user_agent": profile.user_agent,
             "client_hints": profile.hint_headers().into_iter().collect::<std::collections::BTreeMap<_, _>>(),
         });
-        println!("{}", serde_json::to_string_pretty(&v)?);
+        emit(v);
     } else {
         println!("team    {} ({})", identity.team, identity.team_id);
         println!("user    {} ({})", identity.user, identity.user_id);
@@ -250,10 +290,7 @@ fn db(g: &Global) -> Result<()> {
         .unwrap_or_default();
     let version = db.schema_version()?;
     if g.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({ "path": path, "schema_version": version }))?
-        );
+        emit(json!({"path":path,"db_schema_version":version}));
     } else {
         println!("path    {path}");
         println!("schema  v{version}");
@@ -272,7 +309,6 @@ async fn sync(
     full: bool,
     follow: bool,
 ) -> Result<()> {
-    use flek_core::store::directory;
     use flek_core::sync::engine::{Engine, EngineOptions, Priority};
     use flek_core::sync::live::{bus, Change, ConnectionState, Progress};
 
@@ -286,8 +322,8 @@ async fn sync(
             flek_core::sync::directory::sync_directory(&session.client()?, &db, &me).await?;
             let team = me.team_id.clone();
             let found = db
-                .with_conn(|c| directory::find_conversation(c, &team, q))?
-                .with_context(|| format!("no conversation matches {q:?}"))?;
+                .with_read(|c| references::resolve(c, &team, q, Match::Exact))?
+                .required(q)?;
             Some(vec![found.id])
         }
         None => None,
@@ -325,7 +361,11 @@ async fn sync(
         }
     });
 
-    let bar = progress_bar(0, "{spinner} [{bar:30}] {pos}/{len} {wide_msg}");
+    let bar = if g.json {
+        indicatif::ProgressBar::hidden()
+    } else {
+        progress_bar(0, "{spinner} [{bar:30}] {pos}/{len} {wide_msg}")
+    };
     let printer = async {
         loop {
             let change = match events.recv().await {
@@ -333,6 +373,14 @@ async fn sync(
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
                 Err(_) => break,
             };
+            if g.json {
+                if follow {
+                    if let Some(value) = output::event(&db, &change)? {
+                        emit(value);
+                    }
+                }
+                continue;
+            }
             match change {
                 Change::Progress(Progress::Directory) => bar.set_message("users and conversations"),
                 Change::Progress(Progress::Conversations {
@@ -374,17 +422,30 @@ async fn sync(
                 _ => {}
             }
         }
+        Ok::<(), anyhow::Error>(())
     };
 
     let stats = tokio::select! {
         r = engine.run(stop_rx) => r?,
         // Only if every sender is gone, which cannot happen while `bus` lives.
-        _ = printer => return Ok(()),
+        result = printer => return result,
     };
     bar.finish_and_clear();
+    if g.json && follow {
+        // Flush queued notifications before the terminal summary on shutdown.
+        while let Ok(change) = events.try_recv() {
+            if let Some(value) = output::event(&db, &change)? {
+                emit(value);
+            }
+        }
+    }
 
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&stats)?);
+        if follow {
+            emit(json!({"type":"summary","summary":stats}));
+        } else {
+            emit(json!({"summary":stats}));
+        }
     } else {
         println!(
             "done: {} messages fetched, {} deleted, {} conversations, {} failed, {} files downloaded",
@@ -407,23 +468,22 @@ async fn send(
     thread: Option<String>,
     broadcast: bool,
 ) -> Result<()> {
-    use flek_core::store::directory;
     use flek_core::sync::send::{send, Outgoing};
 
     let session = auth::resolve_session(creds, g.team.as_deref()).await?;
     let db = open_db(g)?;
     let me = session.identity.clone();
     let client = session.client()?;
-    let find = |db: &Store| db.with_read(|c| directory::find_conversation(c, &me.team_id, query));
+    let find =
+        |db: &Store| db.with_read(|c| references::resolve(c, &me.team_id, query, Match::Exact));
     let conv = match find(&db)? {
-        Some(c) => c,
-        None => {
+        Resolution::Found(c) => c,
+        Resolution::NotFound => {
             // Not stored yet (new DM, fresh database): fetch the directory.
             flek_core::sync::directory::sync_directory(&client, &db, &me).await?;
-            find(&db)?.with_context(|| {
-                format!("no conversation matches {query:?}; try `flek channels`")
-            })?
+            find(&db)?.required(query)?
         }
+        other => other.required(query)?,
     };
     let sent = send(
         &client,
@@ -439,10 +499,21 @@ async fn send(
         },
     )
     .await
-    .map_err(|e| anyhow::anyhow!(flek_core::api::chat::describe_send_error(&e)))
+    .map_err(|e| {
+        let description = flek_core::api::chat::describe_send_error(&e);
+        anyhow::Error::new(e).context(description)
+    })
     .with_context(|| format!("sending to {}", conv.label))?;
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&sent)?);
+        let message = db
+            .with_read(|c| views::message(c, &conv.id, &sent.ts))?
+            .ok_or_else(|| {
+                flek_core::Error::NotFound(format!(
+                    "no stored message {} in conversation {}",
+                    sent.ts, conv.id
+                ))
+            })?;
+        emit(json!({"message":message}));
     } else {
         println!("sent to {} (ts {})", conv.label, sent.ts);
     }
@@ -494,19 +565,13 @@ fn say(bar: &indicatif::ProgressBar, line: String) {
     }
 }
 
-fn search(
-    creds: &CredentialStore,
-    g: &Global,
-    query: &str,
-    limit: usize,
-    recent: bool,
-) -> Result<()> {
+fn search(g: &Global, query: &str, limit: usize, recent: bool) -> Result<()> {
     use flek_core::store::search::{self, Sort};
     use std::io::IsTerminal;
 
-    let team = default_team(creds, g)?;
     let db = open_db(g)?;
-    let q = search::parse(query)?;
+    let team = default_team(&db, g)?;
+    let q = search::parse(query).map_err(|e| flek_core::Error::Usage(e.to_string()))?;
     let sort = if recent {
         Sort::Recent
     } else {
@@ -521,7 +586,8 @@ fn search(
     };
     let hits = db.with_read(|c| search::search(c, &team, &q, sort, limit, markers))?;
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&hits)?);
+        let results = db.with_read(|c| views::search_results(c, &hits))?;
+        emit(json!({"results":results}));
         return Ok(());
     }
     if hits.is_empty() {
@@ -550,19 +616,14 @@ fn search(
     Ok(())
 }
 
-fn import_archive(
-    creds: &CredentialStore,
-    g: &Global,
-    path: &std::path::Path,
-    channel: Option<&str>,
-) -> Result<()> {
-    let team = default_team(creds, g)?;
+fn import_archive(g: &Global, path: &std::path::Path, channel: Option<&str>) -> Result<()> {
     let db = open_db(g)?;
+    let team = default_team(&db, g)?;
     let stats = db
         .with_conn(|c| flek_core::sync::import::import_path(c, &team, path, channel))
         .with_context(|| format!("importing {}", path.display()))?;
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&stats)?);
+        emit(json!({"summary":stats}));
         return Ok(());
     }
     println!(
@@ -578,39 +639,62 @@ fn import_archive(
     Ok(())
 }
 
-fn default_team(creds: &CredentialStore, g: &Global) -> Result<String> {
-    match &g.team {
-        Some(t) => Ok(t.clone()),
-        None => creds
-            .list()?
-            .into_iter()
-            .next()
-            .context("no stored team; run `flek auth import`"),
+fn default_team(db: &Store, g: &Global) -> Result<String> {
+    if let Some(team) = &g.team {
+        return Ok(team.clone());
+    }
+    let teams = db.with_read(|c| {
+        let mut stmt = c.prepare("SELECT id FROM teams ORDER BY id")?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    match teams.as_slice() {
+        [team] => Ok(team.clone()),
+        [] => Err(flek_core::Error::NotFound(
+            "no stored team; run `flek auth import` and `flek sync`".into(),
+        )
+        .into()),
+        _ => {
+            Err(flek_core::Error::TeamSelection("several teams stored; pass --team".into()).into())
+        }
     }
 }
 
-fn history(
+async fn history(
     creds: &CredentialStore,
     g: &Global,
     query: &str,
     limit: usize,
     thread: Option<&str>,
+    fresh: bool,
 ) -> Result<()> {
-    use flek_core::store::{directory, messages};
+    use flek_core::store::messages;
 
-    let team = default_team(creds, g)?;
     let db = open_db(g)?;
+    let team = default_team(&db, g)?;
     let conv = db
-        .with_read(|c| directory::find_conversation(c, &team, query))?
-        .with_context(|| format!("no conversation matches {query:?}; try `flek channels`"))?;
+        .with_read(|c| references::resolve(c, &team, query, Match::AllowPrefix))?
+        .required(query)?;
+    if fresh {
+        let session = auth::resolve_session(creds, Some(&team)).await?;
+        flek_core::sync::fresh_conversation(&session.client()?, &db, &conv.id, thread).await?;
+    }
+    if g.json {
+        let (conversation, messages) = db.with_read(|c| {
+            let conversation = views::conversation(c, &conv.id)?
+                .ok_or_else(|| references::conversation_not_found(query))?;
+            let messages = views::history(c, &conv.id, limit, thread)?;
+            Ok((conversation, messages))
+        })?;
+        emit(json!({"conversation":conversation,"messages":messages}));
+        return Ok(());
+    }
     let rows = match thread {
         Some(ts) => db.with_read(|c| messages::thread(c, &conv.id, ts))?,
         None => db.with_read(|c| messages::recent(c, &conv.id, limit))?,
     };
-    if g.json {
-        println!("{}", serde_json::to_string_pretty(&rows)?);
-        return Ok(());
-    }
     let mut last_day = String::new();
     for r in rows {
         let (day, time) = format_ts(&r.ts);
@@ -658,23 +742,17 @@ fn format_ts(ts: &str) -> (String, String) {
     }
 }
 
-fn channels(creds: &CredentialStore, g: &Global, archived: bool) -> Result<()> {
-    let team = match &g.team {
-        Some(t) => t.clone(),
-        None => creds
-            .list()?
-            .into_iter()
-            .next()
-            .context("no stored team; run `flek auth import`")?,
-    };
+fn channels(g: &Global, archived: bool) -> Result<()> {
     let db = open_db(g)?;
+    let team = default_team(&db, g)?;
     let rows: Vec<_> = db
         .with_read(|c| flek_core::store::directory::list_conversations(c, &team))?
         .into_iter()
         .filter(|r| archived || !r.is_archived)
         .collect();
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&rows)?);
+        let conversations = db.with_read(|c| views::conversations(c, &team, archived))?;
+        emit(json!({"conversations":conversations}));
         return Ok(());
     }
     if rows.is_empty() {
@@ -707,13 +785,25 @@ async fn import(store: &CredentialStore, g: &Global) -> Result<()> {
     let failed = teams.iter().filter(|t| t.result.is_err()).count();
 
     if g.json {
+        if failed == teams.len() {
+            let error = teams
+                .into_iter()
+                .find_map(|t| t.result.err())
+                .unwrap_or(flek_core::Error::NoCredentials);
+            return Err(error.into());
+        }
         let rows: Vec<_> = teams.iter().map(import_row).collect();
-        println!("{}", serde_json::to_string_pretty(&rows)?);
+        emit(json!({"teams":rows}));
     } else {
         for t in &teams {
             match &t.result {
                 Ok(s) => println!("saved   {} ({}) as {}", t.name, t.team_id, s.identity.user),
-                Err(e) => println!("failed  {} ({}): {e}", t.name, t.team_id),
+                Err(e) => println!(
+                    "failed  {} ({}): {}",
+                    t.name,
+                    t.team_id,
+                    output::safe_message(&e.to_string())
+                ),
             }
         }
     }
@@ -729,7 +819,7 @@ fn import_row(t: &ImportedTeam) -> serde_json::Value {
             json!({ "team_id": t.team_id, "name": t.name, "ok": true, "user": s.identity.user, "user_id": s.identity.user_id })
         }
         Err(e) => {
-            json!({ "team_id": t.team_id, "name": t.name, "ok": false, "error": e.to_string() })
+            json!({ "team_id": t.team_id, "name": t.name, "ok": false, "error": output::safe_message(&e.to_string()) })
         }
     }
 }
@@ -737,7 +827,7 @@ fn import_row(t: &ImportedTeam) -> serde_json::Value {
 fn list(store: &CredentialStore, g: &Global) -> Result<()> {
     let ids = store.list()?;
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&ids)?);
+        emit(json!({"teams":ids}));
     } else if ids.is_empty() {
         println!("no stored teams; run `flek auth import`");
     } else {
@@ -754,10 +844,13 @@ fn logout(store: &CredentialStore, g: &Global, all: bool) -> Result<()> {
         (_, true) => stored,
         (Some(t), false) => vec![t.clone()],
         (None, false) if stored.len() <= 1 => stored,
-        (None, false) => bail!(
-            "several teams are stored ({}); pass --team or --all",
-            stored.join(", ")
-        ),
+        (None, false) => {
+            return Err(flek_core::Error::TeamSelection(format!(
+                "several teams are stored ({}); pass --team or --all",
+                stored.join(", ")
+            ))
+            .into())
+        }
     };
     let mut removed = Vec::new();
     for id in &targets {
@@ -766,7 +859,7 @@ fn logout(store: &CredentialStore, g: &Global, all: bool) -> Result<()> {
         }
     }
     if g.json {
-        println!("{}", serde_json::to_string_pretty(&removed)?);
+        emit(json!({"removed":removed}));
     } else if removed.is_empty() {
         println!("nothing to remove");
     } else {
