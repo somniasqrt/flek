@@ -247,6 +247,7 @@ pub async fn run(cmd: ReadCommand, creds: &CredentialStore, g: &Global) -> Resul
                 0
             };
             let (known, unknown) = db.with_read(|c| reads::unread(c, &team, messages))?;
+            let hidden_unknown = if include_unknown { 0 } else { unknown.len() };
             let unknown = if include_unknown { unknown } else { Vec::new() };
             if g.json {
                 emit(json!({"conversations":known,"unknown":unknown,"failed":failed}));
@@ -254,6 +255,22 @@ pub async fn run(cmd: ReadCommand, creds: &CredentialStore, g: &Global) -> Resul
                 if failed > 0 {
                     eprintln!(
                         "warning: {failed} conversations failed to refresh; showing stored data"
+                    );
+                }
+                if known.is_empty() {
+                    println!(
+                        "no unread messages{}",
+                        if fresh {
+                            ""
+                        } else {
+                            " in stored data (add --fresh to check Slack)"
+                        }
+                    );
+                }
+                if hidden_unknown > 0 {
+                    println!(
+                        "{hidden_unknown} conversations have no read marker; \
+                         --include-unknown lists them"
                     );
                 }
                 for u in known {
