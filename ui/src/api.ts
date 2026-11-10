@@ -44,6 +44,7 @@ export type Change =
   | { type: "progress"; data: Progress };
 
 export type Conversation = {
+  is_member?: boolean;
   last_read?: string | null;
   starred?: boolean;
   notification?: "all" | "mentions" | "muted";
@@ -246,7 +247,35 @@ export type ChannelInfo = {
 
 export type StorageInfo = { db_path: string; db_bytes: number; cache_bytes: number };
 
+export type ChannelRow = {
+  id: string;
+  name: string;
+  topic: string | null;
+  purpose: string | null;
+  is_member: boolean;
+  is_private: boolean;
+  is_archived: boolean;
+  num_members: number | null;
+  created: number | null;
+  creator: string | null;
+};
+export type ChannelDirectory = {
+  channels: ChannelRow[];
+  fetched_at: number | null;
+  truncated: boolean;
+};
+export type ChannelAction = { id: string; warning: string | null };
+
 export const api = {
+  channelDirectory: (refresh = false, force = false) =>
+    invoke<ChannelDirectory>("channel_directory", { refresh, force }),
+  channelPreview: (conversationId: string, fresh = false) =>
+    invoke<Conversation>("channel_preview", { conversationId, fresh }),
+  joinChannel: (conversationId: string) =>
+    invoke<ChannelAction>("join_channel", { conversationId }),
+  createChannel: (name: string, privateChannel: boolean, purpose: string) =>
+    invoke<ChannelAction>("create_channel", { name, private: privateChannel, purpose }),
+  validateChannelName: (name: string) => invoke<string>("validate_channel_name", { name }),
   getSettings: () => invoke<import("./settings-model").Settings>("get_settings"),
   setSettings: (settings: import("./settings-model").Settings) =>
     invoke<import("./settings-model").Settings>("set_settings", { settings }),

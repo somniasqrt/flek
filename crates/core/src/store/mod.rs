@@ -182,3 +182,5 @@ impl Store {
         self.with_conn(|c| migrations::current_version(c))
     }
 }
+
+pub mod channel_browser;

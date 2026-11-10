@@ -68,5 +68,15 @@ export function errorMessage(error: unknown): string {
   const code = raw.match(
     /^(?:Slack API error: )?([a-z]+(?:_[a-z0-9]+)+)(?: \(needed scope: [a-z:,]+\))?$/,
   )?.[1];
+  if (code === "name_taken") return t("A channel with this name already exists.");
+  if (code === "invalid_name_required") return t("Enter a channel name");
+  if (code === "invalid_name_maxlength") return t("Channel names can have at most 80 characters");
+  if (code?.startsWith("invalid_name")) return t("Use letters, numbers, hyphens and underscores");
+  if (code === "restricted_action") {
+    return t("You do not have permission to create or join this channel.");
+  }
+  if (code === "no_channel" || code === "channel_not_found") {
+    return t("This channel is no longer available.");
+  }
   return code ? t("Something went wrong ({code})", { code }) : t("Something went wrong");
 }

@@ -17,6 +17,7 @@ export default function Sidebar(props: {
   selected: string | null;
   onSelect: (id: string) => void;
   onContext: (target: ConversationMenuTarget) => void;
+  onChannelsMenu: (position: { x: number; y: number }) => void;
 }) {
   const [query, setQuery] = createSignal("");
   const live = () => {
@@ -114,7 +115,12 @@ export default function Sidebar(props: {
           items={live().filter((c) => c.starred && c.notification !== "muted")}
           item={Item}
         />
-        <Section title={t("Channels")} items={channels()} item={Item} />
+        <Section
+          title={t("Channels")}
+          items={channels()}
+          item={Item}
+          onMenu={props.onChannelsMenu}
+        />
         <Section title={t("Direct messages")} items={direct()} item={Item} />
         <Section
           title={t("Muted")}
@@ -133,6 +139,7 @@ export default function Sidebar(props: {
 function Section(props: {
   title: string;
   collapsed?: boolean;
+  onMenu?: (position: { x: number; y: number }) => void;
   items: Conversation[];
   item: (p: { c: Conversation }) => JSX.Element;
 }) {
@@ -140,13 +147,45 @@ function Section(props: {
   // A collapsed section still shows what needs attention, like Slack's.
   const shown = () => (open() ? props.items : props.items.filter(hasUnread));
   return (
-    <Show when={props.items.length > 0}>
-      <button class="section" classList={{ open: open() }} onClick={() => setOpen(!open())}>
-        <span class="caret">
-          <Caret size={14} />
-        </span>
-        {props.title}
-      </button>
+    <Show when={props.items.length > 0 || props.onMenu}>
+      <div
+        class="section-heading"
+        onContextMenu={(e) => {
+          if (!props.onMenu) return;
+          e.preventDefault();
+          props.onMenu({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        <button
+          class="section"
+          classList={{ open: open() }}
+          onClick={() => setOpen(!open())}
+          onKeyDown={(e) => {
+            if (!props.onMenu || !isContextKey(e)) return;
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            props.onMenu({ x: rect.left, y: rect.bottom });
+          }}
+        >
+          <span class="caret">
+            <Caret size={14} />
+          </span>
+          {props.title}
+        </button>
+        <Show when={props.onMenu}>
+          <button
+            class="section-menu plain-icon"
+            aria-label={t("Channels menu")}
+            aria-haspopup="menu"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              props.onMenu?.({ x: rect.left, y: rect.bottom });
+            }}
+          >
+            ⋮
+          </button>
+        </Show>
+      </div>
       <ul>
         <For each={shown()}>{(c) => props.item({ c })}</For>
       </ul>

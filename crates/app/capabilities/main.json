@@ -52,6 +52,11 @@
     "allow-full-resync",
     "allow-sign-out",
     "allow-account-origin",
-    "allow-show-storage"
+    "allow-show-storage",
+    "allow-channel-directory",
+    "allow-channel-preview",
+    "allow-join-channel",
+    "allow-create-channel",
+    "allow-validate-channel-name"
   ]
 }

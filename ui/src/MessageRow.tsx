@@ -116,6 +116,7 @@ function ThreadBar(props: { m: Message; onOpen: () => void }) {
 /// author line. `onThread` shows the reply bar of a thread root.
 export default function MessageRow(props: {
   m: Message;
+  readOnly?: boolean;
   conversationId: string;
   prev?: Message;
   onThread?: (ts: string) => void;
@@ -133,12 +134,12 @@ export default function MessageRow(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
   const openMenu = (e: MouseEvent, picker = false) => {
-    if (m.pending) return;
+    if (m.pending || props.readOnly) return;
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, picker });
   };
   const react = async (name: string) => {
-    if (busy()) return;
+    if (busy() || props.readOnly) return;
     setMenu(null);
     setBusy(true);
     setError("");
@@ -204,11 +205,11 @@ export default function MessageRow(props: {
         if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
           e.preventDefault();
           const rect = e.currentTarget.getBoundingClientRect();
-          if (!m.pending) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
+          if (!m.pending && !props.readOnly) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
         }
       }}
     >
-      <Show when={!m.pending}>
+      <Show when={!m.pending && !props.readOnly}>
         <div class="message-actions">
           <button
             type="button"
@@ -305,7 +306,7 @@ export default function MessageRow(props: {
           <Unfurls items={m.unfurls} />
         </Show>
         <Show when={m.reactions && !m.pending}>
-          <Reactions m={m} busy={busy()} onToggle={react} onPicker={(e) => openMenu(e, true)} />
+          <Reactions m={m} busy={busy() || !!props.readOnly} onToggle={react} onPicker={(e) => openMenu(e, true)} />
         </Show>
         <Show when={error()}>
           <div class="reaction-error" role="alert">

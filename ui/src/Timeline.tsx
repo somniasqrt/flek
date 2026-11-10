@@ -25,6 +25,7 @@ const REVEAL_PAGES = 20;
 
 export default function Timeline(props: {
   conversation: Conversation;
+  onJoin: (id: string) => Promise<void>;
   me: string;
   members: string[];
   change: Change | null;
@@ -66,6 +67,7 @@ export default function Timeline(props: {
     return latest;
   };
   const scheduleRead = () => {
+    if (props.conversation.is_member === false) return;
     if (readTimer !== undefined || marking) return;
     const ts = seenTs();
     const stored = props.conversation.last_read;
@@ -377,6 +379,7 @@ export default function Timeline(props: {
                           </div>
                         </Show>
                         <MessageRow
+                          readOnly={props.conversation.is_member === false}
                           m={m}
                           conversationId={props.conversation.id}
                           prev={items()[i() - 1]}
@@ -393,6 +396,9 @@ export default function Timeline(props: {
           </For>
         </div>
       </div>
+      <Show when={props.conversation.is_member !== false} fallback={
+        <JoinChannelBar conversation={props.conversation} onJoin={props.onJoin} />
+      }>
       <Composer
         conversationId={props.conversation.id}
         placeholder={t("Message {name}", {
@@ -400,6 +406,7 @@ export default function Timeline(props: {
         })}
         onSent={toBottom}
       />
+      </Show>
     </div>
   );
 }
@@ -420,4 +427,35 @@ function dayLabel(ts: string): string {
     month: "long",
     year: d.getFullYear() === today.getFullYear() ? undefined : "numeric",
   });
+}
+
+function JoinChannelBar(props: {
+  conversation: Conversation;
+  onJoin: (id: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const join = async () => {
+    if (busy()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await props.onJoin(props.conversation.id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="channel-join-bar">
+      <span>{t("You're viewing #{name}", { name: props.conversation.label })}</span>
+      <button disabled={busy() || props.conversation.is_archived} onClick={join}>
+        {busy() ? t("Joining…") : t("Join channel")}
+      </button>
+      <Show when={error()}>
+        <p class="error" role="alert">{errorMessage(error())}</p>
+      </Show>
+    </div>
+  );
 }

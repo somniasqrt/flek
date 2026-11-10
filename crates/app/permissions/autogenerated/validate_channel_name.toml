@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-validate-channel-name"
+description = "Enables the validate_channel_name command without any pre-configured scope."
+commands.allow = ["validate_channel_name"]
+
+[[permission]]
+identifier = "deny-validate-channel-name"
+description = "Denies the validate_channel_name command without any pre-configured scope."
+commands.deny = ["validate_channel_name"]

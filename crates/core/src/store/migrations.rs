@@ -7,6 +7,7 @@ use crate::Result;
 /// `(version, sql)`; versions must be increasing. Never edit an applied one,
 /// add a new file instead.
 const MIGRATIONS: &[(u32, &str)] = &[
+    // Append-only schema versions.
     (1, include_str!("migrations/0001_init.sql")),
     (2, include_str!("migrations/0002_conversation_label.sql")),
     (3, include_str!("migrations/0003_threads.sql")),
@@ -26,6 +27,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
         16,
         include_str!("migrations/0016_conversation_preferences.sql"),
     ),
+    (17, include_str!("migrations/0017_channel_browser.sql")),
 ];
 
 /// Latest schema version this build knows.

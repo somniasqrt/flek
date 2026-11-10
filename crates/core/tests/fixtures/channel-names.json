@@ -1,0 +1,67 @@
+[
+  {
+    "input": "ПРОЄКТ Команди",
+    "normalized": "проєкт-команди",
+    "valid": true
+  },
+  {
+    "input": "Hello World",
+    "normalized": "hello-world",
+    "valid": true
+  },
+  {
+    "input": "a_b-c9",
+    "normalized": "a_b-c9",
+    "valid": true
+  },
+  {
+    "input": "bad!",
+    "normalized": "bad!",
+    "valid": false
+  },
+  {
+    "input": "",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "normalized": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "valid": true
+  },
+  {
+    "input": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+    "normalized": "яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+    "valid": false
+  },
+  {
+    "input": "привітсвіте",
+    "normalized": "привіт-світе",
+    "valid": true
+  },
+  {
+    "input": "A B",
+    "normalized": "a-b",
+    "valid": true
+  },
+  {
+    "input": "a﻿b",
+    "normalized": "a﻿b",
+    "valid": false
+  },
+  {
+    "input": "café",
+    "normalized": "café",
+    "valid": true
+  },
+  {
+    "input": "123",
+    "normalized": "123",
+    "valid": true
+  },
+  {
+    "input": "a😀",
+    "normalized": "a😀",
+    "valid": false
+  }
+]

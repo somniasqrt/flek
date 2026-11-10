@@ -32,6 +32,10 @@ import ConversationMenu, {
   type ConversationMenuTarget,
 } from "./ConversationMenu";
 import ChannelPanel from "./ChannelPanel";
+import ChannelBrowser from "./ChannelBrowser";
+import CreateChannel from "./CreateChannel";
+import ChannelsMenu from "./ChannelsMenu";
+import type { ChannelAction } from "./api";
 import { hasUnread } from "./conversation-model";
 import { openProfile } from "./profile";
 import ProfilePanel from "./ProfilePanel";
@@ -77,6 +81,7 @@ export default function Workspace(props: { status: Ready }) {
   const [compose, setCompose] = createSignal(false);
   const [readError, setReadError] = createSignal("");
   const [actionError, setActionError] = createSignal("");
+  const [channelNotice, setChannelNotice] = createSignal<"purpose_failed" | "catch_up_failed" | null>(null);
   const [leaving, setLeaving] = createSignal<Conversation | null>(null);
   const [menu, setMenu] = createSignal<ConversationMenuTarget | null>(null);
   const [channelDetails, setChannelDetails] = createSignal<string | null>(null);
@@ -94,6 +99,7 @@ export default function Workspace(props: { status: Ready }) {
   };
   const chooseView = (next: RailView) => {
     setView(next);
+    setBrowsing(false);
     setSearching(null);
     if (next === "dms" && !dms().some((dm) => dm.id === selected())) {
       const first = dms()[0];
@@ -105,6 +111,11 @@ export default function Workspace(props: { status: Ready }) {
       /* Optional preference. */
     }
   };
+  const [browsing, setBrowsing] = createSignal(false);
+  const [creatingChannel, setCreatingChannel] = createSignal(false);
+  const [channelsMenu, setChannelsMenu] = createSignal<{ x: number; y: number } | null>(null);
+  const [preview, setPreview] = createSignal<Conversation | null>(null);
+  let openingChannel = 0;
   const [loaded, setLoaded] = createSignal(false);
   const [selected, setSelected] = createSignal<string | null>(readLast());
   const [progress, setProgress] = createSignal<Progress | null>(null);
@@ -149,7 +160,7 @@ export default function Workspace(props: { status: Ready }) {
     }
     setConversations(reconcile(list, { key: "id" }));
     setLoaded(true);
-    if (!selected() || !list.some((c) => c.id === selected())) {
+    if (!selected() || (!list.some((c) => c.id === selected()) && preview()?.id !== selected())) {
       const first = list.find((c) => c.kind === "public_channel" && !c.is_archived) ?? list[0];
       if (first) select(first.id);
     }
@@ -159,6 +170,9 @@ export default function Workspace(props: { status: Ready }) {
   };
 
   const select = (id: string) => {
+    openingChannel++;
+    setBrowsing(false);
+    if (preview()?.id !== id) setPreview(null);
     setSearching(null);
     setJump(null);
     setSelected(id);
@@ -231,7 +245,10 @@ export default function Workspace(props: { status: Ready }) {
   });
 
   // Batched, so the timeline mounts (or switches) already knowing the target.
-  const openHit = (h: Hit) => {
+  const openHit = async (h: Hit) => {
+    if (!conversations.some((c) => c.id === h.conversation_id)) {
+      await openChannel(h.conversation_id, true);
+    }
     if (view() === "files") chooseView("home");
     batch(() => {
       select(h.conversation_id);
@@ -256,7 +273,48 @@ export default function Workspace(props: { status: Ready }) {
     });
   };
 
-  const current = () => conversations.find((c) => c.id === selected()) ?? null;
+  const openChannel = async (id: string, fresh: boolean) => {
+    const generation = ++openingChannel;
+    try {
+      let row = await api.channelPreview(id);
+      if (fresh) {
+        try {
+          await api.channelPreview(id, true);
+          row = await api.channelPreview(id);
+        } catch (e) {
+          if (generation === openingChannel) setActionError(String(e));
+        }
+      }
+      if (generation !== openingChannel) return;
+      chooseView("home");
+      setPreview(row);
+      select(id);
+    } catch (e) {
+      if (generation === openingChannel) setActionError(String(e));
+      throw e;
+    }
+  };
+  const actionCompleted = async (result: ChannelAction) => {
+    await loadConversations();
+    await openChannel(result.id, false);
+    if (result.warning === "purpose_failed") {
+      setChannelNotice("purpose_failed");
+    }
+    if (result.warning === "catch_up_failed") {
+      setChannelNotice("catch_up_failed");
+    }
+  };
+  const joinChannel = async (id: string) => actionCompleted(await api.joinChannel(id));
+  const browseChannels = () => {
+    chooseView("home");
+    setSearching(null);
+    setThread(null);
+    setChannelDetails(null);
+    closeProfile();
+    setBrowsing(true);
+  };
+  const current = () => conversations.find((c) => c.id === selected())
+    ?? (preview()?.id === selected() ? preview() : null);
 
   // Root ts of the thread open in the side panel; closed when switching
   // conversations, or with Esc (unless the viewer is on top).
@@ -294,7 +352,7 @@ export default function Workspace(props: { status: Ready }) {
   const [detailWidth, setDetailWidth] = createSignal(readPanelSize(DETAIL_KEY, DEFAULT_DETAIL));
   const [frameWidth, setFrameWidth] = createSignal(window.innerWidth - 78);
   const detailOpen = () =>
-    view() !== "files" && !!(channelDetails() || profileUser() || (current() && thread()));
+    !browsing() && view() !== "files" && !!(channelDetails() || profileUser() || (current() && thread()));
   const sizes = createMemo(() =>
     panelSizes(frameWidth(), sidebarWidth(), detailWidth(), detailOpen()),
   );
@@ -381,6 +439,7 @@ export default function Workspace(props: { status: Ready }) {
                   conversations={conversations}
                   selected={selected()}
                   onContext={setMenu}
+                  onChannelsMenu={setChannelsMenu}
                   onSelect={select}
                 />
               </Match>
@@ -403,6 +462,14 @@ export default function Workspace(props: { status: Ready }) {
                 {errorMessage(readError())}
               </p>
             </Show>
+            <Show when={!browsing()} fallback={
+              <ChannelBrowser
+                onOpen={openChannel}
+                onJoin={joinChannel}
+                onCreate={() => setCreatingChannel(true)}
+                onClose={() => setBrowsing(false)}
+              />
+            }>
             <Show
               when={view() === "files" && !searching()}
               fallback={
@@ -427,6 +494,7 @@ export default function Workspace(props: { status: Ready }) {
                       {(c) => (
                         <Timeline
                           conversation={c()}
+                          onJoin={joinChannel}
                           me={props.status.user_id}
                           members={dms().find((dm) => dm.id === c().id)?.members ?? []}
                           change={change()}
@@ -458,6 +526,7 @@ export default function Workspace(props: { status: Ready }) {
                   openJump(target);
                 }}
               />
+            </Show>
             </Show>
           </section>
           <Show when={view() !== "files" && detailOpen()}>
@@ -494,6 +563,23 @@ export default function Workspace(props: { status: Ready }) {
           </Show>
         </div>
       </div>
+      <Show when={channelsMenu()}>
+        {(position) => (
+          <ChannelsMenu
+            x={position().x}
+            y={position().y}
+            onClose={() => setChannelsMenu(null)}
+            onBrowse={browseChannels}
+            onCreate={() => setCreatingChannel(true)}
+          />
+        )}
+      </Show>
+      <Show when={creatingChannel()}>
+        <CreateChannel
+          onClose={() => setCreatingChannel(false)}
+          onCreated={actionCompleted}
+        />
+      </Show>
       <Show when={compose()}>
         <NewMessage
           conversations={conversations}
@@ -518,6 +604,14 @@ export default function Workspace(props: { status: Ready }) {
         {(conversation) => (
           <LeaveConfirmation conversation={conversation()} onClose={() => setLeaving(null)} />
         )}
+      </Show>
+      <Show when={channelNotice()}>
+        <div class="conversation-toast" role="status">
+          {channelNotice() === "purpose_failed"
+            ? t("Channel created, but its description could not be saved.")
+            : t("Channel joined. Recent messages will sync when the connection recovers.")}
+          <button aria-label={t("Dismiss error")} onClick={() => setChannelNotice(null)}>×</button>
+        </div>
       </Show>
       <Show when={actionError()}>
         <div class="conversation-toast" role="alert">

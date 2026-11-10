@@ -3,6 +3,11 @@
 //! showing Slack's page gets none.
 
 const COMMANDS: &[&str] = &[
+    "channel_directory",
+    "channel_preview",
+    "join_channel",
+    "create_channel",
+    "validate_channel_name",
     "get_settings",
     "set_settings",
     "storage_info",

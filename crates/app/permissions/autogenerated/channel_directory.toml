@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-channel-directory"
+description = "Enables the channel_directory command without any pre-configured scope."
+commands.allow = ["channel_directory"]
+
+[[permission]]
+identifier = "deny-channel-directory"
+description = "Denies the channel_directory command without any pre-configured scope."
+commands.deny = ["channel_directory"]

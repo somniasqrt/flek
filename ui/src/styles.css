@@ -3221,3 +3221,79 @@ body.resizing-panels * {
   .preferences-pane { padding: 16px; }
   .preferences nav button { padding: 8px; }
 }
+
+/* Workspace channel directory and explicit membership actions. */
+.section-heading {
+  display: flex;
+  align-items: center;
+}
+.section-heading .section { flex: 1; min-width: 0; }
+.section-menu { opacity: 0; margin-right: 12px; }
+.section-heading:hover .section-menu,
+.section-heading:focus-within .section-menu { opacity: 1; }
+.channel-browser { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.channel-browser .conv-header { gap: 12px; flex-wrap: wrap; height: auto; min-height: 60px; }
+.channel-browser h2 { margin-right: auto; }
+.channel-filters {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.channel-filters > input { width: 100%; }
+.channel-filters label, .create-channel label { display: flex; flex-direction: column; gap: 6px; }
+.channel-filters .channel-checkbox { flex-direction: row; align-items: center; }
+.channel-filters input, .channel-filters select,
+.create-channel input, .create-channel select, .create-channel textarea {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 10px;
+  color: inherit;
+  background: var(--bg);
+  font: inherit;
+  min-width: 0;
+}
+.channel-directory-rows { overflow: auto; flex: 1; }
+.channel-directory-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.channel-directory-icon { flex-shrink: 0; }
+.channel-directory-copy { min-width: 0; flex: 1; }
+.channel-directory-copy h3 { margin: 0 0 5px; font-size: 16px; overflow-wrap: anywhere; }
+.channel-directory-copy p { margin: 3px 0; overflow-wrap: anywhere; }
+.channel-directory-copy .muted { font-size: 13px; }
+.channel-row-actions { display: flex; gap: 8px; opacity: 0; }
+.channel-directory-row:hover .channel-row-actions,
+.channel-directory-row:focus-within .channel-row-actions { opacity: 1; }
+.channel-joined { color: var(--muted); white-space: nowrap; }
+.channel-notice { margin: 14px 24px; }
+.channel-join-bar {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.channel-join-bar button, .create-channel button[type="submit"] {
+  background: #007a5a;
+  color: white;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 8px 16px;
+  font-weight: 600;
+}
+.create-channel { width: min(520px, calc(100vw - 32px)); }
+.create-channel textarea { min-height: 80px; resize: vertical; }
+.create-channel > p { font-size: 13px; }
+@media (max-width: 900px), (hover: none) {
+  .channel-row-actions { opacity: 1; flex-direction: column; }
+  .channel-directory-row { padding: 14px; gap: 10px; flex-wrap: wrap; }
+  .channel-joined { font-size: 12px; }
+}

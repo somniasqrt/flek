@@ -401,3 +401,12 @@ moves Home items into the collapsed Muted group. All/mentions are saved choices;
 OS notification delivery is still the separate planned M6.2.1 feature. A future
 prefs sync must live in `api/internal.rs`, be capability-gated, merge confirmed
 current prefs, and leave SQLite unchanged on any unsupported/error response.
+
+## Channel directory, join and create (M6.11)
+
+Documented methods, **unverified with an `xoxc` session + `d` cookie**:
+
+- `conversations.list` with `types=public_channel,private_channel`, `exclude_archived=false`, `limit=200`, cursor paging. Private channels come back only when the user is a member. Flek fetches it only when the channel browser opens (cache older than 1 hour) or on an explicit refresh, never in background sync, and stops after 20 pages (`truncated` is stored and shown). Results are stored as conversations; unknown ones get `is_member = 0`, so the sidebar and the sync engine ignore them.
+- `conversations.history` on a public channel the user hasn't joined: one recent page for the read-only preview. Slack documents this as allowed for public channels; if it fails, the preview shows what is stored.
+- `conversations.join` returns the channel; Flek sets `is_member = 1` and catches the conversation up (a failed catch-up is a warning, not a failed join).
+- `conversations.create` (`name`, `is_private`) then optional `conversations.setPurpose`. Names are lowercased and whitespace becomes `-` before sending; letters of any script, ASCII digits, `-` and `_` are accepted, 80 characters at most (`crates/core/tests/fixtures/channel-names.json` is shared by the Rust and UI tests). Slack's own errors (`name_taken`, `invalid_name_*`, `restricted_action`) are shown translated.

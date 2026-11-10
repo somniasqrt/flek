@@ -116,6 +116,7 @@ export default function Thread(props: {
         <For each={replies()}>
           {(m, i) => (
             <MessageRow
+              readOnly={props.conversation.is_member === false}
               m={m}
               conversationId={props.conversation.id}
               flash={props.jump?.ts === m.ts}
@@ -130,7 +131,7 @@ export default function Thread(props: {
           <div class="start muted">{t("Replies appear here once they sync.")}</div>
         </Show>
       </div>
-      <Show when={!loaded() || rows.length > 0}>
+      <Show when={props.conversation.is_member !== false && (!loaded() || rows.length > 0)}>
         <Composer
           conversationId={props.conversation.id}
           threadTs={props.ts}
