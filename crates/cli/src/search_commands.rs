@@ -62,13 +62,15 @@ pub async fn run(creds: &CredentialStore, g: &Global, query: &str, options: Opti
         }
         for hit in page.results {
             read_commands::print_messages(&hit.before, None);
+            // Markers are ANSI codes, so resolving Slack markup keeps them intact.
+            let snippet = db.with_read(|c| views::resolve_text(c, &hit.result.snippet))?;
             let m = hit.result.message;
             let (day, time) = format_ts(&m.ts);
             println!(
                 "{} {day} {time}  {}: {}{}",
                 m.conversation,
                 m.user.as_deref().or(m.user_id.as_deref()).unwrap_or("?"),
-                hit.result.snippet.replace('\n', " "),
+                snippet.replace('\n', " "),
                 if m.hidden_by_limit {
                     " [hidden in Slack]"
                 } else {

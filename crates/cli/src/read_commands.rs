@@ -146,7 +146,7 @@ pub fn print_messages(messages: &[views::Message], target: Option<&str>) {
         let text = if m.hidden_by_limit {
             "[hidden by Slack Free limit]"
         } else {
-            &m.text
+            &m.text_resolved
         };
         let mut extra = if m.reply_count > 0 {
             format!(" [{} replies: --thread {}]", m.reply_count, m.ts)

@@ -340,6 +340,15 @@ fn resolve_with(
             let name = lookup('#', id)?;
             out.push('#');
             out.push_str(&name.unwrap_or_else(|| label.unwrap_or(id).into()));
+        } else if let Some(special) = target.strip_prefix('!') {
+            // `<!here>`, `<!channel>`, `<!subteam^S…|@team>`, `<!date^…|fallback>`.
+            match label {
+                Some(label) => out.push_str(label),
+                None => {
+                    out.push('@');
+                    out.push_str(special.split('^').next().unwrap_or(special));
+                }
+            }
         } else if ["https://", "http://", "mailto:"]
             .iter()
             .any(|p| target.starts_with(p))
