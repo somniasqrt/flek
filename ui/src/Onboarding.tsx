@@ -2,6 +2,7 @@ import { Match, Show, Switch } from "solid-js";
 import { t, errorMessage } from "./i18n";
 import T from "./i18n/T";
 import { api, type Status } from "./api";
+import { isMac } from "./platform";
 
 /// First launch and lost sessions: import from Slack desktop, else sign in.
 export default function Onboarding(props: { status: Status }) {
@@ -16,12 +17,14 @@ export default function Onboarding(props: { status: Status }) {
           </Match>
           <Match when={props.status.phase === "importing"}>
             <p>{t("Taking your session from the Slack desktop app.")}</p>
-            <p class="muted">
-              <T
-                k="macOS will ask to allow access to “Slack Safe Storage”. Choose <b>Always Allow</b>: Flek only reads the session cookie with it."
-                tags={{ b: (text) => <b>{text}</b> }}
-              />
-            </p>
+            <Show when={isMac()}>
+              <p class="muted">
+                <T
+                  k="macOS will ask to allow access to “Slack Safe Storage”. Choose <b>Always Allow</b>: Flek only reads the session cookie with it."
+                  tags={{ b: (text) => <b>{text}</b> }}
+                />
+              </p>
+            </Show>
             <div class="spinner" />
           </Match>
           <Match when={props.status.phase === "signing_in"}>

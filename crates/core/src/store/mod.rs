@@ -27,7 +27,9 @@ fn open_reader(path: &Path) -> Result<Connection> {
     Ok(conn)
 }
 
-/// `~/Library/Application Support/flek/flek.db` on macOS.
+/// `<data dir>/flek/flek.db`, where the data dir is
+/// `~/Library/Application Support` (macOS), `%APPDATA%` (Windows) or
+/// `$XDG_DATA_HOME` / `~/.local/share` (Linux).
 pub fn default_path() -> Result<PathBuf> {
     let dir = dirs::data_dir().ok_or_else(|| Error::Store("data directory is unknown".into()))?;
     Ok(dir.join("flek").join("flek.db"))

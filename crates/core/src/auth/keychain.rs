@@ -1,4 +1,6 @@
-//! Credentials in the macOS Keychain (service `flek`, account = team id),
+//! Credentials in the OS credential store via `keyring` (service `flek`,
+//! account = team id): the macOS Keychain today; the Windows Credential
+//! Manager and Linux Secret Service backends are ROADMAP M7.1.3,
 //! plus reading Slack's own "Safe Storage" password.
 
 use std::collections::HashMap;

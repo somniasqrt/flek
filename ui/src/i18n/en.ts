@@ -457,6 +457,26 @@ export const en = {
   "Session source": "Session source",
   "Danger zone": "Danger zone",
   "Sign out": "Sign out",
+  "Closing the window keeps Flek in the system tray":
+    "Closing the window keeps Flek in the system tray",
+  "Show in File Explorer":
+    "Show in File Explorer",
+  "Show in file manager":
+    "Show in file manager",
+  "The session will be removed from Credential Manager. The local archive is kept.":
+    "The session will be removed from Credential Manager. The local archive is kept.",
+  "The session will be removed from the system keyring. The local archive is kept.":
+    "The session will be removed from the system keyring. The local archive is kept.",
+  "Channels appear here as soon as they are fetched. Flek keeps syncing in the system tray even when this window is closed.":
+    "Channels appear here as soon as they are fetched. Flek keeps syncing in the system tray even when this window is closed.",
+  "Start Flek automatically when you log in to Windows.":
+    "Start Flek automatically when you log in to Windows.",
+  "Start Flek automatically when you log in to your computer.":
+    "Start Flek automatically when you log in to your computer.",
+  "Choose how Flek looks. System follows Windows.":
+    "Choose how Flek looks. System follows Windows.",
+  "Choose how Flek looks. System follows your system.":
+    "Choose how Flek looks. System follows your system.",
 } as const;
 export type Key = keyof typeof en;
 export type Dictionary = { [K in Key]: string };

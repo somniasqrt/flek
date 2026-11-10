@@ -2,6 +2,7 @@ import { render } from "solid-js/web";
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import App from "./App";
+import { initPlatform, setPlatform, type Platform } from "./platform";
 import { defaultSettings, type Settings } from "./settings-model";
 import { setPreferencesOpen } from "./settings";
 import type { Presence } from "./presence";
@@ -913,5 +914,9 @@ const cached: Record<string, string> = {
 };
 overrideCacheUrl((path) => cached[path] ?? placeholder);
 
+// ?platform=windows|linux|mac previews the per-OS chrome, fonts and wording.
+const forced = query.get("platform") as Platform | null;
+await initPlatform(async () => forced ?? "");
+if (forced) setPlatform(forced);
 render(() => <App />, document.getElementById("root")!);
 if (query.has("preferences")) setPreferencesOpen(true);

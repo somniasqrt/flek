@@ -1,5 +1,5 @@
 //! Flek desktop: a thin Tauri shell over `flek-core`. Business logic lives in
-//! the core; this crate wires windows, the menu bar and IPC to it.
+//! the core; this crate wires windows, the menu bar/tray and IPC to it.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -8,6 +8,7 @@ mod commands;
 mod files;
 mod i18n;
 mod login;
+mod platform;
 mod state;
 mod tray;
 mod window_size;
@@ -40,12 +41,13 @@ fn main() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            platform::autostart_launcher(),
             Some(vec![HIDDEN_ARG]),
         ))
         .register_asynchronous_uri_scheme_protocol(files::SCHEME, files::handle)
         .manage(AppState::new(store))
         .invoke_handler(tauri::generate_handler![
+            platform::platform,
             commands::get_settings,
             commands::set_settings,
             commands::storage_info,
@@ -141,21 +143,18 @@ fn main() {
         .expect("error while building Flek");
 
     app.run(|app, event| match event {
-        #[cfg(target_os = "macos")]
-        RunEvent::Reopen { .. } => show_main(app),
         // Only "Quit" (with an exit code) ends Flek, not a closed window.
         RunEvent::ExitRequested { api, code, .. } if code.is_none() => api.prevent_exit(),
         RunEvent::Exit => {
             window_size::save(app);
             app.state::<AppState>().stop_engine();
         }
-        _ => {}
+        _ => platform::on_reopen(app, &event),
     });
 }
 
 pub fn show_main(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    let _ = app.set_dock_visibility(true);
+    platform::set_dock_visible(app, true);
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.show();
         let _ = w.unminimize();
@@ -167,6 +166,5 @@ fn hide_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(MAIN) {
         let _ = w.hide();
     }
-    #[cfg(target_os = "macos")]
-    let _ = app.set_dock_visibility(false);
+    platform::set_dock_visible(app, false);
 }

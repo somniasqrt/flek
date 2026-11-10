@@ -1,10 +1,11 @@
-//! Menu bar icon: sync status, open window, launch at login, quit. Flek keeps
-//! syncing after its window is closed; quitting is done from here.
+//! Menu bar icon (system tray on Windows and Linux): sync status, open
+//! window, launch at login, quit. Flek keeps syncing after its window is
+//! closed; quitting is done from here.
 
 use crate::i18n::{t, Key};
 use flek_core::sync::live::{ConnectionState, Progress};
 use tauri::image::Image;
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::Emitter;
 use tauri::{AppHandle, Manager, Wry};
@@ -25,7 +26,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let preferences = MenuItem::with_id(
         app,
         "preferences",
-        t(lang, Key::Preferences),
+        t(lang, crate::platform::preferences_key()),
         true,
         None::<&str>,
     )?;
@@ -110,7 +111,9 @@ pub fn refresh(app: &AppHandle) {
     let _ = items.open.set_text(t(lang, Key::Open));
     let _ = items.quit.set_text(t(lang, Key::Quit));
     let _ = items.autostart.set_text(t(lang, Key::Login));
-    let _ = items.preferences.set_text(t(lang, Key::Preferences));
+    let _ = items
+        .preferences
+        .set_text(t(lang, crate::platform::preferences_key()));
     if let Ok(mut previous) = items.language.lock() {
         if *previous != lang && rebuild_native(app).is_ok() {
             *previous = lang;
@@ -172,26 +175,31 @@ fn rebuild_native(app: &AppHandle) -> tauri::Result<()> {
     let preferences = MenuItem::with_id(
         app,
         "preferences",
-        t(lang, Key::Preferences),
+        t(lang, crate::platform::preferences_key()),
         true,
         Some("CmdOrCtrl+,"),
     )?;
-    let app_menu = Submenu::with_items(
-        app,
-        "Flek",
-        true,
-        &[
-            &PredefinedMenuItem::about(app, Some(t(lang, Key::About)), None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &preferences,
-            &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some(t(lang, Key::Hide)))?,
-            &PredefinedMenuItem::hide_others(app, Some(t(lang, Key::HideOthers)))?,
-            &PredefinedMenuItem::show_all(app, Some(t(lang, Key::ShowAll)))?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "quit", t(lang, Key::Quit), true, Some("CmdOrCtrl+Q"))?,
-        ],
-    )?;
+    let about = PredefinedMenuItem::about(app, Some(t(lang, Key::About)), None)?;
+    let (sep1, sep2, sep3) = (
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+        PredefinedMenuItem::separator(app)?,
+    );
+    let quit = MenuItem::with_id(app, "quit", t(lang, Key::Quit), true, Some("CmdOrCtrl+Q"))?;
+    let mut items: Vec<&dyn IsMenuItem<Wry>> = vec![&about, &sep1, &preferences, &sep2];
+    let hide = PredefinedMenuItem::hide(app, Some(t(lang, Key::Hide)))?;
+    let hide_others = PredefinedMenuItem::hide_others(app, Some(t(lang, Key::HideOthers)))?;
+    let show_all = PredefinedMenuItem::show_all(app, Some(t(lang, Key::ShowAll)))?;
+    if crate::platform::has_hide_items() {
+        items.extend([
+            &hide as &dyn IsMenuItem<Wry>,
+            &hide_others,
+            &show_all,
+            &sep3,
+        ]);
+    }
+    items.push(&quit);
+    let app_menu = Submenu::with_items(app, "Flek", true, &items)?;
     let edit = Submenu::with_items(
         app,
         t(lang, Key::Edit),

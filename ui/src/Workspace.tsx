@@ -12,6 +12,7 @@ import {
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { t, errorMessage } from "./i18n";
+import { pick } from "./platform";
 import {
   api,
   onChange,
@@ -493,9 +494,17 @@ export default function Workspace(props: { status: Ready }) {
                           <Show when={loaded()} fallback={<div class="spinner" />}>
                             <h2>{t("Syncing messages")}</h2>
                             <p class="muted">
-                              {t(
-                                "Channels appear here as soon as they are fetched. Flek keeps syncing in the menu bar even when this window is closed.",
-                              )}
+                              {pick({
+                                mac: t(
+                                  "Channels appear here as soon as they are fetched. Flek keeps syncing in the menu bar even when this window is closed.",
+                                ),
+                                windows: t(
+                                  "Channels appear here as soon as they are fetched. Flek keeps syncing in the system tray even when this window is closed.",
+                                ),
+                                linux: t(
+                                  "Channels appear here as soon as they are fetched. Flek keeps syncing in the system tray even when this window is closed.",
+                                ),
+                              })}
                             </p>
                           </Show>
                         </div>

@@ -37,7 +37,7 @@ struct Global {
     /// Team id (offline: the only team in the database; online: stored session).
     #[arg(long, global = true, value_name = "TEAM_ID")]
     team: Option<String>,
-    /// Database file (default: ~/Library/Application Support/flek/flek.db).
+    /// Database file (default: flek/flek.db in the OS data directory).
     #[arg(long, global = true, value_name = "PATH")]
     db: Option<PathBuf>,
 }

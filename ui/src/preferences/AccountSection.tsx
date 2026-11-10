@@ -3,6 +3,7 @@ import { api, linkImageUrl } from "../api";
 import Avatar from "../Avatar";
 import { t } from "../i18n";
 import { people } from "../people";
+import { pick } from "../platform";
 import { Card, Row } from "./controls";
 import type { PrefsContext } from "./context";
 
@@ -49,9 +50,15 @@ export default function AccountSection(props: { ctx: PrefsContext }) {
             <Card danger title={t("Danger zone")}>
               <Row
                 label={t("Sign out")}
-                description={t(
-                  "The session will be removed from Keychain. The local archive is kept.",
-                )}
+                description={pick({
+                  mac: t("The session will be removed from Keychain. The local archive is kept."),
+                  windows: t(
+                    "The session will be removed from Credential Manager. The local archive is kept.",
+                  ),
+                  linux: t(
+                    "The session will be removed from the system keyring. The local archive is kept.",
+                  ),
+                })}
               >
                 <button
                   type="button"

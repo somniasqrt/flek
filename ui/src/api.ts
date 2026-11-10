@@ -2,6 +2,7 @@
 import type { Presence, CustomStatus } from "./presence";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { platform } from "./platform";
 
 export type Status =
   | { phase: "starting" }
@@ -370,7 +371,7 @@ export const tsDate = (ts: string) => new Date(parseFloat(ts) * 1000);
 /// URL of something the app's `flekfile` protocol serves
 /// (crates/app/src/files.rs). WebView2 maps custom schemes to http.
 let cacheUrl = (path: string) =>
-  (navigator.userAgent.includes("Windows")
+  (platform() === "windows"
     ? "http://flekfile.localhost/"
     : "flekfile://localhost/") + path;
 

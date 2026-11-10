@@ -8,6 +8,7 @@ pub enum Key {
     Login,
     Quit,
     Preferences,
+    Settings,
     Importing,
     SignedOut,
     SigningIn,
@@ -31,12 +32,13 @@ pub enum Key {
     SignIn,
 }
 
-const STRINGS: [[&str; 2]; 26] = [
+const STRINGS: [[&str; 2]; 27] = [
     ["Starting…", "Запуск…"],
     ["Open Flek", "Відкрити Flek"],
     ["Open at Login", "Запускати при вході"],
     ["Quit Flek", "Вийти з Flek"],
     ["Preferences…", "Налаштування…"],
+    ["Settings", "Налаштування"],
     [
         "Importing the Slack desktop session…",
         "Імпортуємо сеанс Slack…",

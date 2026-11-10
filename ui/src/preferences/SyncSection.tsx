@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { api } from "../api";
 import { t } from "../i18n";
+import { pick } from "../platform";
 import { settings } from "../settings";
 import { Card, Row, SelectBox, Stepper } from "./controls";
 import type { PrefsContext } from "./context";
@@ -65,7 +66,11 @@ export default function SyncSection(props: { ctx: PrefsContext }) {
                     class="pref-button"
                     onClick={() => ctx.run(api.showStorage)}
                   >
-                    {t("Show in Finder")}
+                    {pick({
+                      mac: t("Show in Finder"),
+                      windows: t("Show in File Explorer"),
+                      linux: t("Show in file manager"),
+                    })}
                   </button>
                 </div>
               </Row>

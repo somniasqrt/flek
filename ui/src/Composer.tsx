@@ -13,6 +13,7 @@ import {
   shortcutLabel,
   type EditAction,
 } from "./shortcuts";
+import { keyCombo, modKeyLabel } from "./platform";
 import { people } from "./people";
 import { send } from "./outbox";
 
@@ -532,7 +533,7 @@ export default function Composer(props: {
               type="button"
               class="composer-send"
               title={t("Send ({key})", {
-                key: modEnter() ? (mac ? "⌘Enter" : "Ctrl+Enter") : "Enter",
+                key: modEnter() ? keyCombo([modKeyLabel(), "Enter"]) : "Enter",
               })}
               aria-label={t("Send")}
               disabled={!hasText()}
@@ -665,7 +666,7 @@ export default function Composer(props: {
                     {value ? t("Start a new line") : t("Send the message")}
                     <small>
                       {value
-                        ? t("Send with {key}Enter", { key: mac ? "⌘" : "Ctrl+" })
+                        ? t("Send with {key}Enter", { key: keyCombo([modKeyLabel(), ""]) })
                         : t("New line with Shift+Enter")}
                     </small>
                   </span>

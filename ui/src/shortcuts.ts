@@ -1,10 +1,11 @@
+import { isMac, keyCombo, modKeyLabel, shiftKeyLabel, type Platform } from "./platform.ts";
+
 // Physical key codes keep shortcuts working with Ukrainian and other layouts.
 export type ShortcutEvent = Pick<
   KeyboardEvent,
   "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "isComposing"
 >;
-export const isMacPlatform = (platform: string) => /mac|iphone|ipad/i.test(platform);
-export const usesMacShortcuts = () => isMacPlatform(navigator.platform || navigator.userAgent);
+export const usesMacShortcuts = () => isMac();
 
 export type EditAction =
   | "bold"
@@ -47,5 +48,6 @@ export function editShortcut(e: ShortcutEvent, mac: boolean): EditAction | undef
 }
 export function shortcutLabel(action: EditAction, mac: boolean) {
   const b = bindings[action];
-  return mac ? `⌘${b.shift ? "⇧" : ""}${b.key}` : `Ctrl+${b.shift ? "Shift+" : ""}${b.key}`;
+  const p: Platform = mac ? "mac" : "windows";
+  return keyCombo([modKeyLabel(p), ...(b.shift ? [shiftKeyLabel(p)] : []), b.key], p);
 }

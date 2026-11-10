@@ -216,7 +216,7 @@ export const uk = {
   Українська: "Українська",
   "Launch at login": "Запускати при вході",
   "Closing the window keeps Flek in the menu bar":
-    "Після закриття вікна залишати Flek у смузі меню",
+    "Після закриття вікна залишати Flek у панелі меню",
   Theme: "Тема",
   Light: "Світла",
   Dark: "Темна",
@@ -328,7 +328,7 @@ export const uk = {
   "Resize sidebar": "Змінити ширину бічної панелі",
   "Syncing messages": "Синхронізуємо повідомлення",
   "Channels appear here as soon as they are fetched. Flek keeps syncing in the menu bar even when this window is closed.":
-    "Канали з’являються після завантаження. Flek продовжує синхронізацію у смузі меню навіть після закриття вікна.",
+    "Канали з’являються після завантаження. Flek продовжує синхронізацію у панелі меню навіть після закриття вікна.",
   "Resize details panel": "Змінити ширину панелі відомостей",
   "Set a status": "Установити статус",
   "😊 Update your status": "😊 Оновити статус",
@@ -464,4 +464,24 @@ export const uk = {
   "Session source": "Джерело сеансу",
   "Danger zone": "Небезпечна зона",
   "Sign out": "Вийти",
+  "Closing the window keeps Flek in the system tray":
+    "Після закриття вікна залишати Flek у системному треї",
+  "Show in File Explorer":
+    "Показати в Провіднику",
+  "Show in file manager":
+    "Показати у файловому менеджері",
+  "The session will be removed from Credential Manager. The local archive is kept.":
+    "Сеанс буде видалено з Диспетчера облікових даних. Локальний архів збережеться.",
+  "The session will be removed from the system keyring. The local archive is kept.":
+    "Сеанс буде видалено із системного сховища ключів. Локальний архів збережеться.",
+  "Channels appear here as soon as they are fetched. Flek keeps syncing in the system tray even when this window is closed.":
+    "Канали з’являються після завантаження. Flek продовжує синхронізацію в системному треї навіть після закриття вікна.",
+  "Start Flek automatically when you log in to Windows.":
+    "Запускати Flek автоматично, коли ви входите у Windows.",
+  "Start Flek automatically when you log in to your computer.":
+    "Запускати Flek автоматично, коли ви входите в систему на комп’ютері.",
+  "Choose how Flek looks. System follows Windows.":
+    "Оберіть вигляд Flek. Системна тема повторює налаштування Windows.",
+  "Choose how Flek looks. System follows your system.":
+    "Оберіть вигляд Flek. Системна тема повторює налаштування вашої системи.",
 } satisfies Dictionary;

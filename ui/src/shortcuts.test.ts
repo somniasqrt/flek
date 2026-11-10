@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { editShortcut, isMacPlatform, shortcutLabel } from "./shortcuts.ts";
+import { setPlatform } from "./platform.ts";
+import { editShortcut, shortcutLabel, usesMacShortcuts } from "./shortcuts.ts";
 const event = (extra = {}) => ({
   code: "KeyB",
   metaKey: false,
@@ -16,9 +17,14 @@ test("macOS uses Command; Windows and Linux use Control", () => {
   assert.equal(editShortcut(event({ ctrlKey: true }), false), "bold");
   assert.equal(editShortcut(event({ ctrlKey: true }), true), undefined);
   assert.equal(editShortcut(event({ metaKey: true }), false), undefined);
-  assert.equal(isMacPlatform("MacIntel"), true);
-  assert.equal(isMacPlatform("Win32"), false);
-  assert.equal(isMacPlatform("Linux x86_64"), false);
+  for (const [platform, mac] of [
+    ["mac", true],
+    ["windows", false],
+    ["linux", false],
+  ] as const) {
+    setPlatform(platform);
+    assert.equal(usesMacShortcuts(), mac, platform);
+  }
 });
 
 test("physical codes work independently of the typed character", () => {

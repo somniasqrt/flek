@@ -277,11 +277,13 @@ pub async fn import_desktop(app: AppHandle) {
 }
 
 fn desktop_installed() -> bool {
-    dirs::home_dir().is_some_and(|home| {
-        auth::desktop_import::candidate_roots(&home)
-            .iter()
-            .any(|p| p.is_dir())
-    })
+    // Where import is not implemented, sign-in is the only path.
+    auth::desktop_import::IMPORT_SUPPORTED
+        && dirs::home_dir().is_some_and(|home| {
+            auth::desktop_import::candidate_roots(&home)
+                .iter()
+                .any(|p| p.is_dir())
+        })
 }
 
 /// Session ready: show it, start syncing in the background.

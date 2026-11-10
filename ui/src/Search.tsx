@@ -6,6 +6,7 @@ import T from "./i18n/T";
 import { Hash, Lock, People, Search } from "./icons";
 import { emoji } from "./emoji";
 import { people } from "./people";
+import { keyCombo, modKeyLabel } from "./platform";
 import { primaryModifier, usesMacShortcuts } from "./shortcuts";
 import { pieces, readable } from "./snippet";
 
@@ -125,7 +126,7 @@ export function SearchBar(props: {
           onKeyDown={onKey}
         />
         <Show when={!open()}>
-          <kbd class="search-kbd">{mac ? "⌘F" : "Ctrl+F"}</kbd>
+          <kbd class="search-kbd">{keyCombo([modKeyLabel(), "F"])}</kbd>
         </Show>
       </label>
       <Show when={open()}>

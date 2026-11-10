@@ -1,4 +1,4 @@
-//! Import the session from the installed Slack desktop app (macOS).
+//! Import the session from the installed Slack desktop app (macOS only so far).
 
 use std::path::{Path, PathBuf};
 
@@ -36,13 +36,45 @@ pub struct DesktopSession {
     pub cookie: Secret,
 }
 
-/// Profile directories to check, regular build first, then App Store.
+/// Whether this build can read the Slack desktop session. Only macOS can for
+/// now; Windows (DPAPI + AES-GCM) and Linux (Secret Service) are ROADMAP M7.1.2.
+pub const IMPORT_SUPPORTED: bool = cfg!(target_os = "macos");
+
+/// Profile directories to check on the running OS, most likely first.
 pub fn candidate_roots(home: &Path) -> Vec<PathBuf> {
+    if cfg!(target_os = "macos") {
+        macos_roots(home)
+    } else if cfg!(target_os = "windows") {
+        windows_roots(home)
+    } else {
+        linux_roots(home)
+    }
+}
+
+/// Regular build first, then App Store.
+fn macos_roots(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join("Library/Application Support/Slack"),
         home.join(
             "Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack",
         ),
+    ]
+}
+
+/// `%APPDATA%\Slack` (the roaming profile), then the Microsoft Store build.
+fn windows_roots(home: &Path) -> Vec<PathBuf> {
+    vec![
+        home.join("AppData/Roaming/Slack"),
+        home.join("AppData/Local/Packages/91750D7E.Slack_8she8kybcnzg4/LocalCache/Roaming/Slack"),
+    ]
+}
+
+/// `~/.config/Slack`, then the Snap and Flatpak builds.
+fn linux_roots(home: &Path) -> Vec<PathBuf> {
+    vec![
+        home.join(".config/Slack"),
+        home.join("snap/slack/current/.config/Slack"),
+        home.join(".var/app/com.slack.Slack/config/Slack"),
     ]
 }
 
@@ -219,6 +251,24 @@ mod tests {
         let paths = locate(home.path()).unwrap();
         assert_eq!(&paths.root, root);
         assert_eq!(paths.cookies, root.join("Network/Cookies"));
+    }
+
+    #[test]
+    fn slack_profile_candidates_per_os() {
+        let home = Path::new("/h");
+        assert_eq!(
+            macos_roots(home)[0],
+            Path::new("/h/Library/Application Support/Slack")
+        );
+        assert_eq!(
+            windows_roots(home)[0],
+            Path::new("/h/AppData/Roaming/Slack")
+        );
+        assert_eq!(linux_roots(home)[0], Path::new("/h/.config/Slack"));
+        for roots in [macos_roots(home), windows_roots(home), linux_roots(home)] {
+            assert!(roots.iter().all(|r| r.starts_with(home)));
+        }
+        assert!(!candidate_roots(home).is_empty());
     }
 
     #[test]

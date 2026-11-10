@@ -1,6 +1,7 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { t } from "./i18n";
+import { keyCombo, modKeyLabel } from "./platform";
 import { primaryModifier, usesMacShortcuts } from "./shortcuts";
 import { AddReaction, ReplyInThread, MessageLink, CopyMessage } from "./icons";
 import EmojiPicker from "./EmojiPicker";
@@ -161,7 +162,7 @@ export default function MessageMenu(props: {
                 >
                   <CopyMessage />
                   <span class="message-menu-label">{t("Copy message")}</span>
-                  <kbd>{usesMacShortcuts() ? "⌘C" : "Ctrl+C"}</kbd>
+                  <kbd>{keyCombo([modKeyLabel(), "C"])}</kbd>
                 </button>
               </>
             }

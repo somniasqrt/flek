@@ -1,5 +1,5 @@
-//! Launch at login (a LaunchAgent on macOS), started with `--hidden` so Flek
-//! comes up in the menu bar only.
+//! Launch at login (see `platform::autostart_launcher`), started with
+//! `--hidden` so Flek comes up in the menu bar or tray only.
 
 use tauri::AppHandle;
 use tauri_plugin_autostart::ManagerExt;

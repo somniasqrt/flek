@@ -1,4 +1,5 @@
 import { clock24, t } from "../i18n";
+import { pick } from "../platform";
 import { settings } from "../settings";
 import type { Settings } from "../settings-model";
 import { Card, Row, SelectBox, Segmented, Switch, ThemeCards } from "./controls";
@@ -11,6 +12,13 @@ const toggle = (ctx: PrefsContext, key: keyof Settings) => ({
   disabled: ctx.busy(),
   onChange: (value: boolean) => ctx.update(key, value as never),
 });
+
+const closeKeeps = () =>
+  pick({
+    mac: t("Closing the window keeps Flek in the menu bar"),
+    windows: t("Closing the window keeps Flek in the system tray"),
+    linux: t("Closing the window keeps Flek in the system tray"),
+  });
 
 export function GeneralSection(props: Props) {
   const ctx = props.ctx;
@@ -31,16 +39,20 @@ export function GeneralSection(props: Props) {
       </Row>
       <Row
         label={t("Launch at login")}
-        description={t("Start Flek automatically when you log in to your Mac.")}
+        description={pick({
+          mac: t("Start Flek automatically when you log in to your Mac."),
+          windows: t("Start Flek automatically when you log in to Windows."),
+          linux: t("Start Flek automatically when you log in to your computer."),
+        })}
       >
         <Switch label={t("Launch at login")} {...toggle(ctx, "launch_at_login")} />
       </Row>
       <Row
-        label={t("Closing the window keeps Flek in the menu bar")}
+        label={closeKeeps()}
         description={t("Flek keeps syncing in the background, so new messages arrive meanwhile.")}
       >
         <Switch
-          label={t("Closing the window keeps Flek in the menu bar")}
+          label={closeKeeps()}
           {...toggle(ctx, "keep_in_menu_bar")}
         />
       </Row>
@@ -56,7 +68,11 @@ export function AppearanceSection(props: Props) {
         <Row
           stacked
           label={t("Theme")}
-          description={t("Choose how Flek looks. System follows your Mac.")}
+          description={pick({
+            mac: t("Choose how Flek looks. System follows your Mac."),
+            windows: t("Choose how Flek looks. System follows Windows."),
+            linux: t("Choose how Flek looks. System follows your system."),
+          })}
         >
           <ThemeCards
             label={t("Theme")}

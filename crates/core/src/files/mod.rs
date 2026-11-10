@@ -6,7 +6,8 @@ use crate::api::Client;
 use crate::store::files::PendingDownload;
 use crate::{Error, Result};
 
-/// `~/Library/Caches/flek/files` on macOS.
+/// `<cache dir>/flek/files`, where the cache dir is `~/Library/Caches` (macOS),
+/// `%LOCALAPPDATA%` (Windows) or `$XDG_CACHE_HOME` / `~/.cache` (Linux).
 pub fn default_cache_dir() -> Result<PathBuf> {
     let dir = dirs::cache_dir().ok_or_else(|| Error::File("cache directory is unknown".into()))?;
     Ok(dir.join("flek").join("files"))
