@@ -220,3 +220,68 @@ pub fn message_reference(
         thread_ts: None,
     })
 }
+
+/// Resolve a stored person using the same ranked identity policy as conversations.
+pub fn resolve_user(
+    conn: &Connection,
+    team: &str,
+    query: &str,
+    mode: Match,
+) -> Result<crate::views::User> {
+    let q = query.trim().trim_start_matches('@');
+    let folded = q.to_lowercase();
+    let users = crate::reads::users(conn, team, None, true, true, usize::MAX)?;
+    let mut best = 5;
+    let mut found = Vec::new();
+    for u in users {
+        if q.is_empty() {
+            break;
+        }
+        let aliases = [
+            Some(u.name.as_str()),
+            u.display_name.as_deref(),
+            u.real_name.as_deref(),
+            u.email.as_deref(),
+        ];
+        let rank = if u.id == q {
+            0
+        } else if aliases.iter().flatten().any(|a| *a == q) {
+            1
+        } else if u.id.to_lowercase() == folded
+            || aliases.iter().flatten().any(|a| a.to_lowercase() == folded)
+        {
+            2
+        } else if aliases
+            .iter()
+            .flatten()
+            .any(|a| a.to_lowercase().starts_with(&folded))
+        {
+            3
+        } else {
+            continue;
+        };
+        if rank < best {
+            found.clear();
+            best = rank;
+        }
+        if rank == best {
+            found.push(u);
+        }
+    }
+    match found.len() {
+        0 => Err(Error::NotFound(format!(
+            "no user matches {query:?}; try `flek users`"
+        ))),
+        1 if best <= 2 || mode == Match::AllowPrefix => Ok(found.remove(0)),
+        _ => Err(Error::Ambiguous {
+            candidates: found
+                .into_iter()
+                .map(|u| Candidate {
+                    id: u.id,
+                    label: u.display_name.unwrap_or(u.name),
+                    kind: "user".into(),
+                })
+                .collect(),
+        }),
+    }
+}

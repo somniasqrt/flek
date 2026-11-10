@@ -133,3 +133,53 @@ pub async fn fetch_link_image(
     std::fs::rename(&tmp, &dest)?;
     Ok(dest)
 }
+
+/// Find a stored file in either its recorded path or the standard cache layout.
+/// Reconcile paths before callers decide whether a session is needed.
+pub async fn stored_cached_path(
+    store: &crate::store::Store,
+    cache_dir: &Path,
+    id: &str,
+) -> Result<Option<PathBuf>> {
+    let file_id = id.to_owned();
+    let (name, recorded): (Option<String>, Option<String>) = store
+        .read(move |c| {
+            Ok(c.query_row(
+                "SELECT name,local_path FROM files WHERE id=?1",
+                [file_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?)
+        })
+        .await?;
+    if let Some(path) = recorded.map(PathBuf::from).filter(|p| p.is_file()) {
+        return Ok(Some(path));
+    }
+    let path = cache_path(cache_dir, id, name.as_deref());
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let (file_id, local_path) = (id.to_owned(), path.to_string_lossy().into_owned());
+    store
+        .call(move |c| crate::store::files::set_local_path(c, &file_id, &local_path))
+        .await?;
+    Ok(Some(path))
+}
+
+/// Download one stored file and persist the cache path before returning it.
+pub async fn fetch_stored(
+    client: &Client,
+    store: &crate::store::Store,
+    cache_dir: &Path,
+    id: &str,
+) -> Result<PathBuf> {
+    let file_id = id.to_owned();
+    let pending = store
+        .read(move |c| crate::reads::pending_file(c, &file_id))
+        .await?;
+    let (path, _) = fetch(client, cache_dir, &pending).await?;
+    let (file_id, local_path) = (id.to_owned(), path.to_string_lossy().into_owned());
+    store
+        .call(move |c| crate::store::files::set_local_path(c, &file_id, &local_path))
+        .await?;
+    Ok(path)
+}

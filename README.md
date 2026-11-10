@@ -127,7 +127,15 @@ Examples use fictional destinations and timestamps; replace them with your own.
 | `db` | Open, create or migrate the local DB and show its path and schema version. | `flek db --db /tmp/flek-demo.db` |
 | `sync` | Fetch users, conversations, history, threads and files. `--channel <CHANNEL>` selects one exact conversation; `--follow` stays connected until Ctrl+C; `--full` re-reads all history and threads. `--refresh-days <DAYS>` defaults to 7 (0 disables refresh); `--no-files` skips downloads; `--max-file-size <MB>` defaults to 100 (0 means no limit). | `flek sync --channel '#project-demo' --follow --max-file-size 25` |
 | `channels` | List stored conversations with message/unread counts; `--archived` includes archived channels. | `flek channels --archived` |
-| `history <CHANNEL>` | Read recent stored messages; `--limit <LIMIT>` defaults to 30. `--thread <TS>` shows a thread using its root timestamp. `--fresh` catches up this conversation before reading. | `flek history '#project-demo' --limit 20` |
+| `history <CHANNEL>` | Read recent stored messages; `--limit <LIMIT>` defaults to 30. `--thread <TS>` pages a thread. `--since/--until`, `--around <TS or permalink>`, `--cursor` select windows/pages; JSON returns older/newer cursors. `--fresh` catches up first. | `flek history '#project-demo' --limit 20` |
+| `unread` | DMs and mentions first; `--messages N` attaches oldest unread messages; `--include-unknown` lists unknown read markers separately; `--fresh` refreshes directory and catches up activity. | `flek unread --messages 3 --json` |
+| `thread <REF> [TS]` | Root and all stored replies; accepts a reply permalink; `--fresh` fetches the thread. | `flek thread C0FAKE 1700000000.123456` |
+| `message <REF> [TS]` | One message; `--context N` adds adjacent messages from its timeline; `--fresh` catches up first. | `flek message C0FAKE 1700000000.123456 --context 2` |
+| `users` / `user <REF>` | Stored directory/profile; `users --query TEXT --limit N` (default 100), `--include-bots`, `--include-deleted`. User refs accept ids, handles, names and emails. | `flek user @alex --json` |
+| `channel info <REF>` | Stored topic/purpose and metadata; `--fresh` stores members and pins for later offline reads. | `flek channel info '#project-demo' --fresh` |
+| `mentions` | Local mentions, newest first; `--since` defaults to 7d, `--until`, `--limit` defaults to 50; `--include-broadcasts` adds here/channel/everyone. | `flek mentions --since 12h --json` |
+| `files` | Local file shares; `--channel`, `--from`, `--type`, `--since`, `--until`, `--limit` (default 50). Types: image/pdf/video/audio/doc/other or MIME prefix. | `flek files --channel '#project-demo' --type image` |
+| `file get <ID>` | Print cache path; download only if missing; `--to PATH` copies it. | `flek file get F0FAKE --to ./notes.pdf` |
 | `search <QUERY>...` | Search the local archive, including history hidden in Slack. `--limit <LIMIT>` defaults to 20; `--recent` sorts newest first instead of by relevance. | `flek search 'release in:#project-demo after:2026-01-01' --recent --limit 10` |
 | `send <CHANNEL> <TEXT>` | Send as you, using Slack mrkdwn (`&`, `<`, `>` are escaped). `--thread <TS>` replies to a thread; `--broadcast` requires it and also shows the reply in the channel. Writes require an exact name or id. | `flek send '#project-demo' 'The release notes are ready.' --thread 1700000000.123456 --broadcast` |
 | `import <PATH>` | Import a simple JSON file or Slack export / slackdump file or directory. `--channel <CHANNEL>` puts every message of a single-file archive into that conversation. | `flek import ./archives/project-demo.json --channel C0FAKE` |
@@ -148,6 +156,10 @@ Search supports `from:<person>`, `in:<channel>`, `has:link`, `has:file`,
 flek search '"release notes" from:alex in:#project-demo has:link -draft'
 ```
 
+Time bounds accept Slack ts, local dates (`YYYY-MM-DD`), RFC3339, or durations
+(`30m`, `12h`, `7d`). Bounds are inclusive; use absolute bounds when following
+history cursors.
+
 ### Referring to conversations
 
 Use an id (`C0FAKE`), `#name`, a plain channel name, or `@person`, handle,
@@ -165,12 +177,13 @@ a prefix produces suggestions even if there is only one candidate.
 
 ### Offline and online
 
-`channels`, `history`, `search`, `import` and `db` work locally without
+`channels`, `history`, `unread`, `thread`, `message`, `users`, `user`,
+`channel info`, `mentions`, `files`, `search`, `import` and `db` work locally without
 reading Keychain. Reads reflect what is already stored; import writes to
 the local archive. If several teams are in the DB, pass `--team` for
 team-scoped commands. `db` can create an empty DB, but does not populate it.
 
-`whoami`, `sync`, `send` and `history --fresh` require a session and network
+`whoami`, `sync`, `send`, explicit `--fresh` reads and uncached `file get` require a session and network
 access. `auth` manages Keychain sessions; `auth import` also validates them
 online. `history --fresh` catches up only the selected conversation; with
 `--thread` it fetches that thread's pages. It does not download files or do
@@ -189,10 +202,16 @@ suppresses human logs and progress; help remains text.
 
 ```bash
 # Stored unread conversations (unknown read markers are excluded).
-flek channels --json | jq '.conversations[] | select((.unread_count // 0) > 0)'
+flek unread --messages 3 --json | jq '.conversations[] | {label, unread_count, mentions, messages}'
 
 # Last 20 stored messages, oldest first, with resolved names and links.
 flek history '#project-demo' --limit 20 --json | jq -r '.messages[].text_resolved'
+
+# Mention text and the permalink an agent can pass to thread/message.
+flek mentions --since 7d --json | jq -r '.messages[] | [.conversation, .text_resolved, .permalink] | @tsv'
+
+# Copy the older-page cursor verbatim; keep absolute window bounds unchanged.
+flek history '#project-demo' --limit 20 --json | jq '.next_cursor'
 
 # Live NDJSON: each line has schema_version and a type discriminator.
 flek sync --follow --json | jq --unbuffered 'select(.type == "message") | .message'
@@ -215,8 +234,8 @@ disconnect. Keep Slack timestamps as strings.
 | 8 | `forbidden` | Reserved for the planned write guard; currently unused. |
 
 See [the CLI JSON contract](docs/cli-json.md) for full schemas and stream
-semantics. A full agent-facing CLI (reading unread messages, threads and
-mentions, editing, reactions, creating channels) is in progress.
+semantics. Agent reads are available; editing, reactions and channel creation
+remain on the roadmap.
 
 ## Message menu and reactions
 

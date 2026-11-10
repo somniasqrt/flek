@@ -1,6 +1,6 @@
 //! Messages and per-conversation sync progress.
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
 use super::files::{self, FileRow};
 use crate::Result;
@@ -64,6 +64,27 @@ fn write_messages(
     rows: &[MessageRow],
     mode: Mode,
 ) -> Result<usize> {
+    let tx = conn.transaction()?;
+    let total = write_messages_in_transaction(&tx, conversation_id, rows, mode)?;
+    tx.commit()?;
+    Ok(total)
+}
+
+/// Merge messages inside a caller-owned transaction, preserving all sync merge rules.
+pub(crate) fn upsert_messages_in_transaction(
+    tx: &Transaction<'_>,
+    conversation_id: &str,
+    rows: &[MessageRow],
+) -> Result<()> {
+    write_messages_in_transaction(tx, conversation_id, rows, Mode::Sync).map(drop)
+}
+
+fn write_messages_in_transaction(
+    tx: &Transaction<'_>,
+    conversation_id: &str,
+    rows: &[MessageRow],
+    mode: Mode,
+) -> Result<usize> {
     let guard = match mode {
         Mode::Sync => "excluded.hidden_by_limit = 0 OR messages.hidden_by_limit = 1",
         Mode::Import => "excluded.hidden_by_limit = 0 AND messages.hidden_by_limit = 1",
@@ -90,7 +111,6 @@ fn write_messages(
     // replaces an edited one. A hidden stub has nothing worth keeping.
     let newer = "(messages.hidden_by_limit = 1 OR messages.edited_ts IS NULL
                   OR excluded.edited_ts >= messages.edited_ts)";
-    let tx = conn.transaction()?;
     let mut total = 0;
     {
         let mut stmt = tx.prepare(&format!(
@@ -151,12 +171,11 @@ fn write_messages(
             }
             clear_files.execute(params![conversation_id, r.ts])?;
             for f in &r.files {
-                files::upsert_file(&tx, f)?;
+                files::upsert_file(tx, f)?;
                 link_file.execute(params![conversation_id, r.ts, f.id])?;
             }
         }
     }
-    tx.commit()?;
     Ok(total)
 }
 

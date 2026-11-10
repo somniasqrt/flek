@@ -1,7 +1,7 @@
 //! Versioned, secret-free machine views built exclusively from stored data.
 use crate::{references, Result};
 use chrono::{DateTime, SecondsFormat};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -33,40 +33,43 @@ fn datetime(ts: &str) -> Option<String> {
     )
 }
 
-pub fn conversation(conn: &Connection, id: &str) -> Result<Option<Conversation>> {
-    Ok(conn.query_row(
-        "SELECT c.id, c.name, COALESCE(c.label,c.name,c.id), c.kind, c.is_archived, c.is_member,
-         c.topic, c.purpose, c.unread_count, c.last_read, c.latest_ts, s.updated_at, COALESCE(s.complete,0)
-         FROM conversations c LEFT JOIN sync_state s ON s.conversation_id=c.id WHERE c.id=?1", [id], |r| {
-            let updated: Option<i64> = r.get(11)?;
-            Ok(Conversation {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                label: r.get(2)?,
-                kind: references::kind(&r.get::<_, String>(3)?).into(),
-                is_archived: r.get(4)?,
-                is_member: r.get(5)?,
-                topic: r.get(6)?,
-                purpose: r.get(7)?,
-                unread_count: r.get(8)?,
-                last_read: r.get(9)?,
-                latest_ts: r.get(10)?,
-                synced_at: updated.and_then(|s| datetime(&s.to_string())),
-                history_complete: r.get(12)?,
-            })
-        }).optional()?)
+const CONVERSATION_SELECT: &str =
+    "SELECT c.id,c.name,COALESCE(c.label,c.name,c.id),c.kind,c.is_archived,c.is_member,
+    c.topic,c.purpose,c.unread_count,c.last_read,c.latest_ts,s.updated_at,COALESCE(s.complete,0)
+    FROM conversations c LEFT JOIN sync_state s ON s.conversation_id=c.id";
+fn conversation_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation> {
+    let updated: Option<i64> = r.get(11)?;
+    Ok(Conversation {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        label: r.get(2)?,
+        kind: references::kind(&r.get::<_, String>(3)?).into(),
+        is_archived: r.get(4)?,
+        is_member: r.get(5)?,
+        topic: r.get(6)?,
+        purpose: r.get(7)?,
+        unread_count: r.get(8)?,
+        last_read: r.get(9)?,
+        latest_ts: r.get(10)?,
+        synced_at: updated.and_then(|s| datetime(&s.to_string())),
+        history_complete: r.get(12)?,
+    })
 }
-
+pub fn conversation(conn: &Connection, id: &str) -> Result<Option<Conversation>> {
+    Ok(conn
+        .query_row(
+            &format!("{CONVERSATION_SELECT} WHERE c.id=?1"),
+            [id],
+            conversation_row,
+        )
+        .optional()?)
+}
 pub fn conversations(conn: &Connection, team: &str, archived: bool) -> Result<Vec<Conversation>> {
-    crate::store::directory::list_conversations(conn, team)?
-        .into_iter()
-        .filter(|c| archived || !c.is_archived)
-        .map(|c| {
-            conversation(conn, &c.id)?.ok_or_else(|| {
-                crate::Error::NotFound(format!("stored conversation {} was not found", c.id))
-            })
-        })
-        .collect()
+    let mut stmt=conn.prepare(&format!("{CONVERSATION_SELECT} WHERE c.team_id=?1 AND (?2 OR NOT c.is_archived) ORDER BY CASE c.kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,c.is_archived,lower(COALESCE(c.label,c.name,c.id))"))?;
+    let rows = stmt
+        .query_map(rusqlite::params![team, archived], conversation_row)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,19 +81,46 @@ pub struct User {
     pub is_bot: bool,
     pub deleted: bool,
     pub tz: Option<String>,
+    pub title: Option<String>,
+    pub status_text: Option<String>,
+    pub status_emoji: Option<String>,
+    pub status_expiration: Option<i64>,
+    pub tz_label: Option<String>,
+    pub email: Option<String>,
+    pub is_admin: Option<bool>,
+    pub is_owner: Option<bool>,
+    pub dm_conversation_id: Option<String>,
 }
 pub fn user(conn: &Connection, id: &str) -> Result<Option<User>> {
-    Ok(
-        crate::store::directory::user_profile(conn, id)?.map(|p| User {
-            id: p.id,
-            name: p.name,
-            display_name: p.display_name,
-            real_name: p.real_name,
-            is_bot: p.is_bot,
-            deleted: p.deleted,
-            tz: p.tz,
-        }),
-    )
+    Ok(conn.query_row("SELECT u.id,u.name,u.display_name,u.real_name,u.is_bot,u.deleted,u.raw_json,
+        (SELECT id FROM conversations WHERE dm_user_id=u.id AND team_id=u.team_id ORDER BY id LIMIT 1)
+        FROM users u WHERE u.id=?1", [id], user_row).optional()?)
+}
+pub(crate) fn user_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
+    let raw: Option<String> = r.get(6)?;
+    let v: serde_json::Value = raw
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let p = &v["profile"];
+    let text = |v: &serde_json::Value| v.as_str().map(str::to_owned);
+    Ok(User {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        display_name: r.get(2)?,
+        real_name: r.get(3)?,
+        is_bot: r.get(4)?,
+        deleted: r.get(5)?,
+        tz: text(&v["tz"]),
+        title: text(&p["title"]),
+        status_text: text(&p["status_text"]),
+        status_emoji: text(&p["status_emoji"]),
+        status_expiration: p["status_expiration"].as_i64(),
+        tz_label: text(&v["tz_label"]),
+        email: text(&p["email"]),
+        is_admin: v["is_admin"].as_bool(),
+        is_owner: v["is_owner"].as_bool(),
+        dm_conversation_id: r.get(7)?,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -128,28 +158,44 @@ pub struct Message {
 }
 
 pub fn message(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Option<Message>> {
-    let row = conn.query_row(
-        "SELECT m.thread_ts,m.reply_count,m.user_id,COALESCE(NULLIF(u.display_name,''),u.name,m.author_name),
+    Ok(messages(conn, &[(conversation_id.to_owned(), ts.to_owned())])?.pop())
+}
+
+/// Hydrate a page with fixed joined queries for messages, files, reactions and labels.
+pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Message>> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
+    }
+    let keys = serde_json::to_string(keys)?;
+    let mut stmt = conn.prepare("SELECT m.thread_ts,m.reply_count,m.user_id,COALESCE(NULLIF(u.display_name,''),u.name,m.author_name),
          COALESCE(m.text,''),m.edited_ts IS NOT NULL,m.deleted,m.hidden_by_limit,
-         COALESCE(c.label,c.name,c.id),t.url
-         FROM messages m JOIN conversations c ON c.id=m.conversation_id JOIN teams t ON t.id=c.team_id
-         LEFT JOIN users u ON u.id=m.user_id WHERE m.conversation_id=?1 AND m.ts=?2",
-        params![conversation_id, ts],
-        |r| {
-            let thread_ts = r.get::<_, Option<String>>(0)?.filter(|t| t != ts);
+         COALESCE(c.label,c.name,c.id),t.url,m.conversation_id,m.ts
+         FROM json_each(?1) k JOIN messages m ON m.conversation_id=json_extract(k.value,'$[0]') AND m.ts=json_extract(k.value,'$[1]')
+         JOIN conversations c ON c.id=m.conversation_id JOIN teams t ON t.id=c.team_id
+         LEFT JOIN users u ON u.id=m.user_id ORDER BY CAST(k.key AS INTEGER)")?;
+    let mut rows = stmt
+        .query_map([&keys], |r| {
+            let conversation_id: String = r.get(10)?;
+            let ts: String = r.get(11)?;
+            let thread_ts = r.get::<_, Option<String>>(0)?.filter(|t| t != &ts);
             let url: Option<String> = r.get(9)?;
             let permalink = url.filter(|u| !u.is_empty()).map(|url| {
-                let mut link = format!("{}/archives/{}/p{}", url.trim_end_matches('/'), conversation_id, ts.replace('.', ""));
+                let mut link = format!(
+                    "{}/archives/{}/p{}",
+                    url.trim_end_matches('/'),
+                    conversation_id,
+                    ts.replace('.', "")
+                );
                 if let Some(root) = &thread_ts {
                     link.push_str(&format!("?thread_ts={root}&cid={conversation_id}"));
                 }
                 link
             });
             Ok(Message {
-                conversation_id: conversation_id.into(),
+                conversation_id,
                 conversation: r.get(8)?,
-                ts: ts.into(),
-                datetime: datetime(ts).unwrap_or_default(),
+                ts: ts.clone(),
+                datetime: datetime(&ts).unwrap_or_default(),
                 thread_ts,
                 reply_count: r.get(1)?,
                 user_id: r.get(2)?,
@@ -163,48 +209,97 @@ pub fn message(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Opt
                 reactions: Vec::new(),
                 permalink,
             })
-        },
-    ).optional()?;
-    let Some(mut message) = row else {
-        return Ok(None);
-    };
-    let mut stmt = conn.prepare("SELECT f.id,f.name,f.mimetype,f.size,f.local_path FROM files f JOIN message_files mf ON mf.file_id=f.id WHERE mf.conversation_id=?1 AND mf.ts=?2 ORDER BY f.id")?;
-    let files = stmt
-        .query_map(params![conversation_id, ts], |r| {
-            Ok(File {
-                id: r.get(0)?,
-                name: r.get(1)?,
-                mimetype: r.get(2)?,
-                size: r.get(3)?,
-                local_path: r.get(4)?,
-            })
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
-    let mut stmt = conn.prepare("SELECT name,user_id FROM reactions WHERE conversation_id=?1 AND ts=?2 ORDER BY name,user_id")?;
-    let mut groups: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for pair in stmt.query_map(params![conversation_id, ts], |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-    })? {
-        let (name, user) = pair?;
-        groups.entry(name).or_default().push(user);
-    }
-    let reactions = groups
-        .into_iter()
-        .map(|(name, users)| Reaction {
-            name,
-            count: users.len(),
-            users,
-        })
+    let positions: BTreeMap<_, _> = rows
+        .iter()
+        .enumerate()
+        .map(|(i, m)| ((m.conversation_id.clone(), m.ts.clone()), i))
         .collect();
-    message.files = files;
-    message.reactions = reactions;
-    message.text_resolved = resolve_text(conn, &message.text)?;
-    Ok(Some(message))
+    let mut stmt = conn.prepare("SELECT mf.conversation_id,mf.ts,f.id,f.name,f.mimetype,f.size,f.local_path
+        FROM json_each(?1) k JOIN message_files mf ON mf.conversation_id=json_extract(k.value,'$[0]') AND mf.ts=json_extract(k.value,'$[1]')
+        JOIN files f ON f.id=mf.file_id ORDER BY f.id")?;
+    let mut cursor = stmt.query([&keys])?;
+    while let Some(r) = cursor.next()? {
+        let key = (r.get::<_, String>(0)?, r.get::<_, String>(1)?);
+        if let Some(&i) = positions.get(&key) {
+            rows[i].files.push(File {
+                id: r.get(2)?,
+                name: r.get(3)?,
+                mimetype: r.get(4)?,
+                size: r.get(5)?,
+                local_path: r.get(6)?,
+            });
+        }
+    }
+    let mut stmt=conn.prepare("SELECT r.conversation_id,r.ts,r.name,r.user_id FROM json_each(?1) k JOIN reactions r
+        ON r.conversation_id=json_extract(k.value,'$[0]') AND r.ts=json_extract(k.value,'$[1]') ORDER BY r.name,r.user_id")?;
+    let mut cursor = stmt.query([&keys])?;
+    while let Some(r) = cursor.next()? {
+        let key = (r.get::<_, String>(0)?, r.get::<_, String>(1)?);
+        if let Some(&i) = positions.get(&key) {
+            let name: String = r.get(2)?;
+            let user: String = r.get(3)?;
+            if let Some(reaction) = rows[i].reactions.iter_mut().find(|x| x.name == name) {
+                reaction.count += 1;
+                reaction.users.push(user);
+            } else {
+                rows[i].reactions.push(Reaction {
+                    name,
+                    count: 1,
+                    users: vec![user],
+                });
+            }
+        }
+    }
+    // All referenced labels are joined once, even when every row mentions a different person.
+    let ids: std::collections::BTreeSet<_> = rows
+        .iter()
+        .flat_map(|m| m.text.split('<').skip(1))
+        .filter_map(|s| {
+            s.split_once('>')
+                .map(|(t, _)| t.split('|').next().unwrap_or(t))
+        })
+        .filter(|t| t.starts_with(['@', '#']))
+        .map(str::to_owned)
+        .collect();
+    let ids = serde_json::to_string(&ids)?;
+    let mut stmt=conn.prepare("SELECT '@'||u.id,COALESCE(u.display_name,u.name) FROM json_each(?1) k JOIN users u ON u.id=substr(k.value,2) WHERE substr(k.value,1,1)='@'
+        UNION ALL SELECT '#'||c.id,COALESCE(c.name,c.label,c.id) FROM json_each(?1) k JOIN conversations c ON c.id=substr(k.value,2) WHERE substr(k.value,1,1)='#'")?;
+    let labels = stmt
+        .query_map([ids], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?
+        .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
+    for m in &mut rows {
+        m.text_resolved = resolve_with(&m.text, |sigil, id| {
+            Ok(labels.get(&format!("{sigil}{id}")).cloned())
+        })?;
+    }
+    Ok(rows)
 }
 
 /// Resolve Slack angle-bracket references before decoding escaped text.
 /// Unknown identities retain their id (or Slack's supplied label).
 pub fn resolve_text(conn: &Connection, text: &str) -> Result<String> {
+    resolve_with(text, |sigil, id| {
+        if sigil == '@' {
+            crate::store::directory::user_label(conn, id)
+        } else {
+            Ok(conn
+                .query_row(
+                    "SELECT COALESCE(name,label,id) FROM conversations WHERE id=?1",
+                    [id],
+                    |r| r.get(0),
+                )
+                .optional()?)
+        }
+    })
+}
+fn resolve_with(
+    text: &str,
+    mut lookup: impl FnMut(char, &str) -> Result<Option<String>>,
+) -> Result<String> {
     let mut out = String::new();
     let mut rest = text;
     while let Some(start) = rest.find('<') {
@@ -220,18 +315,9 @@ pub fn resolve_text(conn: &Connection, text: &str) -> Result<String> {
             .map_or((inner, None), |(a, b)| (a, Some(b)));
         if let Some(id) = target.strip_prefix('@') {
             out.push('@');
-            out.push_str(
-                &crate::store::directory::user_label(conn, id)?
-                    .unwrap_or_else(|| label.unwrap_or(id).into()),
-            );
+            out.push_str(&lookup('@', id)?.unwrap_or_else(|| label.unwrap_or(id).into()));
         } else if let Some(id) = target.strip_prefix('#') {
-            let name: Option<String> = conn
-                .query_row(
-                    "SELECT COALESCE(name,label,id) FROM conversations WHERE id=?1",
-                    [id],
-                    |r| r.get(0),
-                )
-                .optional()?;
+            let name = lookup('#', id)?;
             out.push('#');
             out.push_str(&name.unwrap_or_else(|| label.unwrap_or(id).into()));
         } else if ["https://", "http://", "mailto:"]
@@ -302,13 +388,13 @@ pub fn history(
         Some(root) => crate::store::messages::thread(conn, id, root)?,
         None => crate::store::messages::recent(conn, id, limit)?,
     };
-    rows.iter()
-        .map(|r| {
-            message(conn, id, &r.ts)?.ok_or_else(|| {
-                crate::Error::NotFound(format!("no stored message {} in conversation {id}", r.ts))
-            })
-        })
-        .collect()
+    messages(
+        conn,
+        &rows
+            .into_iter()
+            .map(|r| (id.to_owned(), r.ts))
+            .collect::<Vec<_>>(),
+    )
 }
 
 #[derive(Debug, Serialize)]

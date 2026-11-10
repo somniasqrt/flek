@@ -185,3 +185,12 @@ telemetry with values Flek cannot honestly produce), `accept-language`,
   [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/).
 - Verified with synthetic UI data and mock HTTP only; no live Slack calls.
 - Date written: 2026-11-09.
+
+## Agent channel details (M8.2)
+
+`conversations.members` uses documented cursor pagination (`channel`, `limit`,
+`cursor`) and `pins.list` returns a single `items` array. Message pin payloads
+are merged into the message store before the membership/pin snapshot is
+replaced. Non-message pins are omitted. Both endpoints use the existing client,
+authentication and rate-limit handling. Behaviour with `xoxc` has **not** been
+verified on the real workspace; tests use wiremock and synthetic sessions only.

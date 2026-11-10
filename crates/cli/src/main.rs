@@ -1,6 +1,7 @@
 //! `flek`: command-line client on top of `flek-core`.
 
 mod output;
+mod read_commands;
 
 use anyhow::{bail, Context, Result};
 use clap::{Args, Parser, Subcommand};
@@ -43,6 +44,8 @@ struct Global {
 
 #[derive(Subcommand)]
 enum Command {
+    #[command(flatten)]
+    Read(read_commands::ReadCommand),
     /// Manage stored sessions.
     #[command(subcommand)]
     Auth(AuthCommand),
@@ -75,15 +78,8 @@ enum Command {
     History {
         /// Conversation name, #name, person for a DM, or id.
         channel: String,
-        /// How many messages.
-        #[arg(long, default_value_t = 30)]
-        limit: usize,
-        /// Show one thread (root ts, as printed next to "replies").
-        #[arg(long, value_name = "TS")]
-        thread: Option<String>,
-        /// Catch up this conversation before reading (requires a session).
-        #[arg(long)]
-        fresh: bool,
+        #[command(flatten)]
+        options: read_commands::HistoryOptions,
     },
     /// Search the local archive (works offline, includes messages Slack hides).
     ///
@@ -195,12 +191,10 @@ async fn run(cli: Cli) -> Result<()> {
             )
             .await
         }
-        Command::History {
-            channel,
-            limit,
-            thread,
-            fresh,
-        } => history(&store, g, &channel, limit, thread.as_deref(), fresh).await,
+        Command::Read(cmd) => read_commands::run(cmd, &store, g).await,
+        Command::History { channel, options } => {
+            read_commands::history(&store, g, &channel, options).await
+        }
         Command::Search {
             query,
             limit,
@@ -660,67 +654,6 @@ fn default_team(db: &Store, g: &Global) -> Result<String> {
             Err(flek_core::Error::TeamSelection("several teams stored; pass --team".into()).into())
         }
     }
-}
-
-async fn history(
-    creds: &CredentialStore,
-    g: &Global,
-    query: &str,
-    limit: usize,
-    thread: Option<&str>,
-    fresh: bool,
-) -> Result<()> {
-    use flek_core::store::messages;
-
-    let db = open_db(g)?;
-    let team = default_team(&db, g)?;
-    let conv = db
-        .with_read(|c| references::resolve(c, &team, query, Match::AllowPrefix))?
-        .required(query)?;
-    if fresh {
-        let session = auth::resolve_session(creds, Some(&team)).await?;
-        flek_core::sync::fresh_conversation(&session.client()?, &db, &conv.id, thread).await?;
-    }
-    if g.json {
-        let (conversation, messages) = db.with_read(|c| {
-            let conversation = views::conversation(c, &conv.id)?
-                .ok_or_else(|| references::conversation_not_found(query))?;
-            let messages = views::history(c, &conv.id, limit, thread)?;
-            Ok((conversation, messages))
-        })?;
-        emit(json!({"conversation":conversation,"messages":messages}));
-        return Ok(());
-    }
-    let rows = match thread {
-        Some(ts) => db.with_read(|c| messages::thread(c, &conv.id, ts))?,
-        None => db.with_read(|c| messages::recent(c, &conv.id, limit))?,
-    };
-    let mut last_day = String::new();
-    for r in rows {
-        let (day, time) = format_ts(&r.ts);
-        if day != last_day {
-            println!("── {day} ──");
-            last_day = day;
-        }
-        let author = r.author.or(r.user_id).unwrap_or_else(|| "?".into());
-        let text = if r.hidden_by_limit {
-            "[hidden by Slack Free limit]".to_owned()
-        } else {
-            r.text
-        };
-        let mut extra = String::new();
-        if r.edited {
-            extra.push_str(" (edited)");
-        }
-        if let Some(reactions) = &r.reactions {
-            extra.push_str(&format!("  {reactions}"));
-        }
-        if r.reply_count > 0 && thread.is_none() {
-            extra.push_str(&format!(" [{} replies: --thread {}]", r.reply_count, r.ts));
-        }
-        println!("{time} {author}: {text}{extra}");
-    }
-    Ok(())
 }
 
 /// Slack ts → local ("2026-11-08", "14:03").

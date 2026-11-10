@@ -22,3 +22,6 @@ pub use internal::ReadMarker;
 pub use profile::ClientProfile;
 pub use rtm::RtmConnect;
 pub use users::{Profile, User};
+
+mod channel_details;
+pub use channel_details::Pin;

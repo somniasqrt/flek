@@ -193,8 +193,8 @@ With `--json`, failure writes one object on stderr:
 ```
 
 `error.code` and `error.message` are strings. `candidates` is present only for
-ambiguous conversation references; each candidate has string `id`, `label`, and
-`kind` (the same kind vocabulary as Conversation). Team-selection ambiguity
+ambiguous conversation or user references; each candidate has string `id`, `label`, and
+`kind` (the same kind vocabulary as Conversation, plus `"user"`). Team-selection ambiguity
 requires an explicit `--team` and may omit candidates. Credential-shaped text
 is redacted from messages, and transport errors use a safe generic description.
 Failed finite commands emit no stdout success object (an auth import with some
@@ -226,3 +226,105 @@ pending migrations acquire `BEGIN IMMEDIATE`; the version is checked again
 inside that transaction before applying SQL, since another process may have
 migrated while this process waited. Startup lock waits and pending migrations
 still obey the SQLite busy timeout.
+
+## Agent reads (M8.2, additive version 1)
+
+All commands below select `--team` or the sole stored team and read SQLite
+without Keychain. Only explicit `--fresh` or an uncached `file get` resolves a
+session. Fresh failures fail the command. Network responses are stored before
+views are read; no raw API object is emitted.
+
+| Command | Payload beside `schema_version: 1` |
+|---|---|
+| `unread [--messages N] [--include-unknown] [--fresh]` | `conversations`: Conversation[] extended per item with `mentions: integer`, `first_unread_ts: string or null`, `messages: Message[]`; `unknown`: Conversation[] (empty unless requested); `failed`: integer (failed fresh conversation catch-ups, 0 for offline reads) |
+| `history <conversation> [--since TIME] [--until TIME] [--around TS_OR_PERMALINK] [--cursor CURSOR]` | Existing `conversation`, `messages`; adds `next_cursor: string or null` (older), `prev_cursor: string or null` (newer). With `--around`, the target Message has `target: true`; other messages omit this field. |
+| `thread <permalink>` or `thread <conversation> <ts> [--fresh]` | `conversation`: Conversation; `root_ts: string`; `messages: Message[]` (root and all stored replies, oldest first) |
+| `message <permalink>` or `message <conversation> <ts> [--context N] [--fresh]` | `message`: Message; `before`, `after`: Message[] (each oldest first); `conversation`: Conversation |
+| `users [--query TEXT] [--include-bots] [--include-deleted] [--limit N]` | `users`: User[]; defaults exclude bots/deleted users, limit 100; query is a case-insensitive substring of handle/display name/real name/email |
+| `user <ref>` | `user`: User (profile additions below) |
+| `channel info <ref> [--fresh]` | `conversation`: Conversation; `created: integer or null` (Unix seconds), `creator: string or null` (user id), `num_members: integer or null`; `members: User[] or null`; `pins: Message[] or null`; `members_synced_at: RFC3339 UTC string or null` |
+| `mentions [--since TIME] [--until TIME] [--include-broadcasts] [--limit N]` | `messages`: Message[], newest first, including the usual `conversation` display label; offline only; defaults since `7d`, limit 50 |
+| `files [--channel REF] [--from USER] [--type TYPE] [--since TIME] [--until TIME] [--limit N]` | `files`: File[] with provenance additions below, newest message first; default limit 50; one item per message/file share |
+| `file get <id> [--to PATH]` | `file`: File with provenance; `path: string` (destination after `--to`, otherwise cache path); human mode prints this path alone |
+
+Unread conversations use stored counters and the same visibility rules as the
+counter triggers: undeleted top-level messages/broadcast replies from others
+after `last_read`. Ordering is DMs/group DMs, then conversations with unread
+`<@SELF_ID>` mentions, then others; within each group newest stored activity
+first, then id. `--messages N` attaches the oldest N unread messages (default 0).
+Unknown markers are separate and never guessed. `--fresh` refreshes the directory
+and `client.counts`, then uses existing catch-up/thread helpers for conversations
+with changed or unknown remote activity (or no stored newest timestamp).
+Unread messages alone do not trigger catch-up when the stored history already
+reaches `remote_latest`. Authentication errors abort immediately. Other
+conversation failures are logged and counted in `failed`; remaining conversations
+are still attempted, and stored data remains available. Human output includes
+a warning on stderr when `failed > 0`. Directory refresh failures still abort.
+
+History remains oldest-first within a page; `--limit` defaults to 30 and now
+also limits `--thread` pages. Bounds are inclusive. Cursors are opaque and bound
+to the conversation, thread, and normalized time bounds; reuse those options
+when following a cursor. Relative bounds are evaluated anew, so use absolute
+bounds for stable pagination. Garbage/mismatched cursors produce `usage` (2).
+Cursors are null at the ends, including a zero-limit page. `--around` conflicts
+with `--cursor`; it reserves half the limit for older messages and fills the
+remainder with the target/newer messages, filling unused space at the edges.
+An unstored/filtered target yields surrounding stored messages without a target
+flag. A permalink must belong to the selected conversation.
+
+Thread references use the stored `thread_ts` to resolve a reply to its root.
+`thread --fresh` fetches that root's replies directly. `message --fresh` first
+catches up the conversation and stale threads, then fetches the specific thread
+when the message is a reply. Message context uses the thread timeline for
+replies and the channel timeline for top-level messages. Missing messages or
+threads fail with `not_found` (3), including the reference.
+
+User references accept `U…`/`W…` ids, `@handle`, handle, display name, real name
+or stored email. Ranking and prefix policy match conversation resolution;
+ties return `ambiguous` (4), with candidates having `kind: "user"`.
+Deleted users/bots remain resolvable even when excluded from `users` listings.
+
+The shared User view gains these nullable fields on every command returning it:
+
+| Field | Type / source |
+|---|---|
+| `title`, `status_text`, `status_emoji`, `email` | string or null, stored `raw_json.profile` |
+| `status_expiration` | integer or null, Unix seconds from profile (0 means no expiration) |
+| `tz_label` | string or null, stored `raw_json.tz_label` |
+| `is_admin`, `is_owner` | boolean or null when absent from stored raw user |
+| `dm_conversation_id` | string or null, stored personal DM in the user's team |
+
+`channel info --fresh` fetches all pages of `conversations.members` and
+`pins.list`; replaces the stored sets; preserves pinned message payloads using
+the usual non-lossy message merge. Messages, attachments/reactions, both sets,
+and the details sync marker are committed in one transaction. Only message pins
+are represented. A stored member missing from the directory uses its id for `id`/`name`, false for
+`is_bot`/`deleted`, and null for unknown profile fields. Before the first
+successful details fetch, `members`, `pins`, and `members_synced_at` are null.
+After an empty successful fetch they are `[]`, `[]`, and the fetch time.
+`created`/`creator`/`num_members` reflect existing stored conversation metadata;
+the details fetch does not imply a conversation metadata or history refresh.
+
+Mentions exclude deleted messages and the signed-in user's own messages, but
+include replies. Exact `<@SELF_ID>` matches are required; broadcasts optionally
+add `<!here>`, `<!channel>`, `<!everyone>`. FTS finds candidates and the exact
+mrkdwn is checked before limiting. No local self id means `not_found`.
+
+File provenance additions (on `files` and `file get`): `conversation_id`, `ts`,
+`user_id`, `permalink` are nullable strings; `permalink` points to the sharing
+message. `hidden_by_limit` is boolean. Existing File fields remain unchanged;
+attachments in Message retain their existing compact File shape. Files can
+appear once per stored share; `file get` chooses the newest share in the team.
+`local_path` is null when no cache path is recorded. `file get` checks the file
+still exists, downloads through core into the standard cache only when needed,
+and stores the cache path. `--to` copies to the destination; `file.local_path`
+continues to identify the cache. Hidden files fail with `not_found` and an
+explanation; files without a downloadable stored URL fail before session access.
+Type groups are `image`, `pdf`, `video`, `audio`, `doc` (text/office documents),
+`other`; MIME prefixes such as `image/` or `application/vnd.` also work.
+
+Every TIME argument shares a core parser: Slack seconds with six fractional
+digits, a date `YYYY-MM-DD` at local midnight, RFC3339 (with timezone), or a
+non-negative integer duration ending in `m`, `h`, `d`, relative to now.
+Invalid/out-of-range times or reversed bounds fail as `usage` (2). Date midnights
+that are ambiguous/nonexistent in the local timezone also fail as `usage`.

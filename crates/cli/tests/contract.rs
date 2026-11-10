@@ -75,7 +75,7 @@ fn offline_json_contracts() {
     let message = json!({"conversation_id":"C1","conversation":"general","ts":"1700000000.123456","datetime":"2023-11-14T22:13:20.123456Z","thread_ts":null,"reply_count":0,"user_id":null,"user":null,"text":"hello offline","text_resolved":"hello offline","edited":false,"deleted":false,"hidden_by_limit":false,"files":[],"reactions":[],"permalink":"https://fake.slack.com/archives/C1/p1700000000123456"});
     assert_eq!(
         success(&path, &["history", "#general"]),
-        json!({"schema_version":1,"conversation":channels["conversations"][0],"messages":[message]})
+        json!({"schema_version":1,"conversation":channels["conversations"][0],"messages":[message],"next_cursor":null,"prev_cursor":null})
     );
     let mut hit = message.clone();
     hit["snippet"] = json!("**hello** offline");
@@ -238,5 +238,175 @@ fn empty_database_explains_how_to_populate_it() {
             error["error"]["message"],
             "no stored team; run `flek auth import` and `flek sync`"
         );
+    }
+}
+
+fn read_fixture() -> (tempfile::TempDir, std::path::PathBuf) {
+    let (dir, path) = fixture();
+    let cache = dir.path().join("cached.txt");
+    std::fs::write(&cache, "fake cached data").unwrap();
+    let db = Store::open(&path).unwrap();
+    db.with_conn(|c| {
+        c.execute("INSERT INTO users(id,team_id,name,display_name,raw_json) VALUES ('U2','T1','alice','Alice',?1)",[json!({"profile":{"email":"alice@example.test","title":"Engineer","status_text":"Reading"}}).to_string()])?;
+        c.execute("INSERT INTO users(id,team_id,name) VALUES ('U3','T1','alicia')",[])?;
+        c.execute("UPDATE conversations SET last_read='1699999999.000000' WHERE id='C1'",[])?;
+        messages::upsert_messages(c,"C1",&[
+            MessageRow {ts:"1700000001.000001".into(),user_id:Some("U2".into()),text:"hello <@U1>".into(),raw_json:"{}".into(),files:vec![flek_core::store::files::FileRow {id:"F1".into(),name:Some("cached.txt".into()),mimetype:Some("text/plain".into()),raw_json:"{}".into(),..Default::default()}],..Default::default()},
+            MessageRow {ts:"1700000002.000001".into(),thread_ts:Some("1700000001.000001".into()),user_id:Some("U2".into()),text:"reply".into(),raw_json:"{}".into(),..Default::default()}
+        ])?;
+        flek_core::store::files::set_local_path(c,"F1",&cache.to_string_lossy())?;Ok(())
+    }).unwrap();
+    (dir, path)
+}
+#[test]
+fn agent_read_json_and_human_contracts_without_credentials() {
+    let (dir, path) = read_fixture();
+    let unread = success(&path, &["unread", "--messages", "1", "--include-unknown"]);
+    assert_eq!(unread["failed"], 0);
+    assert_eq!(unread["conversations"][0]["mentions"], 1);
+    assert_eq!(
+        unread["conversations"][0]["messages"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(unread["unknown"].as_array().unwrap().len(), 2);
+    let users = success(&path, &["users", "--query", "alice"]);
+    assert_eq!(users["users"][0]["id"], "U2");
+    assert_eq!(
+        success(&path, &["user", "@alice"])["user"]["title"],
+        "Engineer"
+    );
+    let info = success(&path, &["channel", "info", "general"]);
+    assert!(info["members"].is_null());
+    assert!(info["pins"].is_null());
+    assert!(info["members_synced_at"].is_null());
+    let thread = success(
+        &path,
+        &[
+            "thread",
+            "https://fake.slack.com/archives/C1/p1700000002000001",
+        ],
+    );
+    assert_eq!(thread["root_ts"], "1700000001.000001");
+    assert_eq!(thread["messages"].as_array().unwrap().len(), 2);
+    let m = success(
+        &path,
+        &["message", "C1", "1700000001.000001", "--context", "1"],
+    );
+    assert_eq!(m["before"].as_array().unwrap().len(), 1);
+    assert!(m["after"].as_array().unwrap().is_empty());
+    assert_eq!(
+        success(&path, &["mentions", "--since", "2020-01-01"])["messages"][0]["user_id"],
+        "U2"
+    );
+    let files = success(
+        &path,
+        &[
+            "files",
+            "--channel",
+            "general",
+            "--from",
+            "alice",
+            "--type",
+            "doc",
+        ],
+    );
+    assert_eq!(files["files"][0]["id"], "F1");
+    assert_eq!(files["files"][0]["conversation_id"], "C1");
+    let dest = dir.path().join("copy.txt");
+    let f = success(
+        &path,
+        &["file", "get", "F1", "--to", dest.to_str().unwrap()],
+    );
+    assert_eq!(f["file"]["id"], "F1");
+    assert_eq!(std::fs::read_to_string(dest).unwrap(), "fake cached data");
+    let p = success(&path, &["history", "C1", "--limit", "1"]);
+    let cursor = p["next_cursor"].as_str().unwrap();
+    assert_eq!(
+        success(
+            &path,
+            &["history", "C1", "--limit", "1", "--cursor", cursor]
+        )["messages"][0]["text"],
+        "hello offline"
+    );
+    let p = success(
+        &path,
+        &[
+            "history",
+            "C1",
+            "--around",
+            "1700000001.000001",
+            "--since",
+            "2020-01-01",
+            "--until",
+            "2030-01-01",
+        ],
+    );
+    assert_eq!(p["messages"][1]["target"], true);
+    for args in [
+        vec!["unread"],
+        vec!["users"],
+        vec!["user", "alice"],
+        vec!["channel", "info", "C1"],
+        vec!["thread", "C1", "1700000001.000001"],
+        vec!["message", "C1", "1700000001.000001"],
+        vec!["mentions", "--since", "2020-01-01"],
+        vec!["files"],
+        vec!["file", "get", "F1"],
+        vec!["history", "C1"],
+    ] {
+        let result = Command::new(assert_cmd::cargo::cargo_bin!("flek"))
+            .arg("--db")
+            .arg(&path)
+            .args(&args)
+            .assert()
+            .success()
+            .get_output()
+            .clone();
+        assert!(!result.stdout.is_empty(), "{args:?}");
+        assert!(!result.stdout.starts_with(b"{"), "{args:?}");
+    }
+}
+#[test]
+fn agent_read_errors_are_typed() {
+    let (_dir, path) = read_fixture();
+    for (args, code, kind) in [
+        (vec!["user", "ali"], 4, "ambiguous"),
+        (vec!["user", "nobody"], 3, "not_found"),
+        (vec!["message", "C1", "1700000999.000001"], 3, "not_found"),
+        (vec!["thread", "C1", "1700000999.000001"], 3, "not_found"),
+        (vec!["channel", "info", "missing"], 3, "not_found"),
+        (vec!["file", "get", "MISSING"], 3, "not_found"),
+        (vec!["files", "--from", "ali"], 4, "ambiguous"),
+        (vec!["files", "--since", "nonsense"], 2, "usage"),
+        (vec!["mentions", "--since", "nonsense"], 2, "usage"),
+        (vec!["history", "C1", "--cursor", "garbage"], 2, "usage"),
+        (
+            vec![
+                "history",
+                "C1",
+                "--since",
+                "2026-01-01",
+                "--until",
+                "2020-01-01",
+            ],
+            2,
+            "usage",
+        ),
+        (vec!["history", "C1", "--around", "nonsense"], 2, "usage"),
+        (vec!["message", "C1", "invalid"], 2, "usage"),
+    ] {
+        let result = command(&path)
+            .args(&args)
+            .assert()
+            .code(code)
+            .get_output()
+            .clone();
+        assert!(result.stdout.is_empty());
+        let v: Value = serde_json::from_slice(&result.stderr).unwrap();
+        assert_eq!(v["schema_version"], 1);
+        assert_eq!(v["error"]["code"], kind, "{args:?}");
     }
 }
