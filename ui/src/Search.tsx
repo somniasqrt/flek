@@ -1,14 +1,17 @@
-// Search over the local archive, like Slack's: a field in the middle of the
-// top bar (⌘F), a dropdown with filter hints and the first few matches while
-// typing, and Enter for the full results in the main pane.
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { t, errorMessage, locale, clock24, plural } from "./i18n";
 import { api, tsDate, type Conversation, type Hit } from "./api";
 import Avatar from "./Avatar";
+import T from "./i18n/T";
 import { Hash, Lock, People, Search } from "./icons";
 import { emoji } from "./emoji";
 import { people } from "./people";
 import { primaryModifier, usesMacShortcuts } from "./shortcuts";
 import { pieces, readable } from "./snippet";
+
+// Search over the local archive, like Slack's: a field in the middle of the
+// top bar (⌘F), a dropdown with filter hints and the first few matches while
+// typing, and Enter for the full results in the main pane.
 
 /// Where a result lives: the message, or its thread root for a reply that is
 /// only in the thread (the timeline shows roots).
@@ -18,13 +21,13 @@ const QUICK = 5;
 const FULL = 100;
 
 /// Filters core understands (store/search.rs). Clicking one types it.
-const FILTERS: { insert: string; label: string; hint: string }[] = [
-  { insert: "in:#", label: "in:", hint: "#channel or person" },
-  { insert: "from:@", label: "from:", hint: "@person" },
+const FILTERS = () => [
+  { insert: "in:#", label: "in:", hint: t("#channel or person") },
+  { insert: "from:@", label: "from:", hint: t("@person") },
   { insert: "has:link", label: "has:link", hint: "" },
   { insert: "has:file", label: "has:file", hint: "" },
-  { insert: "after:", label: "after:", hint: "YYYY-MM-DD" },
-  { insert: "before:", label: "before:", hint: "YYYY-MM-DD" },
+  { insert: "after:", label: "after:", hint: t("YYYY-MM-DD") },
+  { insert: "before:", label: "before:", hint: t("YYYY-MM-DD") },
 ];
 
 export function SearchBar(props: {
@@ -43,7 +46,13 @@ export function SearchBar(props: {
   // ⌘F focuses the field from anywhere (⌘K stays free for a quick switcher).
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (primaryModifier(e, mac) && !e.shiftKey && !e.altKey && !e.isComposing && e.code === "KeyF") {
+      if (
+        primaryModifier(e, mac) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        !e.isComposing &&
+        e.code === "KeyF"
+      ) {
         e.preventDefault();
         input.focus();
         input.select();
@@ -109,7 +118,7 @@ export function SearchBar(props: {
           type="text"
           spellcheck={false}
           autocomplete="off"
-          placeholder={`Search ${props.team}`}
+          placeholder={t("Search {name}", { name: props.team })}
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
           onFocus={() => setOpen(true)}
@@ -137,7 +146,7 @@ export function SearchBar(props: {
                   }}
                 >
                   <Avatar id={h.user_id} name={h.author ?? "?"} size={20} />
-                  <span class="quick-author">{h.author ?? "unknown"}</span>
+                  <span class="quick-author">{h.author ?? t("unknown")}</span>
                   <Snippet hit={h} />
                   <span class="muted small quick-where">
                     <Where hit={h} conversations={props.conversations} />
@@ -147,8 +156,8 @@ export function SearchBar(props: {
             </For>
           </Show>
           <div class="search-filters">
-            <span class="muted small">Narrow down</span>
-            <For each={FILTERS}>
+            <span class="muted small">{t("Narrow down")}</span>
+            <For each={FILTERS()}>
               {(f) => (
                 <button class="filter" title={f.hint} onClick={() => insert(f.insert)}>
                   <b>{f.label}</b>
@@ -206,7 +215,7 @@ export function SearchResults(props: {
 
   const count = () => {
     const n = hits()?.length ?? 0;
-    return n >= FULL ? `${FULL}+ results` : n === 1 ? "1 result" : `${n} results`;
+    return n >= FULL ? t("{n}+ results", { n: FULL }) : plural("results", n);
   };
 
   return (
@@ -220,15 +229,15 @@ export function SearchResults(props: {
           <span class="muted small">{count()}</span>
         </Show>
         <div class="grow" />
-        <div class="sort" role="group" aria-label="Sort">
+        <div class="sort" role="group" aria-label={t("Sort")}>
           <button classList={{ on: !recent() }} onClick={() => setRecent(false)}>
-            Most relevant
+            {t("Most relevant")}
           </button>
           <button classList={{ on: recent() }} onClick={() => setRecent(true)}>
-            Newest
+            {t("Newest")}
           </button>
         </div>
-        <button class="close" title="Close search (Esc)" onClick={props.onClose}>
+        <button class="close" title={t("Close search (Esc)")} onClick={props.onClose}>
           ×
         </button>
       </header>
@@ -243,18 +252,20 @@ export function SearchResults(props: {
                     when={error()}
                     fallback={
                       <>
-                        <h3>No results for “{props.query}”</h3>
+                        <h3>{t("No results for “{query}”", { query: props.query })}</h3>
                         <p class="muted">
-                          Flek searches the messages it has synced or imported. Try fewer words,
-                          a prefix like <code>word*</code>, or other filters.
+                          <T
+                            k="Flek searches the messages it has synced or imported. Try fewer words, a prefix like <code>word*</code>, or other filters."
+                            tags={{ code: (text) => <code>{text}</code> }}
+                          />
                         </p>
                       </>
                     }
                   >
                     {(e) => (
                       <>
-                        <h3>Can't search for that</h3>
-                        <p class="muted">{e()}</p>
+                        <h3>{t("Can't search for that")}</h3>
+                        <p class="muted">{errorMessage(e())}</p>
                       </>
                     )}
                   </Show>
@@ -269,18 +280,21 @@ export function SearchResults(props: {
                       <span>·</span>
                       <span>{dateLabel(h.ts)}</span>
                       <Show when={h.thread_ts && h.thread_ts !== h.ts}>
-                        <span>· in a thread</span>
+                        <span>· {t("In a thread")}</span>
                       </Show>
                     </div>
                     <div class="hit-body">
                       <Avatar id={h.user_id} name={h.author ?? "?"} />
                       <div class="body">
                         <div class="meta">
-                          <span class="author">{h.author ?? "unknown"}</span>
+                          <span class="author">{h.author ?? t("unknown")}</span>
                           <time class="muted">{timeLabel(h.ts)}</time>
                           <Show when={h.hidden_by_limit}>
-                            <span class="tag" title="Slack hides this message on the Free plan">
-                              from archive
+                            <span
+                              class="tag"
+                              title={t("Slack hides this message on the Free plan")}
+                            >
+                              {t("from archive")}
                             </span>
                           </Show>
                         </div>
@@ -302,7 +316,7 @@ function Snippet(props: { hit: Hit }) {
   const parts = () => pieces(readable(props.hit.snippet, people(), emoji));
   return (
     <span class="snippet">
-      <Show when={parts().length > 0} fallback={<span class="muted">(no text)</span>}>
+      <Show when={parts().length > 0} fallback={<span class="muted">{t("(no text)")}</span>}>
         <For each={parts()}>{(p) => (p.mark ? <mark>{p.text}</mark> : p.text)}</For>
       </Show>
     </span>
@@ -334,9 +348,10 @@ export const jumpOf = (h: Hit): Jump => ({
 function dateLabel(ts: string): string {
   const d = tsDate(ts);
   const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Today";
-  if (d.toDateString() === new Date(now.getTime() - 86_400_000).toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
+  if (d.toDateString() === now.toDateString()) return t("Today");
+  if (d.toDateString() === new Date(now.getTime() - 86_400_000).toDateString())
+    return t("Yesterday");
+  return d.toLocaleDateString(locale(), {
     month: "short",
     day: "numeric",
     year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
@@ -344,4 +359,8 @@ function dateLabel(ts: string): string {
 }
 
 const timeLabel = (ts: string) =>
-  tsDate(ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  tsDate(ts).toLocaleTimeString(locale(), {
+    hour12: !clock24(),
+    hour: "2-digit",
+    minute: "2-digit",
+  });

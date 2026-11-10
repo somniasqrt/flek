@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { t } from "./i18n";
 import type { Conversation } from "./api";
 
 export default function NewMessage(props: {
@@ -34,7 +35,7 @@ export default function NewMessage(props: {
           ref={panel}
           role="dialog"
           aria-modal="true"
-          aria-label="New message"
+          aria-label={t("New message")}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();
@@ -51,16 +52,16 @@ export default function NewMessage(props: {
           }}
         >
           <header>
-            <h2>New message</h2>
-            <button onClick={props.onClose} aria-label="Close">
+            <h2>{t("New message")}</h2>
+            <button onClick={props.onClose} aria-label={t("Close")}>
               ×
             </button>
           </header>
           <input
             ref={input}
             type="search"
-            aria-label="Choose a conversation"
-            placeholder="Choose a person or channel…"
+            aria-label={t("Choose a conversation")}
+            placeholder={t("Choose a person or channel…")}
             value={query()}
             onInput={(e) => setQuery(e.currentTarget.value)}
             onKeyDown={(e) => e.key === "Enter" && shown()[0] && choose(shown()[0].id)}
@@ -75,7 +76,7 @@ export default function NewMessage(props: {
               )}
             </For>
             <Show when={shown().length === 0}>
-              <p class="muted">No matching conversations in the local directory.</p>
+              <p class="muted">{t("No matching conversations in the local directory.")}</p>
             </Show>
           </div>
         </div>

@@ -1,5 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { settings } from "./settings";
 import { createStore, reconcile, unwrap } from "solid-js/store";
+import { t, errorMessage, locale } from "./i18n";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
 import { firstUnread } from "./conversation-model";
 import Avatar from "./Avatar";
@@ -109,10 +111,11 @@ export default function Timeline(props: {
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
   const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 150;
-  const toBottom = () => requestAnimationFrame(() => {
-    scroller.scrollTop = scroller.scrollHeight;
-    scheduleRead();
-  });
+  const toBottom = () =>
+    requestAnimationFrame(() => {
+      scroller.scrollTop = scroller.scrollHeight;
+      scheduleRead();
+    });
 
   const [flash, setFlash] = createSignal<string | null>(null);
   let flashTimer: number | undefined;
@@ -155,19 +158,21 @@ export default function Timeline(props: {
         setExhausted(page.length < PAGE);
         setLoading(false);
         if (target) await reveal(target);
-        else requestAnimationFrame(() => {
-          const line = scroller.querySelector<HTMLElement>(".unread-line");
-          const lineTop = line
-            ? line.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-              + scroller.scrollTop
-            : null;
-          if (lineTop !== null && scroller.scrollHeight - lineTop > scroller.clientHeight) {
-            scroller.scrollTop = lineTop;
-          } else {
-            scroller.scrollTop = scroller.scrollHeight;
-          }
-          scheduleRead();
-        });
+        else
+          requestAnimationFrame(() => {
+            const line = scroller.querySelector<HTMLElement>(".unread-line");
+            const lineTop = line
+              ? line.getBoundingClientRect().top -
+                scroller.getBoundingClientRect().top +
+                scroller.scrollTop
+              : null;
+            if (lineTop !== null && scroller.scrollHeight - lineTop > scroller.clientHeight) {
+              scroller.scrollTop = lineTop;
+            } else {
+              scroller.scrollTop = scroller.scrollHeight;
+            }
+            scheduleRead();
+          });
       },
     ),
   );
@@ -309,20 +314,21 @@ export default function Timeline(props: {
             {(id) => (
               <button
                 class="dm-header-avatar"
-                title="View profile"
+                title={t("View profile")}
                 onClick={() => openProfile(id())}
               >
                 <Avatar
                   id={id()}
                   name={props.conversation.label}
                   size={28}
-                  presence={presenceOf(id())}
+                  presence={settings().presence_dots ? presenceOf(id()) : undefined}
                 />
               </button>
             )}
           </Show>
-          {props.conversation.label}
-          {props.conversation.dm_user_id === props.me ? " (you)" : ""}
+          {props.conversation.dm_user_id === props.me
+            ? t("{name} (you)", { name: props.conversation.label })
+            : props.conversation.label}
           <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
             {(id) => <CustomStatus status={statuses()[id()]} text />}
           </Show>
@@ -332,7 +338,9 @@ export default function Timeline(props: {
         </Show>
       </header>
       <Show when={readError()}>
-        <p class="error" role="alert">{readError()}</p>
+        <p class="error" role="alert">
+          {errorMessage(readError())}
+        </p>
       </Show>
       <div class="scroll-area">
         <div class="scroller" ref={scroller} onScroll={onScroll}>
@@ -345,10 +353,10 @@ export default function Timeline(props: {
             <DmIntro conversation={props.conversation} me={props.me} members={props.members} />
           </Show>
           <Show when={exhausted() && rows.length > 0 && isChannel(props.conversation)}>
-            <div class="start muted">Start of what Flek has for this conversation</div>
+            <div class="start muted">{t("Start of what Flek has for this conversation")}</div>
           </Show>
           <Show when={!loading() && rows.length === 0}>
-            <div class="start muted">No messages yet. They appear here as they sync.</div>
+            <div class="start muted">{t("No messages yet. They appear here as they sync.")}</div>
           </Show>
           <For each={days()}>
             {(key) => {
@@ -364,7 +372,9 @@ export default function Timeline(props: {
                     {(m, i) => (
                       <>
                         <Show when={m.ts === unreadTs()}>
-                          <div class="unread-line"><span>New</span></div>
+                          <div class="unread-line">
+                            <span>{t("New")}</span>
+                          </div>
                         </Show>
                         <MessageRow
                           m={m}
@@ -385,7 +395,9 @@ export default function Timeline(props: {
       </div>
       <Composer
         conversationId={props.conversation.id}
-        placeholder={`Message ${isChannel(props.conversation) ? "#" : ""}${props.conversation.label}`}
+        placeholder={t("Message {name}", {
+          name: (isChannel(props.conversation) ? "#" : "") + props.conversation.label,
+        })}
         onSent={toBottom}
       />
     </div>
@@ -400,9 +412,9 @@ function dayLabel(ts: string): string {
   const d = tsDate(ts);
   const today = new Date();
   const yesterday = new Date(today.getTime() - 86_400_000);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, {
+  if (d.toDateString() === today.toDateString()) return t("Today");
+  if (d.toDateString() === yesterday.toDateString()) return t("Yesterday");
+  return d.toLocaleDateString(locale(), {
     weekday: "long",
     day: "numeric",
     month: "long",

@@ -1,8 +1,10 @@
-// In-app file viewer, over the whole window: images and PDFs from the cache.
-// Other files still open in their default app.
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { t, locale, clock24 } from "./i18n";
 import { api, fileUrl, tsDate, type FileRef } from "./api";
 import Avatar from "./Avatar";
+
+// In-app file viewer, over the whole window: images and PDFs from the cache.
+// Other files still open in their default app.
 
 /// Who shared the file, for the header.
 export type Sender = { user_id: string | null; name: string; ts: string };
@@ -16,8 +18,7 @@ const isPdf = (f: FileRef) =>
 const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/");
 
 /// Whether the viewer can show `f` (it has to be downloaded).
-export const canView = (f: FileRef) =>
-  !!f.local_path && (isImage(f) || isPdf(f));
+export const canView = (f: FileRef) => !!f.local_path && (isImage(f) || isPdf(f));
 
 export const isViewing = () => viewing() !== null;
 export const openViewer = (file: FileRef, from?: Sender) => setViewing({ file, from });
@@ -37,7 +38,8 @@ function Overlay(props: { v: Viewing }) {
   const when = () => {
     const ts = props.v.from?.ts;
     if (!ts) return null;
-    return tsDate(ts).toLocaleString(undefined, {
+    return tsDate(ts).toLocaleString(locale(), {
+      hour12: !clock24(),
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -60,12 +62,16 @@ function Overlay(props: { v: Viewing }) {
             </div>
             <div class="viewer-name">{name(f)}</div>
           </div>
-          <button class="viewer-btn" title="Open in default app" onClick={() => api.openFile(f.id).catch(() => {})}>
+          <button
+            class="viewer-btn"
+            title={t("Open in default app")}
+            onClick={() => api.openFile(f.id).catch(() => {})}
+          >
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
             </svg>
           </button>
-          <button class="viewer-btn" title="Close (Esc)" onClick={close}>
+          <button class="viewer-btn" title={t("Close (Esc)")} onClick={close}>
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M5 5l10 10M15 5L5 15" />
             </svg>
@@ -73,7 +79,10 @@ function Overlay(props: { v: Viewing }) {
         </header>
         {/* A click on the empty stage closes, like Slack's viewer. */}
         <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
-          <Show when={isPdf(f)} fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}>
+          <Show
+            when={isPdf(f)}
+            fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}
+          >
             <Pdf file={f} onClose={close} />
           </Show>
         </div>
@@ -187,10 +196,10 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       >
         <Show when={failed()}>
           <div class="viewer-fail">
-            <p>Can't show this PDF here.</p>
+            <p>{t("Can't show this PDF here.")}</p>
             <p class="muted">{failed()}</p>
             <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
-              Open in default app
+              {t("Open in default app")}
             </button>
           </div>
         </Show>
@@ -211,7 +220,11 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
   );
 }
 
-async function draw(doc: import("pdfjs-dist").PDFDocumentProxy, n: number, canvas: HTMLCanvasElement) {
+async function draw(
+  doc: import("pdfjs-dist").PDFDocumentProxy,
+  n: number,
+  canvas: HTMLCanvasElement,
+) {
   const page = await doc.getPage(n);
   const base = page.getViewport({ scale: 1 });
   // Sharp on Retina: render at the shown width times the pixel ratio.
@@ -222,4 +235,4 @@ async function draw(doc: import("pdfjs-dist").PDFDocumentProxy, n: number, canva
   await page.render({ canvas, viewport }).promise;
 }
 
-const name = (f: FileRef) => f.title || f.name || "file";
+const name = (f: FileRef) => f.title || f.name || t("file");

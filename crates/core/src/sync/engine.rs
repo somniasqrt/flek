@@ -35,6 +35,9 @@ use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
 pub struct EngineOptions {
+    /// Desktop preferences, reloaded at the start of each pass.
+    pub settings_path: Option<PathBuf>,
+    pub skip_files_first_pass: bool,
     /// Refresh window on the first pass (days, 0 = off).
     pub refresh_days: u32,
     /// Re-read the refresh window no more often than this (zero = every start).
@@ -56,6 +59,8 @@ pub struct EngineOptions {
 impl Default for EngineOptions {
     fn default() -> Self {
         Self {
+            settings_path: None,
+            skip_files_first_pass: false,
             refresh_days: 7,
             refresh_every: std::time::Duration::ZERO,
             full: false,
@@ -66,6 +71,25 @@ impl Default for EngineOptions {
             history_interval: HISTORY_INTERVAL,
             image_proxy: None,
         }
+    }
+}
+
+impl EngineOptions {
+    /// Resolve the desktop preferences at the boundary of a sync pass. CLI
+    /// callers without a settings path retain their explicit options.
+    pub fn reload_settings(&self) -> Result<Self> {
+        let mut options = self.clone();
+        if let Some(path) = &options.settings_path {
+            let settings = crate::settings::Settings::load(path)?;
+            if let Some((cache, _)) = options.files.clone() {
+                settings.apply_sync(&mut options, cache);
+            } else {
+                options.refresh_days = settings.refresh_days;
+                options.refresh_every =
+                    std::time::Duration::from_secs(u64::from(settings.refresh_hours) * 3600);
+            }
+        }
+        Ok(options)
     }
 }
 
@@ -151,7 +175,8 @@ impl Engine {
 
     /// Directory, fast pass, files, deep pass; `first` may add the refresh window.
     pub async fn pass(&self, limiter: &mut RateLimiter, first: bool) -> Result<PassStats> {
-        let o = &self.options;
+        let options = self.options.reload_settings()?;
+        let o = &options;
         self.progress(Progress::Directory);
         sync_directory(&self.client, &self.store, &self.me).await?;
         // Custom emoji change rarely: once per start, then daily.
@@ -194,7 +219,11 @@ impl Engine {
         self.walk(limiter, &fresh, &fast, Walk::Fast, &mut stats)
             .await?;
 
-        if let Some((cache, max)) = &o.files {
+        if let Some((cache, max)) = &o
+            .files
+            .as_ref()
+            .filter(|_| !(first && o.skip_files_first_pass))
+        {
             let bus = self.bus.clone();
             let f = download_files(&self.client, &self.store, cache, *max, |done, total| {
                 let _ = bus.send(Change::Progress(Progress::Files { done, total }));
@@ -242,7 +271,7 @@ impl Engine {
             .await?;
         self.progress(Progress::Idle);
 
-        if first && o.refresh_days > 0 && self.refresh_due().await? {
+        if first && o.refresh_days > 0 && self.refresh_due(o.refresh_every).await? {
             let refresh = SyncOptions {
                 catch_up_only: true,
                 ..SyncOptions::refresh_days(o.refresh_days)
@@ -265,8 +294,7 @@ impl Engine {
     }
 
     /// Whether the refresh window was last re-read `refresh_every` or longer ago.
-    async fn refresh_due(&self) -> Result<bool> {
-        let every = self.options.refresh_every;
+    async fn refresh_due(&self, every: std::time::Duration) -> Result<bool> {
         if every.is_zero() {
             return Ok(true);
         }

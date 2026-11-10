@@ -1,5 +1,5 @@
-// Rich message editor shared by conversations and threads.
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { t } from "./i18n";
 import { emoji } from "./emoji";
 import EmojiPicker from "./EmojiPicker";
 import ComposeIcon from "./ComposeIcon";
@@ -15,6 +15,8 @@ import {
 } from "./shortcuts";
 import { people } from "./people";
 import { send } from "./outbox";
+
+// Rich message editor shared by conversations and threads.
 
 const preference = (key: string, fallback: boolean) => {
   try {
@@ -356,16 +358,16 @@ export default function Composer(props: {
         }}
       >
         <Show when={toolbar()}>
-          <div class="composer-format" role="toolbar" aria-label="Text formatting">
-            {formatButton("bold", "Bold")}
-            {formatButton("italic", "Italic")}
-            {formatButton("underline", "Underline")}
-            {formatButton("strike", "Strikethrough", "strikeThrough")}
+          <div class="composer-format" role="toolbar" aria-label={t("Text formatting")}>
+            {formatButton("bold", t("Bold"))}
+            {formatButton("italic", t("Italic"))}
+            {formatButton("underline", t("Underline"))}
+            {formatButton("strike", t("Strikethrough"), "strikeThrough")}
             <button
               type="button"
               class="compose-tool compose-paragraph"
-              title="Paragraph style"
-              aria-label="Paragraph style"
+              title={t("Paragraph style")}
+              aria-label={t("Paragraph style")}
               aria-expanded={popover() === "paragraph"}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => setPopover(popover() === "paragraph" ? null : "paragraph")}
@@ -374,21 +376,21 @@ export default function Composer(props: {
               <ComposeIcon name="chevron" />
             </button>
             <span class="composer-format-divider" />
-            {formatButton("link", "Insert link")}
-            {formatButton("ordered", "Numbered list", "insertOrderedList")}
-            {formatButton("bullet", "Bulleted list", "insertUnorderedList")}
+            {formatButton("link", t("Insert link"))}
+            {formatButton("ordered", t("Numbered list"), "insertOrderedList")}
+            {formatButton("bullet", t("Bulleted list"), "insertUnorderedList")}
             <span class="composer-format-divider" />
-            {formatButton("quote", "Quote")}
-            {formatButton("code", "Inline code")}
-            {formatButton("pre", "Code block")}
-            {formatButton("clear", "Clear formatting")}
+            {formatButton("quote", t("Quote"))}
+            {formatButton("code", t("Inline code"))}
+            {formatButton("pre", t("Code block"))}
+            {formatButton("clear", t("Clear formatting"))}
           </div>
         </Show>
         <Show when={popover() === "paragraph"}>
           <div
             class="compose-popover compose-paragraph-menu"
             role="dialog"
-            aria-label="Paragraph style"
+            aria-label={t("Paragraph style")}
           >
             <button
               type="button"
@@ -397,7 +399,7 @@ export default function Composer(props: {
                 setPopover(null);
               }}
             >
-              Normal text
+              {t("Normal text")}
             </button>
             <button
               type="button"
@@ -406,7 +408,8 @@ export default function Composer(props: {
                 setPopover(null);
               }}
             >
-              Quote <kbd>{shortcutLabel("quote", mac)}</kbd>
+              {t("Quote")}
+              <kbd>{shortcutLabel("quote", mac)}</kbd>
             </button>
             <button
               type="button"
@@ -415,7 +418,8 @@ export default function Composer(props: {
                 setPopover(null);
               }}
             >
-              Code block <kbd>{shortcutLabel("pre", mac)}</kbd>
+              {t("Code block")}
+              <kbd>{shortcutLabel("pre", mac)}</kbd>
             </button>
           </div>
         </Show>
@@ -443,12 +447,12 @@ export default function Composer(props: {
             e.preventDefault();
           }}
         />
-        <div class="composer-bar" role="toolbar" aria-label="Message actions">
-          <span title="File uploads are planned">
+        <div class="composer-bar" role="toolbar" aria-label={t("Message actions")}>
+          <span title={t("File uploads are planned")}>
             <button
               type="button"
               class="compose-tool compose-add"
-              aria-label="Attach file (coming soon)"
+              aria-label={t("Attach file (coming soon)")}
               disabled
             >
               <ComposeIcon name="plus" />
@@ -457,8 +461,8 @@ export default function Composer(props: {
           <button
             type="button"
             class="compose-tool"
-            title={title("toolbar", "Toggle formatting")}
-            aria-label="Toggle formatting"
+            title={title("toolbar", t("Toggle formatting"))}
+            aria-label={t("Toggle formatting")}
             aria-pressed={toolbar()}
             onPointerDown={(e) => e.preventDefault()}
             onClick={toggleToolbar}
@@ -468,8 +472,8 @@ export default function Composer(props: {
           <button
             type="button"
             class="compose-tool"
-            title={title("emoji", "Insert emoji")}
-            aria-label="Insert emoji"
+            title={title("emoji", t("Insert emoji"))}
+            aria-label={t("Insert emoji")}
             aria-expanded={popover() === "emoji"}
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => action("emoji")}
@@ -479,8 +483,8 @@ export default function Composer(props: {
           <button
             type="button"
             class="compose-tool"
-            title="Mention someone"
-            aria-label="Mention someone"
+            title={t("Mention someone")}
+            aria-label={t("Mention someone")}
             aria-expanded={popover() === "mention"}
             onPointerDown={(e) => e.preventDefault()}
             onClick={() => {
@@ -491,32 +495,32 @@ export default function Composer(props: {
             <ComposeIcon name="mention" />
           </button>
           <span class="composer-format-divider" />
-          <span title="Video clips are not available yet">
+          <span title={t("Video clips are not available yet")}>
             <button
               type="button"
               class="compose-tool compose-future"
-              aria-label="Record video (coming soon)"
+              aria-label={t("Record video (coming soon)")}
               disabled
             >
               <ComposeIcon name="video" />
             </button>
           </span>
-          <span title="Audio clips are not available yet">
+          <span title={t("Audio clips are not available yet")}>
             <button
               type="button"
               class="compose-tool compose-future"
-              aria-label="Record audio (coming soon)"
+              aria-label={t("Record audio (coming soon)")}
               disabled
             >
               <ComposeIcon name="mic" />
             </button>
           </span>
           <span class="composer-format-divider compose-future" />
-          <span title="Canvas is not supported">
+          <span title={t("Canvas is not supported")}>
             <button
               type="button"
               class="compose-tool compose-future"
-              aria-label="Create canvas (unavailable)"
+              aria-label={t("Create canvas (unavailable)")}
               disabled
             >
               <ComposeIcon name="canvas" />
@@ -527,8 +531,10 @@ export default function Composer(props: {
             <button
               type="button"
               class="composer-send"
-              title={`Send (${modEnter() ? (mac ? "⌘Enter" : "Ctrl+Enter") : "Enter"})`}
-              aria-label="Send"
+              title={t("Send ({key})", {
+                key: modEnter() ? (mac ? "⌘Enter" : "Ctrl+Enter") : "Enter",
+              })}
+              aria-label={t("Send")}
               disabled={!hasText()}
               onClick={submit}
             >
@@ -537,8 +543,8 @@ export default function Composer(props: {
             <button
               type="button"
               class="compose-send-options"
-              title="Send button options"
-              aria-label="Send button options"
+              title={t("Send button options")}
+              aria-label={t("Send button options")}
               aria-expanded={popover() === "send"}
               onClick={() => setPopover(popover() === "send" ? null : "send")}
             >
@@ -573,13 +579,13 @@ export default function Composer(props: {
           <div
             class="compose-popover compose-mention-popover"
             role="dialog"
-            aria-label="Mention someone"
+            aria-label={t("Mention someone")}
           >
             <input
               ref={(el) => queueMicrotask(() => el.focus())}
               type="search"
-              aria-label="Find a person"
-              placeholder="Find a person…"
+              aria-label={t("Find a person")}
+              placeholder={t("Find a person…")}
               value={personQuery()}
               onInput={(e) => setPersonQuery(e.currentTarget.value)}
             />
@@ -602,11 +608,11 @@ export default function Composer(props: {
           <form
             class="compose-popover compose-link-popover"
             onSubmit={applyLink}
-            aria-label="Insert link"
+            aria-label={t("Insert link")}
           >
-            <strong>Insert link</strong>
+            <strong>{t("Insert link")}</strong>
             <label>
-              Text
+              {t("Text")}
               <input value={linkLabel()} onInput={(e) => setLinkLabel(e.currentTarget.value)} />
             </label>
             <label>
@@ -614,7 +620,7 @@ export default function Composer(props: {
               <input
                 ref={(el) => queueMicrotask(() => el.focus())}
                 type="url"
-                placeholder="https://example.com"
+                placeholder={t("https://example.com")}
                 value={linkUrl()}
                 onInput={(e) => setLinkUrl(e.currentTarget.value)}
                 required
@@ -628,10 +634,10 @@ export default function Composer(props: {
                   focusSelection();
                 }}
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button type="submit" disabled={!safeLink(linkUrl().trim())}>
-                Apply
+                {t("Apply")}
               </button>
             </div>
           </form>
@@ -640,9 +646,9 @@ export default function Composer(props: {
           <div
             class="compose-popover compose-send-popover"
             role="dialog"
-            aria-label="Send preferences"
+            aria-label={t("Send preferences")}
           >
-            <strong>Press Enter to…</strong>
+            <strong>{t("Press Enter to…")}</strong>
             <For each={[false, true]}>
               {(value) => (
                 <label>
@@ -656,11 +662,11 @@ export default function Composer(props: {
                     }}
                   />
                   <span>
-                    {value ? "Start a new line" : "Send the message"}
+                    {value ? t("Start a new line") : t("Send the message")}
                     <small>
                       {value
-                        ? `Send with ${mac ? "⌘" : "Ctrl+"}Enter`
-                        : "New line with Shift+Enter"}
+                        ? t("Send with {key}Enter", { key: mac ? "⌘" : "Ctrl+" })
+                        : t("New line with Shift+Enter")}
                     </small>
                   </span>
                 </label>

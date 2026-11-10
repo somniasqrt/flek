@@ -11,6 +11,7 @@ import {
   Match,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { t, errorMessage } from "./i18n";
 import {
   api,
   onChange,
@@ -26,7 +27,10 @@ import { setMe } from "./outbox";
 import { loadPeople } from "./people";
 import { directoryChanged, refreshPresence, watchPresence, tickPresence } from "./presence-store";
 import { closeProfile, profileUser } from "./profile";
-import ConversationMenu, { LeaveConfirmation, type ConversationMenuTarget } from "./ConversationMenu";
+import ConversationMenu, {
+  LeaveConfirmation,
+  type ConversationMenuTarget,
+} from "./ConversationMenu";
 import ChannelPanel from "./ChannelPanel";
 import { hasUnread } from "./conversation-model";
 import { openProfile } from "./profile";
@@ -81,7 +85,7 @@ export default function Workspace(props: { status: Ready }) {
     if (c.kind === "im" || c.kind === "mpim") {
       const user = c.dm_user_id ?? dms().find((dm) => dm.id === c.id)?.members[0];
       if (user) openProfile(user);
-      else setActionError("No cached profile for this conversation");
+      else setActionError(t("No cached profile for this conversation"));
     } else {
       setThread(null);
       closeProfile();
@@ -257,10 +261,16 @@ export default function Workspace(props: { status: Ready }) {
   // Root ts of the thread open in the side panel; closed when switching
   // conversations, or with Esc (unless the viewer is on top).
   const [thread, setThread] = createSignal<string | null>(null);
-  createEffect(on(selected, () => {
-    setThread(null);
-    setChannelDetails(null);
-  }, { defer: true }));
+  createEffect(
+    on(
+      selected,
+      () => {
+        setThread(null);
+        setChannelDetails(null);
+      },
+      { defer: true },
+    ),
+  );
   // The thread and profile panels share the right pane: opening one closes
   // the other.
   createEffect(on(thread, (t) => t && closeProfile(), { defer: true }));
@@ -318,9 +328,14 @@ export default function Workspace(props: { status: Ready }) {
           userId={props.status.user_id}
           user={props.status.user}
           view={view()}
-          dms={dms().filter((dm) => hasUnread({
-            ...dm, notification: conversations.find((c) => c.id === dm.id)?.notification,
-          })).length}
+          dms={
+            dms().filter((dm) =>
+              hasUnread({
+                ...dm,
+                notification: conversations.find((c) => c.id === dm.id)?.notification,
+              }),
+            ).length
+          }
           activity={activityBadge()}
           onView={chooseView}
           onCompose={() => setCompose(true)}
@@ -339,6 +354,9 @@ export default function Workspace(props: { status: Ready }) {
               <Match when={view() === "dms"}>
                 <DirectMessages
                   rows={dms()}
+                  mutedIds={conversations
+                    .filter((c) => c.notification === "muted")
+                    .map((c) => c.id)}
                   me={props.status.user_id}
                   selected={selected()}
                   onContext={setMenu}
@@ -369,7 +387,7 @@ export default function Workspace(props: { status: Ready }) {
             </Switch>
             <ResizeHandle
               side="left"
-              label="Resize sidebar"
+              label={t("Resize sidebar")}
               controls="conversation-sidebar"
               value={sizes().sidebar}
               min={MIN_SIDEBAR}
@@ -382,7 +400,7 @@ export default function Workspace(props: { status: Ready }) {
           <section class="main">
             <Show when={readError()}>
               <p class="error view-empty" role="alert">
-                {readError()}
+                {errorMessage(readError())}
               </p>
             </Show>
             <Show
@@ -396,10 +414,11 @@ export default function Workspace(props: { status: Ready }) {
                       fallback={
                         <div class="empty">
                           <Show when={loaded()} fallback={<div class="spinner" />}>
-                            <h2>Syncing messages</h2>
+                            <h2>{t("Syncing messages")}</h2>
                             <p class="muted">
-                              Channels appear here as soon as they are fetched. Flek keeps syncing
-                              in the menu bar even when this window is closed.
+                              {t(
+                                "Channels appear here as soon as they are fetched. Flek keeps syncing in the menu bar even when this window is closed.",
+                              )}
                             </p>
                           </Show>
                         </div>
@@ -445,7 +464,7 @@ export default function Workspace(props: { status: Ready }) {
             <div class="detail-pane" id="conversation-detail">
               <ResizeHandle
                 side="right"
-                label="Resize details panel"
+                label={t("Resize details panel")}
                 controls="conversation-detail"
                 value={sizes().detail}
                 min={MIN_DETAIL}
@@ -502,8 +521,10 @@ export default function Workspace(props: { status: Ready }) {
       </Show>
       <Show when={actionError()}>
         <div class="conversation-toast" role="alert">
-          {actionError()}
-          <button aria-label="Dismiss error" onClick={() => setActionError("")}>×</button>
+          {errorMessage(actionError())}
+          <button aria-label={t("Dismiss error")} onClick={() => setActionError("")}>
+            ×
+          </button>
         </div>
       </Show>
       <Viewer />

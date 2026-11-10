@@ -1,7 +1,5 @@
-// Right-side profile panel: big photo, name, title, local time, contact
-// details and a "Message" button, like Slack's. Shares the slot with the
-// thread panel (Workspace keeps only one of them open).
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
+import { t, locale, clock24 } from "./i18n";
 import { api, type Profile } from "./api";
 import Avatar from "./Avatar";
 import CustomStatus from "./CustomStatus";
@@ -9,6 +7,10 @@ import { visibleStatus } from "./presence";
 import { presenceNow, presenceOf, profileRevision } from "./presence-store";
 import { avatars } from "./people";
 import { localTime } from "./time";
+
+// Right-side profile panel: big photo, name, title, local time, contact
+// details and a "Message" button, like Slack's. Shares the slot with the
+// thread panel (Workspace keeps only one of them open).
 
 const PHOTO = 240;
 
@@ -61,14 +63,14 @@ export default function ProfilePanel(props: {
   const small = () => p()?.avatar ?? avatars()[props.userId] ?? null;
   const time = () => {
     const x = p();
-    return x && localTime(now(), x.tz, x.tz_offset);
+    return x && localTime(now(), x.tz, x.tz_offset, locale(), !clock24());
   };
 
   return (
-    <aside class="thread-panel profile-panel" aria-label="Profile">
+    <aside class="thread-panel profile-panel" aria-label={t("Profile")}>
       <header class="thread-header">
-        <h3>Profile</h3>
-        <button class="thread-close" type="button" title="Close (Esc)" onClick={props.onClose}>
+        <h3>{t("Profile")}</h3>
+        <button class="thread-close" type="button" title={t("Close (Esc)")} onClick={props.onClose}>
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
             <path d="M5 5l10 10M15 5L5 15" />
           </svg>
@@ -88,7 +90,7 @@ export default function ProfilePanel(props: {
           <Show
             when={p()}
             fallback={
-              <p class="muted profile-missing">Flek knows nothing about this person yet.</p>
+              <p class="muted profile-missing">{t("Flek knows nothing about this person yet.")}</p>
             }
           >
             {(x) => (
@@ -101,10 +103,10 @@ export default function ProfilePanel(props: {
                     </Show>
                   </h2>
                   <Show when={x().deleted}>
-                    <span class="tag profile-tag">Deactivated</span>
+                    <span class="tag profile-tag">{t("Deactivated")}</span>
                   </Show>
                   <Show when={x().is_bot}>
-                    <span class="tag profile-tag">App</span>
+                    <span class="tag profile-tag">{t("App")}</span>
                   </Show>
                 </div>
                 <Show when={handle()}>{(h) => <div class="muted profile-handle">{h()}</div>}</Show>
@@ -117,7 +119,7 @@ export default function ProfilePanel(props: {
                   )}
                 </Show>
                 <Show when={time()}>
-                  {(t) => (
+                  {(time) => (
                     <div class="profile-time muted" title={x().tz_label ?? x().tz ?? undefined}>
                       <svg
                         class="profile-icon"
@@ -129,7 +131,7 @@ export default function ProfilePanel(props: {
                         <circle cx="10" cy="10" r="7.25" />
                         <path d="M10 5.5V10l3 2" />
                       </svg>
-                      {t()} local time
+                      {t("{time} local time", { time: time() })}
                     </div>
                   )}
                 </Show>
@@ -139,11 +141,11 @@ export default function ProfilePanel(props: {
                     fallback={
                       <span
                         class="profile-button-wrap"
-                        title={`No direct messages with ${name()} yet`}
+                        title={t("No direct messages with {name} yet", { name: name() })}
                       >
                         <button class="profile-button" type="button" disabled>
                           <MessageIcon />
-                          Message
+                          {t("Message")}
                         </button>
                       </span>
                     }
@@ -155,14 +157,14 @@ export default function ProfilePanel(props: {
                         onClick={() => props.onOpen(dm())}
                       >
                         <MessageIcon />
-                        Message
+                        {t("Message")}
                       </button>
                     )}
                   </Show>
                 </div>
                 <Show when={x().email || x().phone}>
                   <section class="profile-contact">
-                    <h4>Contact information</h4>
+                    <h4>{t("Contact information")}</h4>
                     <Show when={x().email}>
                       {(email) => (
                         <div class="profile-row">
@@ -177,7 +179,7 @@ export default function ProfilePanel(props: {
                             <path d="M3.5 6l6.5 5 6.5-5" />
                           </svg>
                           <div>
-                            <div class="profile-label muted">Email address</div>
+                            <div class="profile-label muted">{t("Email address")}</div>
                             <a
                               href={`mailto:${email()}`}
                               onClick={(e) => {
@@ -204,7 +206,7 @@ export default function ProfilePanel(props: {
                             <path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.6C3.3 11 9 16.7 15.4 17a1.5 1.5 0 0 0 1.6-1.5v-2l-3.4-1.4-1.6 1.6a9 9 0 0 1-4.7-4.7l1.6-1.6z" />
                           </svg>
                           <div>
-                            <div class="profile-label muted">Phone</div>
+                            <div class="profile-label muted">{t("Phone")}</div>
                             <span class="profile-selectable">{phone()}</span>
                           </div>
                         </div>

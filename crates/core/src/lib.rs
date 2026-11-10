@@ -21,3 +21,5 @@ pub mod time;
 pub mod search;
 
 pub mod rail;
+
+pub mod settings;

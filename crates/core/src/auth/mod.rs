@@ -285,3 +285,55 @@ mod tests {
         }
     }
 }
+
+/// Remove only Flek's session and suppress automatic desktop re-import on the
+/// next launch. The local archive and the Slack desktop session are untouched.
+pub fn sign_out(
+    credentials: &CredentialStore,
+    team_id: &str,
+    settings_path: &std::path::Path,
+) -> crate::Result<crate::settings::Settings> {
+    let previous = crate::settings::Settings::load(settings_path)?;
+    let mut settings = previous.clone();
+    settings.desktop_import_on_start = false;
+    settings.save(settings_path)?;
+    if let Err(error) = credentials.delete(team_id) {
+        previous.save(settings_path)?;
+        return Err(error);
+    }
+    Ok(settings)
+}
+
+#[cfg(test)]
+mod sign_out_tests {
+    use super::*;
+
+    #[test]
+    fn removes_indexed_session_keeps_archive_and_language() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let archive = dir.path().join("archive.db");
+        std::fs::write(&archive, b"archive placeholder").unwrap();
+        let settings = crate::settings::Settings {
+            language: crate::settings::Language::Uk,
+            ..Default::default()
+        };
+        settings.save(&path).unwrap();
+        let credentials = CredentialStore::with_backend(keychain::MemoryBackend::default());
+        credentials
+            .save(&Credentials {
+                team_id: "TFAKE".into(),
+                user_id: "UFAKE".into(),
+                token: crate::Secret::new("xoxc-fake"),
+                cookie: crate::Secret::new("xoxd-fake"),
+                origin: None,
+            })
+            .unwrap();
+        let result = sign_out(&credentials, "TFAKE", &path).unwrap();
+        assert!(!result.desktop_import_on_start);
+        assert_eq!(result.language, crate::settings::Language::Uk);
+        assert!(credentials.list().unwrap().is_empty());
+        assert!(credentials.load("TFAKE").unwrap().is_none());
+        assert_eq!(std::fs::read(archive).unwrap(), b"archive placeholder");
+    }
+}

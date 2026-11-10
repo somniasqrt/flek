@@ -1,10 +1,11 @@
-// Link previews under a message, laid out like Slack's: a bar on the left,
-// the site, a linked title, the description and the picture.
 import { For, Show } from "solid-js";
 import { api, linkImageUrl, type Unfurl } from "./api";
 import { ParsedRich } from "./Rich";
 import { parse } from "./mrkdwn";
 import { previewBlocks, previewText } from "./unfurl-text";
+
+// Link previews under a message, laid out like Slack's: a bar on the left,
+// the site, a linked title, the description and the picture.
 
 const MAX_W = 360;
 const MAX_H = 240;
@@ -32,7 +33,9 @@ function Card(props: { u: Unfurl }) {
       <div class="unfurl-body">
         <Show when={u.service || u.author}>
           <div class="unfurl-site">
-            <Show when={u.icon}>{(i) => <img class="unfurl-icon" src={linkImageUrl(i())} alt="" />}</Show>
+            <Show when={u.icon}>
+              {(i) => <img class="unfurl-icon" src={linkImageUrl(i())} alt="" />}
+            </Show>
             <span>{previewText(u.service ?? u.author)}</span>
           </div>
         </Show>

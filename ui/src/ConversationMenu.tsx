@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { t, errorMessage } from "./i18n";
 import { api, type Conversation } from "./api";
 import { conversationActions, hasUnread } from "./conversation-model";
 
@@ -44,12 +45,16 @@ export default function ConversationMenu(props: {
       if (!child || !anchor) return;
       const rect = panel.getBoundingClientRect();
       const right = rect.right - 4;
-      const left = right + child.offsetWidth < window.innerWidth - 8
-        ? right : rect.left - child.offsetWidth + 4;
+      const left =
+        right + child.offsetWidth < window.innerWidth - 8
+          ? right
+          : rect.left - child.offsetWidth + 4;
       setSubPosition({
         left: Math.max(8, left),
-        top: Math.max(8, Math.min(anchor.getBoundingClientRect().top,
-          window.innerHeight - child.offsetHeight - 8)),
+        top: Math.max(
+          8,
+          Math.min(anchor.getBoundingClientRect().top, window.innerHeight - child.offsetHeight - 8),
+        ),
       });
     });
   });
@@ -65,15 +70,15 @@ export default function ConversationMenu(props: {
     }
   };
   const copy = (value: string) => run(() => navigator.clipboard.writeText(value));
-  const notification = (value: string) => run(() =>
-    api.conversationPreference(c().id, null, value),
-  );
+  const notification = (value: string) =>
+    run(() => api.conversationPreference(c().id, null, value));
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null;
-    const fit = () => setPosition({
-      left: Math.max(8, Math.min(props.x, window.innerWidth - panel.offsetWidth - 8)),
-      top: Math.max(8, Math.min(props.y, window.innerHeight - panel.offsetHeight - 8)),
-    });
+    const fit = () =>
+      setPosition({
+        left: Math.max(8, Math.min(props.x, window.innerWidth - panel.offsetWidth - 8)),
+        top: Math.max(8, Math.min(props.y, window.innerHeight - panel.offsetHeight - 8)),
+      });
     const observer = new ResizeObserver(fit);
     observer.observe(panel);
     fit();
@@ -103,7 +108,9 @@ export default function ConversationMenu(props: {
     if (e.key === "ArrowRight" && target.dataset.submenu) {
       e.preventDefault();
       setSubmenu(target.dataset.submenu as "copy" | "notify");
-      queueMicrotask(() => panel.querySelector<HTMLElement>(".conversation-submenu button")?.focus());
+      queueMicrotask(() =>
+        panel.querySelector<HTMLElement>(".conversation-submenu button")?.focus(),
+      );
     }
     if (e.key === "ArrowLeft" && submenu()) {
       e.preventDefault();
@@ -114,7 +121,9 @@ export default function ConversationMenu(props: {
     if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
       e.preventDefault();
       const menu = target.closest('[role="menu"]') ?? panel;
-      const buttons = [...menu.querySelectorAll<HTMLButtonElement>(":scope > button:not(:disabled)")];
+      const buttons = [
+        ...menu.querySelectorAll<HTMLButtonElement>(":scope > button:not(:disabled)"),
+      ];
       const index = buttons.indexOf(target as HTMLButtonElement);
       let next = e.key === "ArrowUp" ? index - 1 : index + 1;
       if (e.key === "Home") next = 0;
@@ -136,7 +145,7 @@ export default function ConversationMenu(props: {
         class="message-menu conversation-menu"
         ref={panel}
         role="menu"
-        aria-label={`Actions for ${c().label}`}
+        aria-label={t("Actions for {name}", { name: c().label })}
         style={{ left: `${position().left}px`, top: `${position().top}px` }}
         onKeyDown={keydown}
         onContextMenu={(e) => e.preventDefault()}
@@ -146,12 +155,20 @@ export default function ConversationMenu(props: {
           disabled={!hasUnread(c()) || !c().latest_ts}
           onMouseEnter={() => setSubmenu(null)}
           onClick={() => run(() => api.markRead(c().id, c().latest_ts!))}
-        >Mark as read</button>
+        >
+          {t("Mark as read")}
+        </button>
         <button
           role="menuitem"
           onMouseEnter={() => setSubmenu(null)}
-          onClick={() => { props.onDetails(); props.onClose(); }}
-        >{actions().details}{actions().channel ? " ›" : ""}</button>
+          onClick={() => {
+            props.onDetails();
+            props.onClose();
+          }}
+        >
+          {actions().details}
+          {actions().channel ? " ›" : ""}
+        </button>
         <div class="menu-separator" role="separator" />
         <button
           role="menuitem"
@@ -160,12 +177,17 @@ export default function ConversationMenu(props: {
           aria-expanded={submenu() === "copy"}
           onMouseEnter={() => setSubmenu("copy")}
           onClick={() => setSubmenu("copy")}
-        >Copy <span>›</span></button>
+        >
+          {t("Copy")}
+          <span>›</span>
+        </button>
         <button
           role="menuitem"
           onMouseEnter={() => setSubmenu(null)}
           onClick={() => run(() => api.conversationPreference(c().id, !c().starred, null))}
-        >{c().starred ? "Unstar" : "Star channel"}</button>
+        >
+          {c().starred ? t("Unstar") : t("Star channel")}
+        </button>
         <button
           role="menuitem"
           data-submenu="notify"
@@ -173,7 +195,10 @@ export default function ConversationMenu(props: {
           aria-expanded={submenu() === "notify"}
           onMouseEnter={() => setSubmenu("notify")}
           onClick={() => setSubmenu("notify")}
-        >Notify you about… <span>›</span></button>
+        >
+          {t("Notify you about…")}
+          <span>›</span>
+        </button>
         <div class="menu-separator" role="separator" />
         <button
           role="menuitem"
@@ -181,35 +206,54 @@ export default function ConversationMenu(props: {
           disabled={c().is_general}
           onMouseEnter={() => setSubmenu(null)}
           onClick={closeConversation}
-        >{actions().dismiss}</button>
+        >
+          {actions().dismiss}
+        </button>
         <Show when={submenu()}>
           <div
             class="conversation-submenu"
             role="menu"
-            aria-label={submenu()!}
+            aria-label={submenu() === "copy" ? t("Copy") : t("Notify you about…")}
             style={{ left: `${subPosition().left}px`, top: `${subPosition().top}px` }}
           >
             <Show when={submenu() === "copy"}>
-              <button role="menuitem" onClick={() => copy(c().label)}>Copy name</button>
-              <button role="menuitem" onClick={() => run(async () => {
-                const link = await api.conversationLink(c().id);
-                if (!link) throw new Error("Workspace link is not cached yet");
-                await navigator.clipboard.writeText(link);
-              })}>Copy link</button>
-              <button role="menuitem" onClick={() => copy(c().id)}>Copy ID</button>
+              <button role="menuitem" onClick={() => copy(c().label)}>
+                {t("Copy name")}
+              </button>
+              <button
+                role="menuitem"
+                onClick={() =>
+                  run(async () => {
+                    const link = await api.conversationLink(c().id);
+                    if (!link) throw new Error(t("Workspace link is not cached yet"));
+                    await navigator.clipboard.writeText(link);
+                  })
+                }
+              >
+                {t("Copy link")}
+              </button>
+              <button role="menuitem" onClick={() => copy(c().id)}>
+                {t("Copy ID")}
+              </button>
             </Show>
             <Show when={submenu() === "notify"}>
-              <p class="muted menu-note">In Flek only</p>
-              <For each={[
-                ["all", "All new posts"], ["mentions", "Just mentions"],
-                ["muted", "Mute and hide"],
-              ]}>
+              <p class="muted menu-note">{t("In Flek only")}</p>
+              <For
+                each={[
+                  ["all", t("All new posts")],
+                  ["mentions", t("Just mentions")],
+                  ["muted", t("Mute and hide")],
+                ]}
+              >
                 {([value, label]) => (
                   <button
                     role="menuitemradio"
                     aria-checked={(c().notification ?? "all") === value}
                     onClick={() => notification(value)}
-                  >{(c().notification ?? "all") === value ? "✓ " : ""}{label}</button>
+                  >
+                    {(c().notification ?? "all") === value ? "✓ " : ""}
+                    {label}
+                  </button>
                 )}
               </For>
             </Show>
@@ -220,11 +264,7 @@ export default function ConversationMenu(props: {
   );
 }
 
-
-export function LeaveConfirmation(props: {
-  conversation: Conversation;
-  onClose: () => void;
-}) {
+export function LeaveConfirmation(props: { conversation: Conversation; onClose: () => void }) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
   let panel!: HTMLDivElement;
@@ -268,15 +308,21 @@ export function LeaveConfirmation(props: {
           ref={panel}
           onKeyDown={keydown}
         >
-          <h2 id="leave-conversation-title">Leave #{props.conversation.label}?</h2>
-          <p>You will leave this channel in Slack. Flek keeps its cached history.</p>
+          <h2 id="leave-conversation-title">
+            {t("Leave #{name}?", { name: props.conversation.label })}
+          </h2>
+          <p>{t("You will leave this channel in Slack. Flek keeps its cached history.")}</p>
           <Show when={error()}>
-            <p class="error" role="alert">{error()}</p>
+            <p class="error" role="alert">
+              {errorMessage(error())}
+            </p>
           </Show>
           <footer>
-            <button disabled={busy()} onClick={props.onClose}>Cancel</button>
+            <button disabled={busy()} onClick={props.onClose}>
+              {t("Cancel")}
+            </button>
             <button class="danger" disabled={busy()} onClick={leave}>
-              {busy() ? "Leaving…" : "Leave channel"}
+              {busy() ? t("Leaving…") : t("Leave channel")}
             </button>
           </footer>
         </div>

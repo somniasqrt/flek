@@ -1,5 +1,6 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { t } from "./i18n";
 import { primaryModifier, usesMacShortcuts } from "./shortcuts";
 import { AddReaction, ReplyInThread, MessageLink, CopyMessage } from "./icons";
 import EmojiPicker from "./EmojiPicker";
@@ -106,7 +107,7 @@ export default function MessageMenu(props: {
           class="message-menu"
           classList={{ "emoji-picker-menu": picker() }}
           role={picker() ? "dialog" : "menu"}
-          aria-label={picker() ? "Choose a reaction" : "Message actions"}
+          aria-label={picker() ? t("Choose a reaction") : t("Message actions")}
           style={{ left: `${position().left}px`, top: `${position().top}px` }}
           onPointerDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
@@ -123,7 +124,7 @@ export default function MessageMenu(props: {
                   onClick={() => setPicker(true)}
                 >
                   <AddReaction />
-                  <span class="message-menu-label">Add reaction…</span>
+                  <span class="message-menu-label">{t("Add reaction…")}</span>
                   <kbd>R</kbd>
                 </button>
                 <Show when={props.onThread}>
@@ -137,7 +138,7 @@ export default function MessageMenu(props: {
                     }}
                   >
                     <ReplyInThread />
-                    <span class="message-menu-label">Reply in thread</span>
+                    <span class="message-menu-label">{t("Reply in thread")}</span>
                     <kbd>T</kbd>
                   </button>
                 </Show>
@@ -149,7 +150,7 @@ export default function MessageMenu(props: {
                   onClick={props.onCopyLink}
                 >
                   <MessageLink />
-                  <span class="message-menu-label">Copy link</span>
+                  <span class="message-menu-label">{t("Copy link")}</span>
                   <kbd>L</kbd>
                 </button>
                 <button
@@ -159,7 +160,7 @@ export default function MessageMenu(props: {
                   onClick={props.onCopy}
                 >
                   <CopyMessage />
-                  <span class="message-menu-label">Copy message</span>
+                  <span class="message-menu-label">{t("Copy message")}</span>
                   <kbd>{usesMacShortcuts() ? "⌘C" : "Ctrl+C"}</kbd>
                 </button>
               </>

@@ -1,20 +1,23 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { t, errorMessage } from "./i18n";
 import { api, tsDate, type ActivityItem, type Conversation } from "./api";
 import Avatar from "./Avatar";
 import { emoji } from "./emoji";
 import Emoji from "./EmojiView";
+import T from "./i18n/T";
 import { people } from "./people";
 import { presenceNow } from "./presence-store";
 import { messagePreview } from "./rail-model";
 import type { Jump } from "./Search";
 import { activityDay, listTime } from "./time";
 
-const tabs = [
-  ["all", "All"],
-  ["dm", "DMs"],
-  ["mention", "Mentions"],
-  ["thread", "Threads"],
-] as const;
+const tabs = () =>
+  [
+    ["all", t("All")],
+    ["dm", t("DMs")],
+    ["mention", t("Mentions")],
+    ["thread", t("Threads")],
+  ] as const;
 
 export default function ActivityView(props: {
   revision: number;
@@ -85,17 +88,17 @@ export default function ActivityView(props: {
   const context = (item: ActivityItem) => {
     const c = props.conversations.find((c) => c.id === item.conversation_id);
     const label = c?.label ?? item.conversation_id;
-    if (item.kind === "dm") return "Direct message";
+    if (item.kind === "dm") return t("Direct message");
     const where = c?.kind === "im" || c?.kind === "mpim" ? label : `#${label}`;
-    return item.kind === "thread" ? `Thread in ${where}` : where;
+    return item.kind === "thread" ? t("Thread in {name}", { name: where }) : where;
   };
   return (
-    <nav class="rail-list activity-list" aria-label="Activity">
+    <nav class="rail-list activity-list" aria-label={t("Activity")}>
       <header class="rail-list-header">
-        <h2>Activity</h2>
+        <h2>{t("Activity")}</h2>
       </header>
-      <div class="activity-tabs" role="tablist" aria-label="Activity kind">
-        <For each={tabs}>
+      <div class="activity-tabs" role="tablist" aria-label={t("Activity kind")}>
+        <For each={tabs()}>
           {([id, label]) => (
             <button role="tab" aria-selected={tab() === id} onClick={() => setTab(id)}>
               {label}
@@ -109,7 +112,7 @@ export default function ActivityView(props: {
           checked={unread()}
           onChange={(e) => setUnread(e.currentTarget.checked)}
         />
-        Unread
+        {t("Unread")}
       </label>
       <div class="rail-list-scroll">
         <For each={days()}>
@@ -125,20 +128,40 @@ export default function ActivityView(props: {
                     classList={{ unread: item.unread }}
                     onClick={() => props.onOpen(item)}
                   >
-                    <Avatar id={item.user_id} name={people()[item.user_id ?? ""] ?? "Unknown"} />
+                    <Avatar id={item.user_id} name={people()[item.user_id ?? ""] ?? t("Unknown")} />
                     <span class="activity-body">
                       <span class="dm-row-head">
-                        <span class="dm-name">{people()[item.user_id ?? ""] ?? "Unknown"}</span>
+                        <span class="dm-name">{people()[item.user_id ?? ""] ?? t("Unknown")}</span>
                         <time>
                           {listTime(tsDate(item.event_ts), new Date(presenceNow() * 1000))}
                         </time>
                       </span>
                       <span class="activity-context">{context(item)}</span>
                       <span class="activity-preview">
-                        <Show when={item.kind === "reaction"}>
-                          Reacted <Emoji name={item.reaction ?? "eyes"} inText /> to:{" "}
+                        <Show
+                          when={item.kind === "reaction"}
+                          fallback={messagePreview(
+                            { ...item, user_id: null },
+                            props.me,
+                            people(),
+                            emoji,
+                          )}
+                        >
+                          <T
+                            k="{name} reacted <emoji>{emoji}</emoji> to: {text}"
+                            params={{
+                              name: people()[item.user_id ?? ""] ?? t("Unknown"),
+                              emoji: item.reaction ?? "eyes",
+                              text: messagePreview(
+                                { ...item, user_id: null },
+                                props.me,
+                                people(),
+                                emoji,
+                              ),
+                            }}
+                            tags={{ emoji: () => <Emoji name={item.reaction ?? "eyes"} inText /> }}
+                          />
                         </Show>
-                        {messagePreview({ ...item, user_id: null }, props.me, people(), emoji)}
                       </span>
                       <Show when={item.reaction}>
                         {(name) => (
@@ -149,7 +172,7 @@ export default function ActivityView(props: {
                       </Show>
                     </span>
                     <Show when={item.unread}>
-                      <span class="activity-unread" aria-label="Unread">
+                      <span class="activity-unread" aria-label={t("Unread")}>
                         {item.kind === "dm" ? item.unread_count : "•"}
                       </span>
                     </Show>
@@ -161,15 +184,15 @@ export default function ActivityView(props: {
         </For>
         <Show when={error()}>
           <p class="error view-empty" role="alert">
-            {error()}
+            {errorMessage(error())}
           </p>
         </Show>
         <Show when={!busy() && !error() && items().length === 0}>
-          <p class="view-empty muted">You're all caught up.</p>
+          <p class="view-empty muted">{t("You're all caught up.")}</p>
         </Show>
         <Show when={more()}>
           <button class="load-more" disabled={busy()} onClick={() => load(true)}>
-            Load more
+            {t("Load more")}
           </button>
         </Show>
       </div>

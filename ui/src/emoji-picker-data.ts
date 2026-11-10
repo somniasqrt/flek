@@ -18,7 +18,7 @@ export const categories = [
   { id: "symbols", label: "Symbols" },
   { id: "flags", label: "Flags" },
   { id: "custom", label: "Workspace emoji" },
-];
+] as const;
 export const frequentDefaults = [
   "heart",
   "white_check_mark",

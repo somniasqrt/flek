@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { ConnectionState, Progress } from "./api";
 
 /// Status line above the timeline. Always the same height, so the timeline
@@ -7,18 +8,18 @@ export default function SyncBar(props: {
   connection: ConnectionState | null;
 }) {
   const text = () => {
-    if (props.connection?.state === "reconnecting") return "Offline, reconnecting…";
+    if (props.connection?.state === "reconnecting") return t("Offline, reconnecting…");
     const p = props.progress;
-    if (!p || p.stage === "idle") return "Up to date";
+    if (!p || p.stage === "idle") return t("Up to date");
     switch (p.stage) {
       case "directory":
-        return "Syncing channels and people…";
+        return t("Syncing channels and people…");
       case "conversations":
         return p.deep
-          ? `Fetching older history · ${p.current}`
-          : `Syncing messages · ${p.current}`;
+          ? t("Fetching older history · {name}", { name: p.current })
+          : t("Syncing messages · {name}", { name: p.current });
       case "files":
-        return "Downloading files…";
+        return t("Downloading files…");
     }
   };
   const fraction = () => {

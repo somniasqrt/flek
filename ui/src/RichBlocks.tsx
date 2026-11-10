@@ -1,9 +1,10 @@
-// A deliberately small read-only renderer for the composer's documented rich text.
 import { For, Show, type JSX } from "solid-js";
 import { Link } from "./Rich";
 import Emoji from "./EmojiView";
 import { people } from "./people";
 import { safeLink } from "./rich-compose";
+
+// A deliberately small read-only renderer for the composer's documented rich text.
 
 type Node = {
   type?: string;
@@ -51,12 +52,28 @@ function inline(raw: unknown): JSX.Element {
   else if (n.type === "emoji") {
     const name = text(n.name);
     const tone = n.skin_tone;
-    content = <Emoji name={typeof tone === "number" && Number.isInteger(tone) && tone >= 2 && tone <= 6 && !name.includes("::skin-tone-") ? `${name}::skin-tone-${tone}` : name} inText />;
-  }
-  else if (n.type === "link") {
+    content = (
+      <Emoji
+        name={
+          typeof tone === "number" &&
+          Number.isInteger(tone) &&
+          tone >= 2 &&
+          tone <= 6 &&
+          !name.includes("::skin-tone-")
+            ? `${name}::skin-tone-${tone}`
+            : name
+        }
+        inText
+      />
+    );
+  } else if (n.type === "link") {
     const url = text(n.url);
     const label = text(n.text);
-    content = safeLink(url) ? <Link url={url} label={label && label !== url ? [{ t: "text", v: label }] : undefined} /> : label || url;
+    content = safeLink(url) ? (
+      <Link url={url} label={label && label !== url ? [{ t: "text", v: label }] : undefined} />
+    ) : (
+      label || url
+    );
   } else content = text(n.text);
   // Wrap from the inside out; never interpret stored text as HTML.
   const style = n.style && typeof n.style === "object" ? n.style : {};

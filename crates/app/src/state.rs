@@ -18,12 +18,6 @@ pub const CHANGE_EVENT: &str = "flek://change";
 /// Event carrying the new [`Status`].
 pub const STATUS_EVENT: &str = "flek://status";
 
-/// Largest file the engine downloads into the cache.
-const MAX_FILE_BYTES: i64 = 100 * 1024 * 1024;
-/// Edits and reactions made while the app was closed are re-read at most this
-/// often; each start otherwise fetches only conversations with new messages.
-const REFRESH_EVERY: std::time::Duration = std::time::Duration::from_secs(3 * 60 * 60);
-
 /// Where the app is in its life: the UI renders one screen per phase.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(tag = "phase", rename_all = "snake_case")]
@@ -47,6 +41,11 @@ pub enum Status {
 }
 
 pub struct AppState {
+    pub maintenance: tokio::sync::Mutex<()>,
+    generation: std::sync::atomic::AtomicU64,
+    pub settings: Mutex<flek_core::settings::Settings>,
+    pub session: Mutex<Option<Session>>,
+    engine_done: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub store: Store,
     pub creds: CredentialStore,
     pub bus: Bus,
@@ -66,6 +65,15 @@ pub struct AppState {
 impl AppState {
     pub fn new(store: Store) -> Self {
         Self {
+            maintenance: tokio::sync::Mutex::new(()),
+            generation: std::sync::atomic::AtomicU64::new(0),
+            settings: Mutex::new(
+                flek_core::settings::default_path()
+                    .and_then(|p| flek_core::settings::Settings::load(&p))
+                    .unwrap_or_default(),
+            ),
+            session: Mutex::new(None),
+            engine_done: Mutex::new(None),
             store,
             creds: CredentialStore::keychain(),
             bus: bus(),
@@ -78,6 +86,26 @@ impl AppState {
             engine_stop: Mutex::new(None),
             client: Mutex::new(None),
         }
+    }
+
+    pub fn settings(&self) -> flek_core::settings::Settings {
+        self.settings.lock().expect("settings lock").clone()
+    }
+
+    pub async fn stop_and_wait(&self) {
+        self.stop_engine();
+        let done = self.engine_done.lock().ok().and_then(|mut d| d.take());
+        if let Some(done) = done {
+            let _ = done.await;
+        }
+    }
+
+    pub fn forget_session(&self) {
+        *self.session.lock().expect("session lock") = None;
+        *self.client.lock().expect("client lock") = None;
+        *self.progress.lock().expect("progress lock") = None;
+        *self.connection.lock().expect("connection lock") = None;
+        self.presence.send_replace(Vec::new());
     }
 
     pub fn status(&self) -> Status {
@@ -120,6 +148,8 @@ impl AppState {
 
     /// Stops the sync engine (quit, or before a new session starts).
     pub fn stop_engine(&self) {
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if let Some(stop) = self.engine_stop.lock().ok().and_then(|mut s| s.take()) {
             let _ = stop.send(true);
         }
@@ -197,6 +227,16 @@ pub async fn boot(app: AppHandle) {
             }
         }
     }
+    if !state.settings().desktop_import_on_start {
+        set_status(
+            &app,
+            Status::SignIn {
+                desktop: desktop_installed(),
+                reason: None,
+            },
+        );
+        return;
+    }
     import_desktop(app).await;
 }
 
@@ -246,8 +286,13 @@ fn desktop_installed() -> bool {
 
 /// Session ready: show it, start syncing in the background.
 pub fn start(app: &AppHandle, session: Session) {
+    start_with_options(app, session, false, false);
+}
+
+pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_files: bool) {
     let state = app.state::<AppState>();
     state.stop_engine();
+    *state.session.lock().expect("session lock") = Some(session.clone());
     let me = session.identity.clone();
     state.presence.send_replace(vec![me.user_id.clone()]);
     set_status(
@@ -259,7 +304,6 @@ pub fn start(app: &AppHandle, session: Session) {
             user: me.user.clone(),
         },
     );
-    crate::autostart::enable_once(app);
 
     let client = match session.client() {
         Ok(c) => c,
@@ -276,7 +320,7 @@ pub fn start(app: &AppHandle, session: Session) {
     }
     let files = flek_core::files::default_cache_dir()
         .ok()
-        .map(|dir| (dir, Some(MAX_FILE_BYTES)));
+        .map(|dir| (dir, state.settings().max_file_bytes));
     let engine = Engine {
         client,
         store: state.store.clone(),
@@ -286,7 +330,9 @@ pub fn start(app: &AppHandle, session: Session) {
         options: EngineOptions {
             files,
             follow: true,
-            refresh_every: REFRESH_EVERY,
+            full,
+            skip_files_first_pass: skip_files,
+            settings_path: flek_core::settings::default_path().ok(),
             follow_config: flek_core::sync::follow::FollowConfig {
                 presence: Some(state.presence.subscribe()),
                 ..Default::default()
@@ -298,6 +344,9 @@ pub fn start(app: &AppHandle, session: Session) {
     if let Ok(mut slot) = state.engine_stop.lock() {
         *slot = Some(stop_tx);
     }
+    let generation = state.generation.load(std::sync::atomic::Ordering::SeqCst);
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+    *state.engine_done.lock().expect("engine done lock") = Some(done_rx);
     let app = app.clone();
     // The engine gets its own thread and runtime: its future is not `Send`,
     // and sync work never competes with the UI's IPC this way.
@@ -311,12 +360,38 @@ pub fn start(app: &AppHandle, session: Session) {
                 Ok(rt) => rt,
                 Err(e) => return tracing::error!("cannot start the sync runtime: {e}"),
             };
-            match rt.block_on(engine.run(stop_rx)) {
+            let mut cancel = stop_rx.clone();
+            let result = rt.block_on(async {
+                tokio::select! {
+                    biased;
+                    _ = cancel.changed() => Ok(Default::default()),
+                    result = engine.run(stop_rx) => result,
+                }
+            });
+            // Awaiting maintenance must also wait for cancelled blocking I/O.
+            drop(rt);
+            let _ = done_tx.send(());
+            match result {
                 Ok(_) => tracing::info!("sync engine stopped"),
                 Err(e) if e.is_auth_error() => {
                     tracing::warn!("session revoked: {e}");
                     // Slack desktop may hold a fresh session; else sign in again.
-                    tauri::async_runtime::spawn(import_desktop(app));
+                    if app
+                        .state::<AppState>()
+                        .generation
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                        == generation
+                    {
+                        tauri::async_runtime::spawn(async move {
+                            let state = app.state::<AppState>();
+                            let _maintenance = state.maintenance.lock().await;
+                            if state.generation.load(std::sync::atomic::Ordering::SeqCst)
+                                == generation
+                            {
+                                import_desktop(app.clone()).await;
+                            }
+                        });
+                    }
                 }
                 Err(e) => tracing::error!("sync engine failed: {e}"),
             }

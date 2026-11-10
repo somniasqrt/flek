@@ -1,8 +1,9 @@
-// One `:name:` emoji: a standard character, a workspace (custom) emoji image
-// from the cache, or muted `:name:` text when neither is known (yet).
 import { createSignal, type JSX } from "solid-js";
 import { api, linkImageUrl, type CustomEmoji } from "./api";
 import { emoji } from "./emoji";
+
+// One `:name:` emoji: a standard character, a workspace (custom) emoji image
+// from the cache, or muted `:name:` text when neither is known (yet).
 
 const [custom, setCustom] = createSignal<CustomEmoji>({ images: {}, aliases: {} });
 
@@ -13,7 +14,10 @@ export async function loadCustomEmoji() {
   setCustom(await api.customEmoji().catch(() => custom()));
 }
 
-export const customEmojiNames = () => [...Object.keys(custom().images), ...Object.keys(custom().aliases)];
+export const customEmojiNames = () => [
+  ...Object.keys(custom().images),
+  ...Object.keys(custom().aliases),
+];
 
 type Resolved = { char: string } | { image: string } | null;
 

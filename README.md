@@ -25,10 +25,21 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 | implemented (M6.8; visual/live verification pending) | Workspace icon, Home/DMs/Activity/Files rail, unread badges, compose picker, notification pause, DM intros; local activity and file browser |
 | implemented (M4.6, M6.9; visual/live verification pending) | Focused visible-message read tracking, opening unread divider, conversation context menu, cached channel details, local stars/mute, leave/close |
 | implemented (M6.3.5; native verification pending) | Window size and position persistence, with fallback when a monitor is removed |
+| implemented (M6.3.1, M6.10; visual/native verification pending) | English/Ukrainian localisation and Preferences: appearance, sidebar, media, sync, storage and account |
 | planned | Remaining message editing/deletion utilities |
 | done (M1, CLI) | Local full-text search including hidden (>90 days) messages |
 | done (M1) | Import of existing JSON archives (e.g. slackdump) |
 | planned | "Open in Slack" deep link for anything not supported (polls, slash commands, huddles) |
+
+## Preferences and language
+
+Open **Preferences** with **⌘,** (Ctrl+, on Windows/Linux), the app menu, or **You → Preferences**. Changes are applied immediately. Choose System, English or Українська; System uses Ukrainian for a Ukrainian system/browser locale and English otherwise. Theme, message text size, clock, DM sorting, muted groups, presence dots and media previews update without restarting.
+
+Preferences are validated and stored atomically by core in `settings.json` next to `flek.db`. File download limits apply on the next sync pass; edit refresh settings apply when reopening the app (0 days disables refresh). Launch at login is opt-in and reflects the OS login item. Closing can either keep Flek syncing in the menu bar or quit it.
+
+Storage shows the database path/size (including WAL) and cache size. Cache clearing preserves messages, avatars and emoji, invalidates downloaded file paths and resumes live sync; automatic file downloads are skipped for that first resumed pass. Full re-sync re-reads available history in the background. Signing out removes Flek’s stored session, preserves the archive and returns to sign-in; it does not sign out the Slack desktop app or silently re-import it on the next launch. Notifications are deferred to M6.2.1.
+
+For a session-free preview, run `npm run dev --workspace ui` and open `http://localhost:5173/preview.html?lang=uk&preferences` (use `lang=en` for English). All settings, storage and account actions in that page are mocked.
 
 ## Stack
 

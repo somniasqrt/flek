@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-show-storage"
+description = "Enables the show_storage command without any pre-configured scope."
+commands.allow = ["show_storage"]
+
+[[permission]]
+identifier = "deny-show-storage"
+description = "Denies the show_storage command without any pre-configured scope."
+commands.deny = ["show_storage"]

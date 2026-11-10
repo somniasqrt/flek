@@ -1,10 +1,11 @@
-// A person's picture from the cache, or their initials on a colour picked
-// from the user id (stable per person) until it is downloaded.
 import { Show } from "solid-js";
 import { linkImageUrl } from "./api";
 import { avatars } from "./people";
 import PresenceIndicator from "./PresenceIndicator";
 import type { Indicator } from "./presence";
+
+// A person's picture from the cache, or their initials on a colour picked
+// from the user id (stable per person) until it is downloaded.
 
 export default function Avatar(props: {
   id: string | null;
@@ -48,9 +49,7 @@ export default function Avatar(props: {
           </div>
         }
       >
-        {(hash) => (
-          <img class="avatar" src={linkImageUrl(hash())} alt="" style={box()} />
-        )}
+        {(hash) => <img class="avatar" src={linkImageUrl(hash())} alt="" style={box()} />}
       </Show>
       <Show when={props.presence}>{(p) => <PresenceIndicator presence={p()} />}</Show>
     </span>

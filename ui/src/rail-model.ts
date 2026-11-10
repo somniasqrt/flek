@@ -1,3 +1,4 @@
+import { t } from "./i18n/index.ts";
 import { readable } from "./snippet.ts";
 
 export type RailView = "home" | "dms" | "activity" | "files";
@@ -17,10 +18,10 @@ export function messagePreview(
   let text = readable(row.text, people, emoji);
   if (!text) {
     text = row.hidden_by_limit
-      ? "Hidden by Slack's 90-day limit"
-      : row.file_name ?? "No messages yet";
+      ? t("Hidden by Slack's 90-day limit")
+      : row.file_name ?? t("No messages yet");
   }
-  return (row.user_id === me ? "You: " : "") + text;
+  return row.user_id === me ? t("You: {text}", { text }) : text;
 }
 
 export function fileType(mimetype: string | null): "image" | "pdf" | "doc" | "other" {

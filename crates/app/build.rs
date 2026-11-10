@@ -3,6 +3,14 @@
 //! showing Slack's page gets none.
 
 const COMMANDS: &[&str] = &[
+    "get_settings",
+    "set_settings",
+    "storage_info",
+    "clear_file_cache",
+    "full_resync",
+    "sign_out",
+    "account_origin",
+    "show_storage",
     "team_icon",
     "mark_read",
     "conversation_preference",

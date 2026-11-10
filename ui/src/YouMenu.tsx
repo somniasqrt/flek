@@ -1,8 +1,11 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
+import { t, errorMessage, locale, clock24 } from "./i18n";
+import { setPreferencesOpen } from "./settings";
 import { api } from "./api";
 import Avatar from "./Avatar";
 import CustomStatus from "./CustomStatus";
+import T from "./i18n/T";
 import Emoji from "./EmojiView";
 import EmojiPicker from "./EmojiPicker";
 import PresenceIndicator from "./PresenceIndicator";
@@ -92,7 +95,7 @@ export default function YouMenu(props: {
           } else if (view === "status" && previous?.[2]) {
             control = emojiButton;
           } else if (view === "status") {
-            control = panel.querySelector('input[aria-label="Status text"]');
+            control = panel.querySelector(".status-input-row input");
           } else if (pause) {
             control = panel.querySelector(".you-pause button");
           } else if (previous?.[1]) {
@@ -188,7 +191,11 @@ export default function YouMenu(props: {
           classList={{ "status-dialog": view() === "status" }}
           role={view() === "status" ? "dialog" : "menu"}
           aria-label={
-            view() === "status" ? "Set a status" : props.pauseOnly ? "Pause notifications" : "You"
+            view() === "status"
+              ? t("Set a status")
+              : props.pauseOnly
+                ? t("Pause notifications")
+                : t("You")
           }
           aria-modal={view() === "status" ? true : undefined}
           aria-busy={busy()}
@@ -214,7 +221,7 @@ export default function YouMenu(props: {
                       <strong>{name()}</strong>
                       <div class="you-presence">
                         <PresenceIndicator presence={presenceOf(props.userId)} />{" "}
-                        {away() ? "Away" : "Active"}
+                        {away() ? t("Away") : t("Active")}
                       </div>
                     </div>
                   </div>
@@ -231,14 +238,14 @@ export default function YouMenu(props: {
                         setView("status");
                       }}
                     >
-                      <Show when={current()} fallback={<>😊 Update your status</>}>
+                      <Show when={current()} fallback={<>{t("😊 Update your status")}</>}>
                         <CustomStatus status={current()} text />
                       </Show>
                     </button>
                     <Show when={current()}>
                       <button
                         type="button"
-                        aria-label="Clear status"
+                        aria-label={t("Clear status")}
                         disabled={busy()}
                         onClick={() => run(api.clearStatus)}
                       >
@@ -252,7 +259,7 @@ export default function YouMenu(props: {
                     disabled={busy()}
                     onClick={() => run(() => api.setPresence(!away()))}
                   >
-                    Set yourself as {away() ? "active" : "away"}
+                    {t(away() ? "Set yourself as active" : "Set yourself as away")}
                   </button>
                   <button
                     class="message-menu-item"
@@ -261,25 +268,38 @@ export default function YouMenu(props: {
                     aria-expanded={pause()}
                     onClick={() => setPause(!pause())}
                   >
-                    Pause notifications{" "}
-                    <Show when={paused()}>
-                      <span class="muted">· Paused</span>
-                    </Show>{" "}
+                    <T
+                      k={
+                        paused()
+                          ? "Pause notifications <muted>(paused)</muted>"
+                          : "Pause notifications"
+                      }
+                      tags={{ muted: (text) => <span class="muted">{text}</span> }}
+                    />{" "}
                     <span aria-hidden="true">›</span>
                   </button>
                 </Show>
                 <Show when={props.pauseOnly}>
-                  <h3>Pause notifications</h3>
+                  <h3>{t("Pause notifications")}</h3>
                 </Show>
                 <Show when={pause()}>
-                  <div class="you-pause" role="menu" aria-label="Pause notifications">
+                  <div class="you-pause" role="menu" aria-label={t("Pause notifications")}>
                     <For
                       each={
                         [
-                          ["30 minutes", 30],
-                          ["1 hour", 60],
-                          ["2 hours", 120],
-                          ["Until tomorrow at 9:00 AM", 0],
+                          [t("30 minutes"), 30],
+                          [t("1 hour"), 60],
+                          [t("2 hours"), 120],
+                          [
+                            t("Until tomorrow at {time}", {
+                              time: new Date(2000, 0, 1, 9).toLocaleTimeString(locale(), {
+                                hour: "numeric",
+                                minute: "2-digit",
+                                hour12: !clock24(),
+                              }),
+                            }),
+                            0,
+                          ],
                         ] as const
                       }
                     >
@@ -304,7 +324,7 @@ export default function YouMenu(props: {
                       }
                       onClick={() => run(api.endSnooze, true)}
                     >
-                      Resume notifications
+                      {t("Resume notifications")}
                     </button>
                   </div>
                 </Show>
@@ -318,13 +338,23 @@ export default function YouMenu(props: {
                       props.onClose();
                     }}
                   >
-                    Profile
+                    {t("Profile")}
+                  </button>
+                  <button
+                    class="message-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      props.onClose();
+                      setPreferencesOpen(true);
+                    }}
+                  >
+                    {t("Preferences…")}
                   </button>
                 </Show>
               </>
             }
           >
-            <h3>Set a status</h3>
+            <h3>{t("Set a status")}</h3>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -344,7 +374,7 @@ export default function YouMenu(props: {
                   ref={emojiButton}
                   type="button"
                   class="status-emoji-button"
-                  aria-label="Choose status emoji"
+                  aria-label={t("Choose status emoji")}
                   aria-expanded={picker()}
                   disabled={busy()}
                   onClick={() => setPicker(!picker())}
@@ -354,8 +384,8 @@ export default function YouMenu(props: {
                   </Show>
                 </button>
                 <input
-                  aria-label="Status text"
-                  placeholder="What's your status?"
+                  aria-label={t("Status text")}
+                  placeholder={t("What's your status?")}
                   value={text()}
                   disabled={busy()}
                   onInput={(e) => {
@@ -366,7 +396,7 @@ export default function YouMenu(props: {
                 />
                 <button
                   type="button"
-                  aria-label="Clear status fields"
+                  aria-label={t("Clear status fields")}
                   disabled={busy()}
                   onClick={() => {
                     setText("");
@@ -389,19 +419,19 @@ export default function YouMenu(props: {
                 </div>
               </Show>
               <div class="status-expiration">
-                <label for="status-clear-after">Clear after</label>
+                <label for="status-clear-after">{t("Clear after")}</label>
                 <select
                   id="status-clear-after"
                   value={after()}
                   disabled={busy()}
                   onChange={(e) => setAfter(e.currentTarget.value as ClearAfter)}
                 >
-                  <option value="never">Don't clear</option>
-                  <option value="30m">30 minutes</option>
-                  <option value="1h">1 hour</option>
-                  <option value="4h">4 hours</option>
-                  <option value="today">Today</option>
-                  <option value="week">This week</option>
+                  <option value="never">{t("Don't clear")}</option>
+                  <option value="30m">{t("30 minutes")}</option>
+                  <option value="1h">{t("1 hour")}</option>
+                  <option value="4h">{t("4 hours")}</option>
+                  <option value="today">{t("Today")}</option>
+                  <option value="week">{t("This week")}</option>
                 </select>
               </div>
               <div class="status-actions">
@@ -413,17 +443,17 @@ export default function YouMenu(props: {
                     setView("menu");
                   }}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button class="status-save" type="submit" disabled={busy()}>
-                  Save
+                  {t("Save")}
                 </button>
               </div>
             </form>
           </Show>
           <Show when={error()}>
             <p class="error you-error" role="alert">
-              {error()}
+              {errorMessage(error())}
             </p>
           </Show>
         </div>

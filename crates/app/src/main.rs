@@ -6,6 +6,7 @@
 mod autostart;
 mod commands;
 mod files;
+mod i18n;
 mod login;
 mod state;
 mod tray;
@@ -45,6 +46,14 @@ fn main() {
         .register_asynchronous_uri_scheme_protocol(files::SCHEME, files::handle)
         .manage(AppState::new(store))
         .invoke_handler(tauri::generate_handler![
+            commands::get_settings,
+            commands::set_settings,
+            commands::storage_info,
+            commands::clear_file_cache,
+            commands::full_resync,
+            commands::sign_out,
+            commands::account_origin,
+            commands::show_storage,
             commands::team_icon,
             commands::mark_read,
             commands::conversation_preference,
@@ -102,7 +111,16 @@ fn main() {
                 api.prevent_close();
                 window_size::capture(window);
                 window_size::save(window.app_handle());
-                hide_main(window.app_handle());
+                if window
+                    .app_handle()
+                    .state::<AppState>()
+                    .settings()
+                    .keep_in_menu_bar
+                {
+                    hide_main(window.app_handle());
+                } else {
+                    window.app_handle().exit(0);
+                }
             }
             WindowEvent::Moved(_)
             | WindowEvent::Resized(_)

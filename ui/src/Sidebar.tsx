@@ -1,4 +1,7 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
+import { t, locale } from "./i18n";
+import { settings } from "./settings";
+import { sortDms } from "./settings-model";
 import type { Conversation } from "./api";
 import { isContextKey, menuTarget, type ConversationMenuTarget } from "./ConversationMenu";
 import { hasUnread } from "./conversation-model";
@@ -28,9 +31,11 @@ export default function Sidebar(props: {
       .filter((c) => c.kind === "public_channel" || c.kind === "private_channel")
       .sort((a, b) => a.label.localeCompare(b.label));
   const direct = () =>
-    normal()
-      .filter((c) => c.kind === "im" || c.kind === "mpim")
-      .sort((a, b) => (b.latest_ts ?? "").localeCompare(a.latest_ts ?? ""));
+    sortDms(
+      normal().filter((c) => c.kind === "im" || c.kind === "mpim"),
+      settings().dm_sort,
+      locale(),
+    );
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") setQuery("");
@@ -47,7 +52,11 @@ export default function Sidebar(props: {
     <li>
       <button
         class="conv"
-        classList={{ active: p.c.id === props.selected, unread: hasUnread(p.c), muted: p.c.notification === "muted" }}
+        classList={{
+          active: p.c.id === props.selected,
+          unread: hasUnread(p.c),
+          muted: p.c.notification === "muted",
+        }}
         onContextMenu={(e) => props.onContext(menuTarget(e, p.c.id))}
         onKeyDown={(e) => {
           if (isContextKey(e)) props.onContext(menuTarget(e, p.c.id));
@@ -61,7 +70,7 @@ export default function Sidebar(props: {
               id={p.c.dm_user_id}
               name={p.c.label}
               size={20}
-              presence={presenceOf(p.c.dm_user_id)}
+              presence={settings().presence_dots ? presenceOf(p.c.dm_user_id) : undefined}
             />
           ) : p.c.kind === "public_channel" ? (
             <Hash />
@@ -93,7 +102,7 @@ export default function Sidebar(props: {
         <Search size={14} />
         <input
           type="search"
-          placeholder="Find a conversation…"
+          placeholder={t("Find a conversation…")}
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
           onKeyDown={onKey}
@@ -101,20 +110,20 @@ export default function Sidebar(props: {
       </label>
       <div class="sections">
         <Section
-          title="Starred"
+          title={t("Starred")}
           items={live().filter((c) => c.starred && c.notification !== "muted")}
           item={Item}
         />
-        <Section title="Channels" items={channels()} item={Item} />
-        <Section title="Direct messages" items={direct()} item={Item} />
+        <Section title={t("Channels")} items={channels()} item={Item} />
+        <Section title={t("Direct messages")} items={direct()} item={Item} />
         <Section
-          title="Muted"
-          items={live().filter((c) => c.notification === "muted")}
+          title={t("Muted")}
+          items={settings().show_muted ? live().filter((c) => c.notification === "muted") : []}
           item={Item}
           collapsed
         />
         <Show when={query() && live().length === 0}>
-          <p class="nothing">No conversations match</p>
+          <p class="nothing">{t("No conversations match")}</p>
         </Show>
       </div>
     </nav>
@@ -129,8 +138,7 @@ function Section(props: {
 }) {
   const [open, setOpen] = createSignal(!props.collapsed);
   // A collapsed section still shows what needs attention, like Slack's.
-  const shown = () =>
-    open() ? props.items : props.items.filter(hasUnread);
+  const shown = () => (open() ? props.items : props.items.filter(hasUnread));
   return (
     <Show when={props.items.length > 0}>
       <button class="section" classList={{ open: open() }} onClick={() => setOpen(!open())}>

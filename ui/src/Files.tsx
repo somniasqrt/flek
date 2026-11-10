@@ -1,8 +1,11 @@
-// Files of a message: cached images inline, everything else as a card.
-// Images and PDFs open in the in-app viewer, other files in their default app.
 import { For, Show } from "solid-js";
+import { t } from "./i18n";
+import { settings } from "./settings";
 import { api, fileUrl, type FileRef } from "./api";
 import { canView, openViewer, type Sender } from "./Viewer";
+
+// Files of a message: cached images inline, everything else as a card.
+// Images and PDFs open in the in-app viewer, other files in their default app.
 
 const MAX_W = 480;
 const MAX_H = 360;
@@ -18,15 +21,19 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
   // Like Slack: images first, then the other files. One image is shown
   // large; several sit in a row at one height. A lone PDF gets a card with
   // the top of its first page; several files are compact cards in a row.
-  const images = () => props.files.filter((f) => isImage(f) && f.local_path);
-  const others = () => props.files.filter((f) => !(isImage(f) && f.local_path));
+  const images = () =>
+    props.files.filter((f) => settings().image_previews && isImage(f) && f.local_path);
+  const others = () =>
+    props.files.filter((f) => !(settings().image_previews && isImage(f) && f.local_path));
   const lone = () => props.files.length === 1;
   return (
     <div class="files">
       <Show when={images().length > 0}>
         <div class="file-row">
           <For each={images()}>
-            {(f) => <Image f={f} src={fileUrl(f.id)} single={images().length === 1} onOpen={open} />}
+            {(f) => (
+              <Image f={f} src={fileUrl(f.id)} single={images().length === 1} onOpen={open} />
+            )}
           </For>
         </div>
       </Show>
@@ -50,7 +57,12 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
     return { width: `${Math.round(w * k)}px`, height: `${Math.round(h * k)}px` };
   };
   return (
-    <button class="image" style={size()} aria-label={name(props.f)} onClick={() => props.onOpen(props.f)}>
+    <button
+      class="image"
+      style={size()}
+      aria-label={name(props.f)}
+      onClick={() => props.onOpen(props.f)}
+    >
       <img src={props.src} alt={name(props.f)} loading="lazy" />
     </button>
   );
@@ -59,7 +71,8 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
 function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => void }) {
   const f = props.f;
   const available = !f.hidden_by_limit && (!!f.local_path || !!f.permalink);
-  const preview = () => props.preview && !f.hidden_by_limit && !!f.preview_path;
+  const preview = () =>
+    settings().image_previews && props.preview && !f.hidden_by_limit && !!f.preview_path;
   return (
     <button
       class="file-card"
@@ -76,10 +89,10 @@ function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => voi
           <span class="file-name">{name(f)}</span>
           <span class="muted">
             {f.hidden_by_limit
-              ? "Hidden by Slack's Free plan"
+              ? t("Hidden by Slack's Free plan")
               : f.local_path
                 ? kindLabel(f)
-                : `${kindLabel(f)} · not downloaded`}
+                : t("{kind} · not downloaded", { kind: kindLabel(f) ?? t("File") })}
           </span>
         </span>
       </span>
@@ -93,7 +106,7 @@ function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => voi
   );
 }
 
-const name = (f: FileRef) => f.title || f.name || "file";
+const name = (f: FileRef) => f.title || f.name || t("file");
 
 function kind(f: FileRef): string {
   const m = f.mimetype ?? "";
@@ -110,4 +123,14 @@ function kind(f: FileRef): string {
 }
 
 const kindLabel = (f: FileRef) =>
-  ({ image: "Image", video: "Video", audio: "Audio", pdf: "PDF", archive: "Archive", sheet: "Spreadsheet", slides: "Presentation", doc: "Document", file: "File" })[kind(f)];
+  ({
+    image: t("Image"),
+    video: t("Video"),
+    audio: t("Audio"),
+    pdf: "PDF",
+    archive: t("Archive"),
+    sheet: t("Spreadsheet"),
+    slides: t("Presentation"),
+    doc: t("Document"),
+    file: t("File"),
+  })[kind(f)];

@@ -1,5 +1,6 @@
-// One message, as both the timeline and the thread panel show it.
 import { createSignal, For, Show } from "solid-js";
+import { t, plural, locale, clock24, errorMessage } from "./i18n";
+import { settings } from "./settings";
 import { api, tsDate, type Message } from "./api";
 import { AddReaction, ReplyInThread } from "./icons";
 import MessageMenu from "./MessageMenu";
@@ -13,6 +14,8 @@ import Rich from "./Rich";
 import { relativeTime } from "./time";
 import Unfurls from "./Unfurls";
 
+// One message, as both the timeline and the thread panel show it.
+
 /// Messages from one author closer than this are grouped (seconds).
 const GROUP_GAP = 5 * 60;
 
@@ -21,15 +24,16 @@ const [now, setNow] = createSignal(new Date());
 setInterval(() => setNow(new Date()), 60_000);
 
 export const timeLabel = (ts: string) =>
-  tsDate(ts).toLocaleTimeString(undefined, {
+  tsDate(ts).toLocaleTimeString(locale(), {
+    hour12: !clock24(),
     hour: "2-digit",
     minute: "2-digit",
   });
 
 export const author = (m: Message) =>
-  (m.user_id && people()[m.user_id]) || m.author || m.user_id || "unknown";
+  (m.user_id && people()[m.user_id]) || m.author || m.user_id || t("unknown");
 
-export const repliesLabel = (n: number) => `${n} ${n === 1 ? "reply" : "replies"}`;
+export const repliesLabel = (n: number) => plural("replies", n);
 
 /// `:name: count` pairs (core's summary) as chips.
 function Reactions(props: {
@@ -53,7 +57,12 @@ function Reactions(props: {
             classList={{ mine: props.m.own_reactions?.includes(r.name) }}
             aria-pressed={props.m.own_reactions?.includes(r.name) ?? false}
             disabled={props.busy}
-            title={`${props.m.own_reactions?.includes(r.name) ? "Remove" : "Add"} :${r.name}: reaction`}
+            title={t(
+              props.m.own_reactions?.includes(r.name)
+                ? "Remove :{name}: reaction"
+                : "Add :{name}: reaction",
+              { name: r.name },
+            )}
             onClick={() => props.onToggle(r.name)}
           >
             <Emoji name={r.name} />
@@ -64,8 +73,8 @@ function Reactions(props: {
       <button
         type="button"
         class="reaction reaction-add"
-        title="Add reaction"
-        aria-label="Add reaction"
+        title={t("Add reaction")}
+        aria-label={t("Add reaction")}
         disabled={props.busy}
         onClick={props.onPicker}
       >
@@ -89,9 +98,13 @@ function ThreadBar(props: { m: Message; onOpen: () => void }) {
       </Show>
       <span class="thread-count">{repliesLabel(props.m.reply_count)}</span>
       <Show when={last()}>
-        {(ts) => <span class="thread-last">Last reply {relativeTime(tsDate(ts()), now())}</span>}
+        {(ts) => (
+          <span class="thread-last">
+            {t("Last reply {time}", { time: relativeTime(tsDate(ts()), now()) })}
+          </span>
+        )}
       </Show>
-      <span class="thread-view">View thread</span>
+      <span class="thread-view">{t("View thread")}</span>
       <span class="thread-chevron" aria-hidden="true">
         ›
       </span>
@@ -132,7 +145,7 @@ export default function MessageRow(props: {
     try {
       await api.setReaction(props.conversationId, m.ts, name, !m.own_reactions?.includes(name));
     } catch (e) {
-      setError(`Reaction failed: ${String(e)}`);
+      setError(String(e));
     } finally {
       setBusy(false);
     }
@@ -144,18 +157,18 @@ export default function MessageRow(props: {
         rowElement.querySelector<HTMLElement>(".rich")?.innerText ?? m.text,
       );
     } catch {
-      setError("Could not copy the message");
+      setError(t("Could not copy the message"));
     }
   };
   const copyLink = async () => {
     setMenu(null);
     try {
       const status = await api.status();
-      if (status.phase !== "ready") throw new Error("Workspace is not ready");
+      if (status.phase !== "ready") throw new Error(t("Workspace is not ready"));
       const link = `slack://channel?team=${encodeURIComponent(status.team_id)}&id=${encodeURIComponent(props.conversationId)}&message=${encodeURIComponent(m.ts)}`;
       await navigator.clipboard.writeText(link);
     } catch {
-      setError("Could not copy the message link");
+      setError(t("Could not copy the message link"));
     }
   };
   const grouped = () =>
@@ -199,8 +212,8 @@ export default function MessageRow(props: {
         <div class="message-actions">
           <button
             type="button"
-            title="Add reaction"
-            aria-label="Add reaction"
+            title={t("Add reaction")}
+            aria-label={t("Add reaction")}
             disabled={busy()}
             onClick={(e) => openMenu(e, true)}
           >
@@ -209,8 +222,8 @@ export default function MessageRow(props: {
           <Show when={props.onThread}>
             <button
               type="button"
-              title="Reply in thread"
-              aria-label="Reply in thread"
+              title={t("Reply in thread")}
+              aria-label={t("Reply in thread")}
               onClick={() => props.onThread?.(m.thread_ts ?? m.ts)}
             >
               <ReplyInThread />
@@ -218,8 +231,8 @@ export default function MessageRow(props: {
           </Show>
           <button
             type="button"
-            title="More actions"
-            aria-label="More message actions"
+            title={t("More actions")}
+            aria-label={t("More message actions")}
             onClick={(e) => openMenu(e)}
           >
             ⋯
@@ -248,7 +261,7 @@ export default function MessageRow(props: {
               <button
                 class="avatar-button"
                 type="button"
-                title={`View ${author(m)}'s profile`}
+                title={t("View {name}’s profile", { name: author(m) })}
                 onClick={() => openProfile(id())}
               >
                 <Avatar id={id()} name={author(m)} />
@@ -273,8 +286,8 @@ export default function MessageRow(props: {
             </Show>
             <time class="muted">{timeLabel(m.ts)}</time>
             <Show when={m.hidden_by_limit}>
-              <span class="tag" title="Slack hides this message on the Free plan">
-                from archive
+              <span class="tag" title={t("Slack hides this message on the Free plan")}>
+                {t("from archive")}
               </span>
             </Show>
           </div>
@@ -283,12 +296,12 @@ export default function MessageRow(props: {
           <Rich text={m.text} blocks={m.blocks} />
         </Show>
         <Show when={m.edited}>
-          <span class="muted edited">(edited)</span>
+          <span class="muted edited">{t("(edited)")}</span>
         </Show>
         <Show when={m.files.length > 0}>
           <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts }} />
         </Show>
-        <Show when={m.unfurls.length > 0}>
+        <Show when={settings().link_previews && m.unfurls.length > 0}>
           <Unfurls items={m.unfurls} />
         </Show>
         <Show when={m.reactions && !m.pending}>
@@ -296,26 +309,30 @@ export default function MessageRow(props: {
         </Show>
         <Show when={error()}>
           <div class="reaction-error" role="alert">
-            {error()}{" "}
-            <button type="button" aria-label="Dismiss error" onClick={() => setError("")}>
+            {errorMessage(error())}{" "}
+            <button type="button" aria-label={t("Dismiss error")} onClick={() => setError("")}>
               ×
             </button>
           </div>
         </Show>
         <Show when={m.pending === "failed" && m.client_msg_id}>
           {(id) => (
-            <div class="send-failed" role="alert" title={m.error}>
-              <span>Not sent</span>
+            <div
+              class="send-failed"
+              role="alert"
+              title={m.error ? errorMessage(m.error) : undefined}
+            >
+              <span>{t("Not sent")}</span>
               <span aria-hidden="true">·</span>
               <button type="button" onClick={() => retry(id())}>
-                Retry
+                {t("Retry")}
               </button>
               <span aria-hidden="true">·</span>
               <button type="button" onClick={() => discard(id())}>
-                Discard
+                {t("Discard")}
               </button>
               <Show when={m.error}>
-                <span class="send-reason">{m.error}</span>
+                <span class="send-reason">{errorMessage(m.error)}</span>
               </Show>
             </div>
           )}

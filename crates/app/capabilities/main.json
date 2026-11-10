@@ -44,6 +44,14 @@
     "allow-conversation-preference",
     "allow-dismiss-conversation",
     "allow-channel-info",
-    "allow-conversation-link"
+    "allow-conversation-link",
+    "allow-get-settings",
+    "allow-set-settings",
+    "allow-storage-info",
+    "allow-clear-file-cache",
+    "allow-full-resync",
+    "allow-sign-out",
+    "allow-account-origin",
+    "allow-show-storage"
   ]
 }

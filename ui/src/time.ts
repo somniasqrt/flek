@@ -1,5 +1,12 @@
-// Time labels shared by the timeline and the thread panel. Pure (no Solid),
-// so `node --test` can load it.
+import { locale as currentLocale, clock24, translate, plural } from "./i18n/index.ts";
+
+// Time formatters take explicit locales for tests; UI defaults read preferences.
+
+function clockPreference(lang: string): boolean {
+  // Explicit locale callers (tests/formatters) get that locale's convention;
+  // UI callers pass the clock preference where they need an override.
+  return !!new Intl.DateTimeFormat(lang, { hour: "numeric" }).resolvedOptions().hour12;
+}
 
 const DAY = 86_400_000;
 
@@ -7,18 +14,24 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 
 /// "just now", "5 minutes ago", "today at 14:03", "yesterday at 09:10",
 /// "3 days ago", "2 months ago": how Slack labels a thread's last reply.
-export function relativeTime(date: Date, now: Date, locale?: string): string {
+export function relativeTime(
+  date: Date,
+  now: Date,
+  locale: string = currentLocale(),
+  hour12 = locale === currentLocale() ? !clock24() : clockPreference(locale),
+): string {
   const diff = now.getTime() - date.getTime();
   const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (diff < 60_000) return "just now";
+  if (diff < 60_000) return translate(locale, "just now");
   if (diff < 3_600_000) return rtf.format(-Math.floor(diff / 60_000), "minute");
   const clock = date.toLocaleTimeString(locale, {
+    hour12,
     hour: "2-digit",
     minute: "2-digit",
   });
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
-  if (days <= 0) return `today at ${clock}`;
-  if (days === 1) return `yesterday at ${clock}`;
+  if (days <= 0) return translate(locale, "today at {time}", { time: clock });
+  if (days === 1) return translate(locale, "yesterday at {time}", { time: clock });
   if (days < 30) return rtf.format(-days, "day");
   const months = (now.getFullYear() - date.getFullYear()) * 12 + now.getMonth() - date.getMonth();
   if (months < 12) return rtf.format(-Math.max(1, months), "month");
@@ -31,9 +44,11 @@ export function localTime(
   now: Date,
   tz: string | null,
   offset: number | null,
-  locale?: string,
+  locale: string = currentLocale(),
+  hour12: boolean = locale === currentLocale() ? !clock24() : clockPreference(locale),
 ): string | null {
   const opts: Intl.DateTimeFormatOptions = {
+    hour12,
     hour: "numeric",
     minute: "2-digit",
   };
@@ -51,30 +66,30 @@ export function localTime(
   });
 }
 
-/// Compact rail-list time; dates use English Slack-style day/month order.
-export function listTime(date: Date, now: Date): string {
+/// Compact rail-list time and localised calendar dates.
+export function listTime(date: Date, now: Date, locale = currentLocale()): string {
   const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} ${minutes === 1 ? "min" : "mins"}`;
+  if (minutes < 1) return translate(locale, "Just now");
+  if (minutes < 60) return plural("minutesShort", minutes, locale);
   if (minutes < 24 * 60) {
     const hours = Math.floor(minutes / 60);
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return plural("hoursShort", hours, locale);
   }
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
-  if (days < 7) return date.toLocaleDateString("en-GB", { weekday: "long" });
-  return date.toLocaleDateString("en-GB", {
+  if (days < 7) return date.toLocaleDateString(locale, { weekday: "long" });
+  return date.toLocaleDateString(locale, {
     day: "numeric",
     month: "long",
     year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",
   });
 }
 
-export function activityDay(date: Date, now: Date): string {
+export function activityDay(date: Date, now: Date, locale = currentLocale()): string {
   const days = Math.round((startOfDay(now) - startOfDay(date)) / DAY);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days > 1 && days < 7) return date.toLocaleDateString("en-GB", { weekday: "long" });
-  return date.toLocaleDateString("en-GB", {
+  if (days === 0) return translate(locale, "Today");
+  if (days === 1) return translate(locale, "Yesterday");
+  if (days > 1 && days < 7) return date.toLocaleDateString(locale, { weekday: "long" });
+  return date.toLocaleDateString(locale, {
     day: "numeric",
     month: "long",
     year: date.getFullYear() === now.getFullYear() ? undefined : "numeric",

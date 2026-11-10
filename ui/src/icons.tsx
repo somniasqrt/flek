@@ -1,5 +1,6 @@
-// Line icons (20×20, stroked with currentColor) for the chrome.
 import type { JSX } from "solid-js";
+
+// Line icons (20×20, stroked with currentColor) for the chrome.
 
 const Icon = (props: { size?: number; children: JSX.Element }) => (
   <svg

@@ -1,5 +1,3 @@
-// Renders a message's mrkdwn text: blocks, inline styles, mentions, emoji
-// and links (meeting / doc / video links get a service badge).
 import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { api } from "./api";
@@ -9,8 +7,18 @@ import { linkInfo, shortUrl, type LinkKind } from "./links";
 import { parse, type Block, type Inline } from "./mrkdwn";
 import { people } from "./people";
 
+// Renders a message's mrkdwn text: blocks, inline styles, mentions, emoji
+// and links (meeting / doc / video links get a service badge).
+
 export default function Rich(props: { text: string; blocks?: unknown }) {
-  return <Show when={hasRichBlocks(props.blocks)} fallback={<div class="rich">{blocks(parse(props.text))}</div>}><RichBlocks blocks={props.blocks} /></Show>;
+  return (
+    <Show
+      when={hasRichBlocks(props.blocks)}
+      fallback={<div class="rich">{blocks(parse(props.text))}</div>}
+    >
+      <RichBlocks blocks={props.blocks} />
+    </Show>
+  );
 }
 
 /// Render an already parsed tree without interpreting decoded website text as HTML.
@@ -42,7 +50,9 @@ function blocks(list: Block[]): JSX.Element {
           <Match when={b.t === "h" && b}>
             {(h) => <div class={`h h${h().level}`}>{inlines(h().c)}</div>}
           </Match>
-          <Match when={b.t === "quote" && b}>{(q) => <blockquote>{blocks(q().c)}</blockquote>}</Match>
+          <Match when={b.t === "quote" && b}>
+            {(q) => <blockquote>{blocks(q().c)}</blockquote>}
+          </Match>
           <Match when={b.t === "pre" && b}>{(c) => <pre>{c().v}</pre>}</Match>
           <Match when={b.t === "list" && b}>
             {(l) => {
@@ -53,7 +63,9 @@ function blocks(list: Block[]): JSX.Element {
                   start={l().ordered ? l().start : undefined}
                 >
                   <For each={l().items}>
-                    {(item) => <li style={{ "margin-left": `${item.level * 18}px` }}>{inlines(item.c)}</li>}
+                    {(item) => (
+                      <li style={{ "margin-left": `${item.level * 18}px` }}>{inlines(item.c)}</li>
+                    )}
                   </For>
                 </Dynamic>
               );
@@ -137,7 +149,8 @@ export function Link(props: { url: string; label?: Inline[] }) {
 /// Small line icons, drawn here (no third-party logos).
 export function LinkIcon(props: { kind: LinkKind }) {
   const paths: Record<LinkKind, string> = {
-    meeting: "M3 6.5h9a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 16V8A1.5 1.5 0 0 1 3 6.5Zm10.5 4 5-3v9l-5-3",
+    meeting:
+      "M3 6.5h9a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 16V8A1.5 1.5 0 0 1 3 6.5Zm10.5 4 5-3v9l-5-3",
     doc: "M5 2.5h7l4 4V17a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 5 17V3a.5.5 0 0 1 .5-.5ZM12 2.5V7h4M7.5 10h6M7.5 13h6",
     video: "M2.5 5.5h15v9h-15zM8.5 7.8v4.4l3.8-2.2z",
     code: "M7 6 3 10l4 4M13 6l4 4-4 4M11 4.5l-2 11",

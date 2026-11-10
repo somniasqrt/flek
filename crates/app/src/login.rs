@@ -65,7 +65,10 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     let handle = app.clone();
     let url: Url = SLACK_URL.parse().expect("valid URL");
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(url))
-        .title("Sign in to Slack")
+        .title(crate::i18n::t(
+            app.state::<AppState>().settings().language,
+            crate::i18n::Key::SignIn,
+        ))
         .inner_size(520.0, 760.0)
         .initialization_script(CAPTURE_SCRIPT)
         .on_navigation(move |url| {

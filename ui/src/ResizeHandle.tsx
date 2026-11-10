@@ -1,4 +1,5 @@
 import { createSignal, onCleanup, onMount } from "solid-js";
+import { t, plural } from "./i18n";
 import { clamp } from "./panel-sizes";
 
 export default function ResizeHandle(props: {
@@ -47,9 +48,9 @@ export default function ResizeHandle(props: {
       aria-valuemin={props.min}
       aria-valuemax={Math.round(props.max)}
       aria-valuenow={Math.round(props.value)}
-      aria-valuetext={`${Math.round(props.value)} pixels`}
+      aria-valuetext={plural("pixels", Math.round(props.value))}
       tabIndex={0}
-      title={`${props.label} · drag or use arrow keys · double-click to reset`}
+      title={t("{name} · drag or use arrow keys · double-click to reset", { name: props.label })}
       onPointerDown={(e) => {
         if (e.button !== 0 || !e.isPrimary) return;
         e.preventDefault();

@@ -73,6 +73,9 @@ pub async fn download_files(
     max_size: Option<i64>,
     mut progress: impl FnMut(usize, usize),
 ) -> Result<FileStats> {
+    if max_size == Some(0) {
+        return Ok(FileStats::default());
+    }
     let (files_list, previews) = store
         .call(move |c| {
             Ok((

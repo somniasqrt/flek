@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { t, errorMessage, locale } from "./i18n";
 import { api, fileUrl, tsDate, type Conversation, type StoredFile } from "./api";
 import { Document } from "./icons";
 import { people } from "./people";
@@ -6,22 +7,23 @@ import { fileType } from "./rail-model";
 import type { Jump } from "./Search";
 import { canView, openViewer } from "./Viewer";
 
-export const fileCategories = [
-  ["all", "All files"],
-  ["image", "Images"],
-  ["pdf", "PDFs"],
-  ["doc", "Documents"],
-  ["other", "Other"],
-  ["mine", "Shared by me"],
-] as const;
+export const fileCategories = () =>
+  [
+    ["all", t("All files")],
+    ["image", t("Images")],
+    ["pdf", t("PDFs")],
+    ["doc", t("Documents")],
+    ["other", t("Other")],
+    ["mine", t("Shared by me")],
+  ] as const;
 
 export function FileNav(props: { category: string; onCategory: (category: string) => void }) {
   return (
-    <nav class="rail-list file-nav" aria-label="Files">
+    <nav class="rail-list file-nav" aria-label={t("Files")}>
       <header class="rail-list-header">
-        <h2>Files</h2>
+        <h2>{t("Files")}</h2>
       </header>
-      <For each={fileCategories}>
+      <For each={fileCategories()}>
         {([id, label]) => (
           <button
             class="file-nav-item"
@@ -108,7 +110,7 @@ export default function FileBrowser(props: {
         if (canView(ref)) {
           openViewer(ref, {
             user_id: f.user_id,
-            name: people()[f.user_id ?? ""] ?? "Unknown",
+            name: people()[f.user_id ?? ""] ?? t("Unknown"),
             ts: f.ts!,
           });
         } else {
@@ -124,31 +126,31 @@ export default function FileBrowser(props: {
   };
   const where = (f: StoredFile) => {
     const c = props.conversations.find((c) => c.id === f.conversation_id);
-    if (!c) return f.conversation_id ?? "Unknown conversation";
+    if (!c) return f.conversation_id ?? t("Unknown conversation");
     return c.kind === "im" || c.kind === "mpim" ? c.label : `#${c.label}`;
   };
   const available = (f: StoredFile) => !f.hidden_by_limit || !!f.local_path;
   return (
     <div class="timeline file-browser">
       <header class="conv-header">
-        <h2>{fileCategories.find(([id]) => id === props.category)?.[1] ?? "All files"}</h2>
+        <h2>{fileCategories().find(([id]) => id === props.category)?.[1] ?? t("All files")}</h2>
       </header>
       <div class="file-controls">
         <input
           type="search"
-          aria-label="Search files"
-          placeholder="Search files"
+          aria-label={t("Search files")}
+          placeholder={t("Search files")}
           value={query()}
           onInput={(e) => setQuery(e.currentTarget.value)}
         />
         <select
-          aria-label="Sort files"
+          aria-label={t("Sort files")}
           value={sort()}
           onChange={(e) => setSort(e.currentTarget.value)}
         >
-          <option value="newest">Newest</option>
-          <option value="name">Name</option>
-          <option value="size">Size</option>
+          <option value="newest">{t("Newest")}</option>
+          <option value="name">{t("Name")}</option>
+          <option value="size">{t("Size")}</option>
         </select>
       </div>
       <div class="scroller">
@@ -165,25 +167,25 @@ export default function FileBrowser(props: {
               </span>
               <div class="browser-file-text">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
-                  {f.title ?? f.name ?? "Untitled file"}
+                  {f.title ?? f.name ?? t("Untitled file")}
                 </button>
                 <p class="muted">
-                  {people()[f.user_id ?? ""] ?? "Unknown"} · {where(f)} ·{" "}
-                  {f.ts ? tsDate(f.ts).toLocaleDateString("en-GB") : ""}
+                  {people()[f.user_id ?? ""] ?? t("Unknown")} · {where(f)} ·{" "}
+                  {f.ts ? tsDate(f.ts).toLocaleDateString(locale()) : ""}
                 </p>
                 <Show when={f.hidden_by_limit}>
-                  <p class="muted">Hidden by Slack's 90-day limit</p>
+                  <p class="muted">{t("Hidden by Slack's 90-day limit")}</p>
                 </Show>
               </div>
               <div class="browser-file-actions">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
-                  Open
+                  {t("Open")}
                 </button>
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "download")}>
-                  Download
+                  {t("Download")}
                 </button>
                 <button disabled={!!working()} onClick={() => act(f, "jump")}>
-                  Jump to message
+                  {t("Jump to message")}
                 </button>
               </div>
             </div>
@@ -191,15 +193,15 @@ export default function FileBrowser(props: {
         </For>
         <Show when={error()}>
           <p class="error view-empty" role="alert">
-            {error()}
+            {errorMessage(error())}
           </p>
         </Show>
         <Show when={!busy() && files().length === 0 && !error()}>
-          <p class="view-empty muted">No files match.</p>
+          <p class="view-empty muted">{t("No files match.")}</p>
         </Show>
         <Show when={more()}>
           <button class="load-more" disabled={busy()} onClick={() => load(true)}>
-            Load more
+            {t("Load more")}
           </button>
         </Show>
       </div>

@@ -1,3 +1,4 @@
+import { t } from "./i18n/index.ts";
 export function firstUnread<T extends { ts: string }>(
   messages: readonly T[], lastRead: string | null | undefined,
 ): string | null {
@@ -9,8 +10,8 @@ export function conversationActions(kind: string) {
   const channel = kind === "public_channel" || kind === "private_channel";
   return {
     channel,
-    details: channel ? "Channel details" : "View profile",
-    dismiss: channel ? "Leave channel" : "Close conversation",
+    details: channel ? t("Channel details") : t("View profile"),
+    dismiss: channel ? t("Leave channel") : t("Close conversation"),
   };
 }
 

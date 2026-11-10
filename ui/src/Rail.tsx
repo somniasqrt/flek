@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { Dynamic } from "solid-js/web";
+import { t } from "./i18n";
 import { linkImageUrl } from "./api";
 import Avatar from "./Avatar";
 import { Activity, Document, Home, Moon, People, Plus } from "./icons";
@@ -8,12 +9,13 @@ import { presenceNow, presenceOf, presenceRows } from "./presence-store";
 import { type RailView } from "./rail-model";
 import YouMenu from "./YouMenu";
 
-const items = [
-  { id: "home", label: "Home", icon: Home },
-  { id: "dms", label: "DMs", icon: People },
-  { id: "activity", label: "Activity", icon: Activity },
-  { id: "files", label: "Files", icon: Document },
-] as const;
+const items = () =>
+  [
+    { id: "home", label: t("Home"), icon: Home },
+    { id: "dms", label: t("DMs"), icon: People },
+    { id: "activity", label: t("Activity"), icon: Activity },
+    { id: "files", label: t("Files"), icon: Document },
+  ] as const;
 
 export default function Rail(props: {
   team: string;
@@ -44,13 +46,13 @@ export default function Rail(props: {
     return 0;
   };
   return (
-    <nav class="rail" aria-label="Workspace">
+    <nav class="rail" aria-label={t("Workspace")}>
       <div class="rail-team" title={props.team}>
         <Show when={props.icon} fallback={initials()}>
           {(hash) => <img src={linkImageUrl(hash())} alt={props.team} />}
         </Show>
       </div>
-      <For each={items}>
+      <For each={items()}>
         {(item) => (
           <button
             class="rail-item"
@@ -69,13 +71,13 @@ export default function Rail(props: {
         )}
       </For>
       <div class="rail-bottom">
-        <button class="rail-action" aria-label="New message" onClick={props.onCompose}>
+        <button class="rail-action" aria-label={t("New message")} onClick={props.onCompose}>
           <Plus size={22} />
         </button>
         <button
           class="rail-action"
           classList={{ snoozed: snoozed() }}
-          aria-label="Pause notifications"
+          aria-label={t("Pause notifications")}
           aria-pressed={snoozed()}
           aria-haspopup="menu"
           aria-expanded={!!menu()?.pause}
@@ -90,7 +92,7 @@ export default function Rail(props: {
         </button>
         <button
           class="rail-me"
-          aria-label="You"
+          aria-label={t("You")}
           aria-haspopup="menu"
           aria-expanded={!!menu() && !menu()?.pause}
           title={props.user}

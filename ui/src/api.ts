@@ -244,7 +244,18 @@ export type ChannelInfo = {
   pins: { ts: string; text: string }[] | null;
 };
 
+export type StorageInfo = { db_path: string; db_bytes: number; cache_bytes: number };
+
 export const api = {
+  getSettings: () => invoke<import("./settings-model").Settings>("get_settings"),
+  setSettings: (settings: import("./settings-model").Settings) =>
+    invoke<import("./settings-model").Settings>("set_settings", { settings }),
+  storageInfo: () => invoke<StorageInfo>("storage_info"),
+  showStorage: () => invoke<void>("show_storage"),
+  clearFileCache: () => invoke<void>("clear_file_cache"),
+  fullResync: () => invoke<void>("full_resync"),
+  signOut: () => invoke<void>("sign_out"),
+  accountOrigin: () => invoke<string>("account_origin"),
   markRead: (conversationId: string, ts: string) =>
     invoke<void>("mark_read", { conversationId, ts }),
   conversationPreference: (

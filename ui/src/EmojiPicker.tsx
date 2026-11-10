@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show, onMount } from "solid-js";
+import { t } from "./i18n";
 import Emoji, { customEmojiNames } from "./EmojiView";
 import { emoji } from "./emoji";
 import EmojiCategoryIcon from "./EmojiCategoryIcon";
@@ -102,9 +103,14 @@ export default function EmojiPicker(props: {
   );
   onMount(() => search.focus());
   return (
-    <div class="emoji-picker" aria-label="Emoji picker">
-      <div class="emoji-categories" role="tablist" aria-label="Emoji categories">
-        <For each={[{ id: "search", label: "Search all emoji" }, ...categories]}>
+    <div class="emoji-picker" aria-label={t("Emoji picker")}>
+      <div class="emoji-categories" role="tablist" aria-label={t("Emoji categories")}>
+        <For
+          each={[
+            { id: "search", label: t("Search all emoji") },
+            ...categories.map((c) => ({ ...c, label: t(c.label) })),
+          ]}
+        >
           {(category) => (
             <button
               type="button"
@@ -123,8 +129,8 @@ export default function EmojiPicker(props: {
         <input
           ref={search}
           type="search"
-          placeholder="Search all emoji"
-          aria-label="Find an emoji"
+          placeholder={t("Search all emoji")}
+          aria-label={t("Find an emoji")}
           value={query()}
           onKeyDown={(e) => {
             if (e.key !== "ArrowDown" && e.key !== "Enter") return;
@@ -146,7 +152,7 @@ export default function EmojiPicker(props: {
       <div
         class="emoji-scroll"
         ref={scroller}
-        aria-label="Emoji"
+        aria-label={t("Emoji")}
         onKeyDown={(e) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
           const current = (e.target as HTMLElement).closest("button");
@@ -171,17 +177,17 @@ export default function EmojiPicker(props: {
           when={q()}
           fallback={
             <>
-              {section("frequent", "Frequently used", frequent())}
+              {section("frequent", t("Frequently used"), frequent())}
               {section(
                 "work",
-                "Getting work done",
+                t("Getting work done"),
                 workEmoji.filter((name) => !!emoji(name)),
               )}
               <For each={categories}>
                 {(category) =>
                   section(
                     category.id,
-                    category.label,
+                    t(category.label),
                     category.id === "custom"
                       ? customEmojiNames()
                       : emojiCatalog.filter((e) => e.group === category.id).map((e) => e.name),
@@ -190,16 +196,16 @@ export default function EmojiPicker(props: {
               </For>
               <Show when={!customEmojiNames().length}>
                 <section class="emoji-category-section" ref={(el) => sections.set("custom", el)}>
-                  <h3>Workspace emoji</h3>
-                  <p class="muted">Workspace emoji appear here after syncing.</p>
+                  <h3>{t("Workspace emoji")}</h3>
+                  <p class="muted">{t("Workspace emoji appear here after syncing.")}</p>
                 </section>
               </Show>
             </>
           }
         >
-          {section("results", "Search results", results())}
+          {section("results", t("Search results"), results())}
           <Show when={!results().length}>
-            <p class="emoji-no-results muted">No emoji found</p>
+            <p class="emoji-no-results muted">{t("No emoji found")}</p>
           </Show>
         </Show>
       </div>
@@ -213,20 +219,20 @@ export default function EmojiPicker(props: {
           <button
             type="button"
             class="emoji-tone-toggle"
-            aria-label="Skin tone"
+            aria-label={t("Skin tone")}
             aria-expanded={toneOpen()}
             onClick={() => setToneOpen(!toneOpen())}
           >
             <Emoji name={tone() ? `raised_hand::skin-tone-${tone()}` : "raised_hand"} />
-            <span>Skin tone</span>
+            <span>{t("Skin tone")}</span>
           </button>
           <Show when={toneOpen()}>
-            <div class="emoji-tone-options" role="group" aria-label="Choose skin tone">
+            <div class="emoji-tone-options" role="group" aria-label={t("Choose skin tone")}>
               <For each={[0, 2, 3, 4, 5, 6]}>
                 {(value) => (
                   <button
                     type="button"
-                    aria-label={value ? `Skin tone ${value}` : "Default skin tone"}
+                    aria-label={value ? t("Skin tone {n}", { n: value }) : t("Default skin tone")}
                     aria-pressed={tone() === value}
                     onClick={() => {
                       setTone(value);

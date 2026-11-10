@@ -1,12 +1,14 @@
-// Right-side thread panel: the root, a "N replies" rule, then the replies.
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
+import { t } from "./i18n";
 import { api, type Change, type Conversation, type Message } from "./api";
 import { Hash, Lock } from "./icons";
 import Composer from "./Composer";
 import MessageRow, { repliesLabel } from "./MessageRow";
 import { pendingFor } from "./outbox";
 import type { Jump } from "./Search";
+
+// Right-side thread panel: the root, a "N replies" rule, then the replies.
 
 export default function Thread(props: {
   conversation: Conversation;
@@ -85,9 +87,9 @@ export default function Thread(props: {
   const kind = () => props.conversation.kind;
 
   return (
-    <aside class="thread-panel" aria-label="Thread">
+    <aside class="thread-panel" aria-label={t("Thread")}>
       <header class="thread-header">
-        <h3>Thread</h3>
+        <h3>{t("Thread")}</h3>
         <span class="thread-channel muted">
           {kind() === "public_channel" ? (
             <Hash size={13} />
@@ -96,7 +98,7 @@ export default function Thread(props: {
           ) : null}
           {props.conversation.label}
         </span>
-        <button class="thread-close" type="button" title="Close (Esc)" onClick={props.onClose}>
+        <button class="thread-close" type="button" title={t("Close (Esc)")} onClick={props.onClose}>
           <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
             <path d="M5 5l10 10M15 5L5 15" />
           </svg>
@@ -122,21 +124,21 @@ export default function Thread(props: {
           )}
         </For>
         <Show when={loaded() && rows.length === 0}>
-          <div class="start muted">This thread is no longer available.</div>
+          <div class="start muted">{t("This thread is no longer available.")}</div>
         </Show>
         <Show when={loaded() && root() && replies().length === 0}>
-          <div class="start muted">Replies appear here once they sync.</div>
+          <div class="start muted">{t("Replies appear here once they sync.")}</div>
         </Show>
       </div>
       <Show when={!loaded() || rows.length > 0}>
         <Composer
           conversationId={props.conversation.id}
           threadTs={props.ts}
-          placeholder="Reply…"
+          placeholder={t("Reply…")}
           broadcastLabel={
             kind() === "im" || kind() === "mpim"
-              ? "Also send as direct message"
-              : `Also send to #${props.conversation.label}`
+              ? t("Also send as direct message")
+              : t("Also send to #{name}", { name: props.conversation.label })
           }
           onSent={toBottom}
         />

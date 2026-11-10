@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activityDay, listTime } from "./time.ts";
+import { activityDay as formatActivityDay, listTime as formatListTime } from "./time.ts";
 import { fileType, messagePreview, readRail } from "./rail-model.ts";
+
+// The English fixture uses day/month order explicitly; UI defaults now follow locale.
+const listTime = (date: Date, now: Date) => formatListTime(date, now, "en-GB");
+const activityDay = (date: Date, now: Date) => formatActivityDay(date, now, "en-GB");
 
 const now = new Date(2026, 10, 10, 14, 0);
 
