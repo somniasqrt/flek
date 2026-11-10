@@ -151,6 +151,7 @@ async fn gives_up_after_repeated_429() {
 async fn rtm_connect_returns_url() {
     let server = MockServer::start().await;
     Mock::given(path("/rtm.connect"))
+        .and(field("batch_presence_aware", "1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
             "ok": true, "url": "wss://wss-primary.slack.com/websocket/fake",
             "team": {"id": "T0FAKE"}, "self": {"id": "U0FAKE"}

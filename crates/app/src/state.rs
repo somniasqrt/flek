@@ -51,6 +51,7 @@ pub struct AppState {
     pub creds: CredentialStore,
     pub bus: Bus,
     pub priority: Priority,
+    pub presence: watch::Sender<Vec<String>>,
     status: Mutex<Status>,
     /// Latest progress, for a UI that mounts after it was sent.
     progress: Mutex<Option<Progress>>,
@@ -69,6 +70,7 @@ impl AppState {
             creds: CredentialStore::keychain(),
             bus: bus(),
             priority: Priority::default(),
+            presence: watch::channel(Vec::new()).0,
             status: Mutex::new(Status::Starting),
             progress: Mutex::new(None),
             connection: Mutex::new(None),
@@ -171,6 +173,9 @@ pub fn forward_changes(app: &AppHandle) {
 /// Slack desktop import, else the sign-in screen.
 pub async fn boot(app: AppHandle) {
     let state = app.state::<AppState>();
+    if let Err(e) = flek_core::sync::presence::stale(&state.store, &state.bus).await {
+        tracing::warn!(error = %e, "cannot invalidate cached presence");
+    }
     let stored = state
         .creds
         .list()
@@ -244,6 +249,7 @@ pub fn start(app: &AppHandle, session: Session) {
     let state = app.state::<AppState>();
     state.stop_engine();
     let me = session.identity.clone();
+    state.presence.send_replace(vec![me.user_id.clone()]);
     set_status(
         app,
         Status::Ready {
@@ -281,6 +287,10 @@ pub fn start(app: &AppHandle, session: Session) {
             files,
             follow: true,
             refresh_every: REFRESH_EVERY,
+            follow_config: flek_core::sync::follow::FollowConfig {
+                presence: Some(state.presence.subscribe()),
+                ..Default::default()
+            },
             ..Default::default()
         },
     };

@@ -21,6 +21,7 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 | done (M1) | Backfill of all available history into SQLite, resumable, with threads, reactions and files |
 | done (M2, CLI) | Live updates over websocket, survives network drops and sleep |
 | planned | Channels, DMs, threads, reactions, images, files |
+| implemented (M6.7; live verification pending) | Presence on DM/profile/self avatars; You menu for custom status, away/active and notification snooze |
 | planned | Sending messages, replies, reactions, mark as read |
 | done (M1, CLI) | Local full-text search including hidden (>90 days) messages |
 | done (M1) | Import of existing JSON archives (e.g. slackdump) |

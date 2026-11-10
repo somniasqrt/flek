@@ -88,6 +88,21 @@ impl Connection {
         Ok(id)
     }
 
+    /// Replace the legacy RTM presence set and request its immediate snapshot.
+    pub async fn subscribe_presence(&mut self, ids: &[String]) -> Result<()> {
+        for kind in ["presence_sub", "presence_query"] {
+            let id = self.next_id;
+            self.next_id += 1;
+            self.ws
+                .send(Frame::text(
+                    json!({"id": id, "type": kind, "ids": ids}).to_string(),
+                ))
+                .await
+                .map_err(ws_err)?;
+        }
+        Ok(())
+    }
+
     pub async fn close(mut self) {
         let _ = self.ws.close(None).await;
     }

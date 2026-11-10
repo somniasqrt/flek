@@ -21,6 +21,7 @@ import {
 } from "./api";
 import { setMe } from "./outbox";
 import { loadPeople } from "./people";
+import { directoryChanged, refreshPresence, watchPresence, tickPresence } from "./presence-store";
 import { closeProfile, profileUser } from "./profile";
 import ProfilePanel from "./ProfilePanel";
 import Rail from "./Rail";
@@ -102,9 +103,14 @@ export default function Workspace(props: { status: Ready }) {
         case "connection":
           setConnection(c.data);
           break;
+        case "presence":
+          refreshPresence().catch(() => {});
+          break;
         case "directory":
           refreshSoon();
           loadPeople();
+          directoryChanged();
+          refreshPresence().catch(() => {});
           break;
         case "read_marker":
           refreshSoon();
@@ -130,6 +136,22 @@ export default function Workspace(props: { status: Ready }) {
     await unlisten;
     setProgress(await api.progress());
     await Promise.all([loadConversations(), loadPeople()]);
+  });
+
+  createEffect(() => {
+    const ids = conversations
+      .filter((c) => c.kind === "im" && !c.is_archived)
+      .map((c) => c.dm_user_id)
+      .filter((id): id is string => !!id);
+    const profile = profileUser();
+    if (profile) ids.unshift(profile);
+    ids.unshift(props.status.user_id);
+    watchPresence([...new Set(ids)].slice(0, 500)).catch(() => {});
+  });
+  onMount(() => {
+    tickPresence();
+    const timer = window.setInterval(tickPresence, 15_000);
+    onCleanup(() => window.clearInterval(timer));
   });
 
   // Batched, so the timeline mounts (or switches) already knowing the target.

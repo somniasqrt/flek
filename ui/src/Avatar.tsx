@@ -3,8 +3,16 @@
 import { Show } from "solid-js";
 import { linkImageUrl } from "./api";
 import { avatars } from "./people";
+import PresenceIndicator from "./PresenceIndicator";
+import type { Indicator } from "./presence";
 
-export default function Avatar(props: { id: string | null; name: string; size?: number }) {
+export default function Avatar(props: {
+  id: string | null;
+  name: string;
+  size?: number;
+  presence?: Indicator;
+  photo?: string | null;
+}) {
   const initials = () =>
     props.name
       .split(/\s+/)
@@ -18,7 +26,7 @@ export default function Avatar(props: { id: string | null; name: string; size?: 
     for (const c of props.id ?? props.name) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193);
     return (h >>> 0) % 360;
   };
-  const image = () => (props.id ? avatars()[props.id] : undefined);
+  const image = () => props.photo ?? (props.id ? avatars()[props.id] : undefined);
   const px = () => props.size ?? 36;
   // Rounded square like Slack's, scaled with the size.
   const box = () => ({
@@ -28,17 +36,23 @@ export default function Avatar(props: { id: string | null; name: string; size?: 
     "font-size": `${Math.round(px() * 0.36)}px`,
   });
   return (
-    <Show
-      when={image()}
-      fallback={
-        <div class="avatar" style={{ "--hue": hue(), ...box() }}>
-          {initials()}
-        </div>
-      }
+    <span
+      class="avatar-wrap"
+      style={{ "--presence-size": `${Math.max(8, Math.min(22, px() * 0.3))}px` }}
     >
-      {(hash) => (
-        <img class="avatar" src={linkImageUrl(hash())} alt="" style={box()} />
-      )}
-    </Show>
+      <Show
+        when={image()}
+        fallback={
+          <div class="avatar" style={{ "--hue": hue(), ...box() }}>
+            {initials()}
+          </div>
+        }
+      >
+        {(hash) => (
+          <img class="avatar" src={linkImageUrl(hash())} alt="" style={box()} />
+        )}
+      </Show>
+      <Show when={props.presence}>{(p) => <PresenceIndicator presence={p()} />}</Show>
+    </span>
   );
 }

@@ -22,6 +22,14 @@ const COMMANDS: &[&str] = &[
     "search",
     "send_message",
     "set_reaction",
+    "presence_for",
+    "statuses_for",
+    "subscribe_presence",
+    "set_status",
+    "clear_status",
+    "set_presence",
+    "snooze",
+    "end_snooze",
 ];
 
 fn main() {

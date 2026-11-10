@@ -45,6 +45,7 @@ pub enum Change {
     },
     /// Users or conversations changed.
     Directory,
+    Presence,
     Connection(ConnectionState),
     /// Background sync progress, for a "Syncing messages" bar.
     Progress(Progress),
@@ -163,9 +164,65 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     conversation_id: channel,
                     user_id: user,
                 }),
+                Event::PresenceChanged {
+                    users,
+                    presence: value,
+                } => {
+                    let tx = c.transaction()?;
+                    for id in users {
+                        if !id.is_empty() && matches!(value.as_str(), "active" | "away") {
+                            crate::store::presence::set_presence(
+                                &tx,
+                                &id,
+                                &crate::api::UserPresence {
+                                    presence: value.clone(),
+                                    ..Default::default()
+                                },
+                            )?;
+                        }
+                    }
+                    tx.commit()?;
+                    Applied::Changed(Change::Presence)
+                }
+                Event::ManualPresenceChanged {
+                    user: Some(id),
+                    presence: value,
+                } => {
+                    let mut p = crate::store::presence::get(c, &id)?.unwrap_or_default();
+                    let away = value == "away";
+                    if away {
+                        p.presence = Some("away".into());
+                    }
+                    crate::store::presence::set_presence(
+                        c,
+                        &id,
+                        &crate::api::UserPresence {
+                            presence: p.presence.unwrap_or_else(|| "away".into()),
+                            manual_away: Some(away),
+                            ..Default::default()
+                        },
+                    )?;
+                    Applied::Changed(Change::Presence)
+                }
+                Event::DndUpdated {
+                    user: Some(id),
+                    dnd,
+                } => {
+                    crate::store::presence::set_dnd(c, &id, &dnd)?;
+                    Applied::Changed(Change::Presence)
+                }
+                Event::ManualPresenceChanged { user: None, .. }
+                | Event::DndUpdated { user: None, .. } => Applied::Ignored,
                 Event::UserChanged { user } => {
-                    let team = user.team_id.clone().unwrap_or_default();
-                    directory::upsert_users(c, &team, std::slice::from_ref(&*user))?;
+                    let team = match user.team_id.clone() {
+                        Some(team) => team,
+                        None => c
+                            .query_row("SELECT team_id FROM users WHERE id = ?1", [&user.id], |r| {
+                                r.get::<_, String>(0)
+                            })
+                            .unwrap_or_default(),
+                    };
+                    directory::upsert_user_change(c, &team, &user)?;
                     Applied::Changed(Change::Directory)
                 }
                 Event::ConversationsChanged { .. } => Applied::DirectoryStale,

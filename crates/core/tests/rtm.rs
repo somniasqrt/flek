@@ -204,6 +204,7 @@ mod follow {
         let mut changes = bus.subscribe();
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
         let cfg = FollowConfig {
+            presence: None,
             ping_every: Duration::from_millis(50),
             dead_after: Duration::from_millis(300),
             backoff_min: Duration::from_millis(10),

@@ -172,3 +172,5 @@ pub async fn fresh_message_reference(
     }
     Ok(())
 }
+
+pub mod presence;

@@ -28,3 +28,6 @@ pub use channel_details::Pin;
 
 mod search;
 pub use search::{SearchMatch, SearchPage, SearchSort};
+
+mod presence;
+pub use presence::{CustomStatus, Dnd, SetPresence, UserPresence};

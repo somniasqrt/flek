@@ -26,6 +26,8 @@ use crate::Result;
 
 #[derive(Debug, Clone)]
 pub struct FollowConfig {
+    /// UI-selected people. None keeps CLI follow free of presence requests.
+    pub presence: Option<watch::Receiver<Vec<String>>>,
     pub ping_every: Duration,
     /// No frame at all for this long → the connection is dead.
     pub dead_after: Duration,
@@ -36,6 +38,7 @@ pub struct FollowConfig {
 impl Default for FollowConfig {
     fn default() -> Self {
         Self {
+            presence: None,
             ping_every: Duration::from_secs(30),
             dead_after: Duration::from_secs(75),
             backoff_min: Duration::from_secs(1),
@@ -88,6 +91,7 @@ pub async fn follow(
     mut catch_up: impl AsyncFnMut() -> Result<()>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
+    super::presence::stale(store, bus).await?;
     let mut backoff = Backoff::new(cfg.backoff_min, cfg.backoff_max);
     loop {
         if *shutdown.borrow() {
@@ -108,6 +112,7 @@ pub async fn follow(
                     &mut shutdown,
                 )
                 .await;
+                super::presence::stale(store, bus).await?;
                 match end {
                     Ok(End::Shutdown) => {
                         conn.close().await;
@@ -143,6 +148,25 @@ async fn session(
     catch_up: &mut impl AsyncFnMut() -> Result<()>,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<End> {
+    let mut presence_rx = cfg.presence.clone();
+    let mut ids = presence_rx
+        .as_mut()
+        .map(|rx| rx.borrow_and_update().clone())
+        .unwrap_or_default();
+    if presence_rx.is_some() {
+        if !ids.contains(&me.user_id) {
+            ids.push(me.user_id.clone());
+        }
+        conn.subscribe_presence(&ids).await?;
+    }
+    let mut snapshot = Box::pin(super::presence::snapshot(
+        client,
+        store,
+        bus,
+        &me.user_id,
+        ids.clone(),
+    ));
+    let mut snapshot_pending = presence_rx.is_some();
     let mut catching_up = pin!(catch_up());
     let mut caught_up = false;
     let mut ticker = interval(cfg.ping_every);
@@ -170,15 +194,56 @@ async fn session(
                     Err(e) => tracing::warn!(error = %e, "catch-up failed"),
                 }
             }
+            result = &mut snapshot, if snapshot_pending => {
+                snapshot_pending = false;
+                if let Err(e) = result {
+                    if e.is_auth_error() {
+                        return Err(e);
+                    }
+                    tracing::debug!(error = %e, "presence snapshot unavailable");
+                }
+            }
+            changed = async {
+                match &mut presence_rx {
+                    Some(rx) => rx.changed().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if changed.is_err() {
+                    presence_rx = None;
+                    continue;
+                }
+                let next = presence_rx.as_mut().unwrap().borrow_and_update().clone();
+                ids = update_presence_subscription(conn, store, bus, &me.user_id, &ids, next).await?;
+                snapshot = Box::pin(super::presence::snapshot(
+                    client,
+                    store,
+                    bus,
+                    &me.user_id,
+                    ids.clone(),
+                ));
+                snapshot_pending = true;
+            }
             frame = conn.next_event() => {
-                let Some(v) = frame? else { return Ok(End::Reconnect("closed by server")) };
+                let Some(v) = frame? else {
+                    return Ok(End::Reconnect("closed by server"));
+                };
                 last_heard = Instant::now();
-                let event = Event::parse(v);
+                let mut event = Event::parse(v);
+                match &mut event {
+                    Event::ManualPresenceChanged { user, .. }
+                    | Event::DndUpdated { user, .. } if user.is_none() => {
+                        *user = Some(me.user_id.clone());
+                    }
+                    _ => {}
+                }
                 if matches!(event, Event::Goodbye) {
                     return Ok(End::Reconnect("goodbye"));
                 }
                 match apply(store, event.clone()).await? {
-                    Applied::Changed(change) => { let _ = bus.send(change); }
+                    Applied::Changed(change) => {
+                        let _ = bus.send(change);
+                    }
                     Applied::NeedsDirectory => {
                         sync_directory(client, store, me).await?;
                         let _ = bus.send(Change::Directory);
@@ -203,6 +268,30 @@ async fn session(
             }
         }
     }
+}
+
+async fn update_presence_subscription(
+    conn: &mut Connection,
+    store: &Store,
+    bus: &Bus,
+    me: &str,
+    ids: &[String],
+    mut next: Vec<String>,
+) -> Result<Vec<String>> {
+    if !next.iter().any(|id| id == me) {
+        next.push(me.to_owned());
+    }
+    let added: Vec<_> = next
+        .iter()
+        .filter(|id| !ids.contains(id))
+        .cloned()
+        .collect();
+    store
+        .call(move |c| crate::store::presence::stale_users(c, &added))
+        .await?;
+    super::presence::notify(bus);
+    conn.subscribe_presence(&next).await?;
+    Ok(next)
 }
 
 #[cfg(test)]

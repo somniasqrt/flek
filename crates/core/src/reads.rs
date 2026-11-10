@@ -13,8 +13,11 @@ pub fn users(
 ) -> Result<Vec<views::User>> {
     let mut stmt = c.prepare(
         "SELECT u.id,u.name,u.display_name,u.real_name,u.is_bot,u.deleted,u.raw_json,
-         (SELECT id FROM conversations WHERE dm_user_id=u.id AND team_id=u.team_id ORDER BY id LIMIT 1)
-         FROM users u WHERE u.team_id=?1 AND (?2 OR NOT u.is_bot) AND (?3 OR NOT u.deleted) ORDER BY
+         (SELECT id FROM conversations WHERE dm_user_id=u.id AND team_id=u.team_id ORDER BY id LIMIT 1),
+         p.user_id, p.presence, p.dnd_enabled, p.dnd_start, p.dnd_end,
+         p.snooze_enabled, p.snooze_end, p.manual_away, p.auto_away, p.online,
+         p.connection_count, p.presence_fresh, p.dnd_fresh, p.updated_at
+         FROM users u LEFT JOIN presence p ON p.user_id=u.id WHERE u.team_id=?1 AND (?2 OR NOT u.is_bot) AND (?3 OR NOT u.deleted) ORDER BY
          u.name,u.id",
     )?;
     let rows = stmt
@@ -564,8 +567,11 @@ pub fn channel_info(c: &Connection, id: &str) -> Result<ChannelInfo> {
         let mut stmt = c.prepare(
             "SELECT
              COALESCE(u.id,cm.user_id),COALESCE(u.name,cm.user_id),u.display_name,u.real_name,COALESCE(u.is_bot,0),COALESCE(u.deleted,0),u.raw_json,
-             (SELECT id FROM conversations WHERE dm_user_id=u.id AND team_id=u.team_id ORDER BY id LIMIT 1)
-             FROM conversation_members cm LEFT JOIN users u ON u.id=cm.user_id WHERE cm.conversation_id=?1 ORDER
+             (SELECT id FROM conversations WHERE dm_user_id=u.id AND team_id=u.team_id ORDER BY id LIMIT 1),
+         p.user_id, p.presence, p.dnd_enabled, p.dnd_start, p.dnd_end,
+         p.snooze_enabled, p.snooze_end, p.manual_away, p.auto_away, p.online,
+         p.connection_count, p.presence_fresh, p.dnd_fresh, p.updated_at
+             FROM conversation_members cm LEFT JOIN users u ON u.id=cm.user_id LEFT JOIN presence p ON p.user_id=cm.user_id WHERE cm.conversation_id=?1 ORDER
              BY u.name,u.id",
         )?;
         let users = stmt

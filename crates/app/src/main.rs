@@ -64,6 +64,14 @@ fn main() {
             commands::search,
             commands::send_message,
             commands::set_reaction,
+            commands::presence_for,
+            commands::statuses_for,
+            commands::subscribe_presence,
+            commands::set_status,
+            commands::clear_status,
+            commands::set_presence,
+            commands::snooze,
+            commands::end_snooze,
         ])
         .setup(move |app| {
             let handle = app.handle();

@@ -127,6 +127,15 @@ guarantee. A live event alone does not advance catch-up markers.
 | `is_bot` | boolean |
 | `deleted` | boolean |
 | `tz` | string or null, IANA timezone when stored |
+| `presence` | `active`, `away`, `dnd`, or `unknown`; derived from stored presence/DND only |
+| `dnd_until` | integer Unix seconds or null when no current, fresh DND window is known |
+
+Presence adds no live API calls to CLI reads. Unknown/stale state is `unknown`
+(grey in the UI). Self manual-away wins; otherwise a current DND/snooze window
+wins over active. `dnd_until` can still describe a known pause while manual-away
+makes the indicator grey. The app invalidates presence on startup and websocket
+disconnect/shutdown. These fields are additive in JSON v1 on all User views,
+including `users`, `user`, `whoami.user`, and stored channel members.
 
 ## References and offline reads
 
@@ -183,6 +192,10 @@ mixed into the stream. The terminal summary is emitted on graceful shutdown.
 The notification stream is best effort (the existing broadcast bus is bounded);
 use SQLite/history as the source of truth after a disconnect. A failure may
 terminate a partially emitted stream and is reported on stderr.
+
+The additive `presence` change frame has no `data` payload. It signals a stored
+presence/DND change or freshness invalidation; it carries no user profile or
+message content. Consumers re-read their selected users from SQLite.
 
 ## Errors and exit codes
 

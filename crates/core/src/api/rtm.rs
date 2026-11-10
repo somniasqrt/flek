@@ -13,6 +13,7 @@ pub struct RtmConnect {
 
 impl Client {
     pub async fn rtm_connect(&self) -> Result<RtmConnect> {
-        self.call("rtm.connect", &[]).await
+        self.call("rtm.connect", &[("batch_presence_aware", "1")])
+            .await
     }
 }

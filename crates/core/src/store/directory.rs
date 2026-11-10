@@ -412,6 +412,7 @@ pub struct Profile {
     pub pronouns: Option<String>,
     pub status_text: Option<String>,
     pub status_emoji: Option<String>,
+    pub status_expiration: Option<i64>,
     /// IANA zone, e.g. `Europe/Kyiv`.
     pub tz: Option<String>,
     /// Human zone name, e.g. "Eastern European Summer Time".
@@ -512,6 +513,7 @@ pub fn user_profile(conn: &Connection, user_id: &str) -> Result<Option<Profile>>
         pronouns: text(&p["pronouns"]),
         status_text: text(&p["status_text"]),
         status_emoji: text(&p["status_emoji"]),
+        status_expiration: p["status_expiration"].as_i64(),
         tz: text(&raw["tz"]),
         tz_label: text(&raw["tz_label"]),
         tz_offset: raw["tz_offset"].as_i64(),
@@ -522,4 +524,55 @@ pub fn user_profile(conn: &Connection, user_id: &str) -> Result<Option<Profile>>
         photo: cached(photo_url),
         dm_conversation_id,
     }))
+}
+
+#[derive(Clone, Default, serde::Serialize)]
+pub struct CustomStatus {
+    pub status_text: Option<String>,
+    pub status_emoji: Option<String>,
+    pub status_expiration: Option<i64>,
+}
+
+pub fn statuses_for(c: &Connection, ids: &[String]) -> Result<HashMap<String, CustomStatus>> {
+    let mut query = c.prepare(
+        "SELECT json_extract(raw_json, '$.profile.status_text'),
+                json_extract(raw_json, '$.profile.status_emoji'),
+                json_extract(raw_json, '$.profile.status_expiration')
+         FROM users WHERE id = ?1",
+    )?;
+    let mut out = HashMap::new();
+    for id in ids {
+        if let Some(status) = query
+            .query_row([id], |r| {
+                Ok(CustomStatus {
+                    status_text: r.get(0)?,
+                    status_emoji: r.get(1)?,
+                    status_expiration: r.get(2)?,
+                })
+            })
+            .optional()?
+        {
+            out.insert(id.clone(), status);
+        }
+    }
+    Ok(out)
+}
+
+/// Live profile changes can be partial. Keep cached names/photo URLs that
+/// were omitted, while honouring explicit empty status fields and nulls.
+pub fn upsert_user_change(c: &mut Connection, team: &str, user: &User) -> Result<()> {
+    let merged: Option<String> = c
+        .query_row(
+            "SELECT json_patch(COALESCE(raw_json, '{}'), ?2) FROM users WHERE id = ?1",
+            params![user.id, user.raw.to_string()],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let raw = match merged {
+        Some(raw) => serde_json::from_str(&raw)?,
+        None => user.raw.clone(),
+    };
+    let mut user: User = serde_json::from_value(raw.clone())?;
+    user.raw = raw;
+    upsert_users(c, team, &[user])
 }

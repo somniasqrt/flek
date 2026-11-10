@@ -5,6 +5,7 @@ pub mod emoji;
 pub mod files;
 pub mod messages;
 pub mod migrations;
+pub mod presence;
 pub mod search;
 pub mod unfurls;
 

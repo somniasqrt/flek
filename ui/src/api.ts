@@ -1,4 +1,5 @@
 // Typed wrappers over the Rust commands and events (crates/app/src).
+import type { Presence, CustomStatus } from "./presence";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
@@ -26,6 +27,7 @@ export type Change =
   | { type: "typing"; data: { conversation_id: string; user_id: string } }
   | { type: "history"; data: { conversation_id: string } }
   | { type: "directory" }
+  | { type: "presence" }
   | { type: "connection"; data: ConnectionState }
   | { type: "progress"; data: Progress };
 
@@ -141,6 +143,7 @@ export type Profile = {
   pronouns: string | null;
   status_text: string | null;
   status_emoji: string | null;
+  status_expiration: number | null;
   /// IANA zone, e.g. "Europe/Kyiv".
   tz: string | null;
   tz_label: string | null;
@@ -158,6 +161,14 @@ export type Profile = {
 };
 
 export const api = {
+  presenceFor: (ids: string[]) => invoke<Presence[]>("presence_for", { ids }),
+  statusesFor: (ids: string[]) => invoke<Record<string, CustomStatus>>("statuses_for", { ids }),
+  subscribePresence: (ids: string[]) => invoke<void>("subscribe_presence", { ids }),
+  setStatus: (status: CustomStatus) => invoke<void>("set_status", { status }),
+  clearStatus: () => invoke<void>("clear_status"),
+  setPresence: (away: boolean) => invoke<void>("set_presence", { away }),
+  snooze: (minutes: number) => invoke<void>("snooze", { minutes }),
+  endSnooze: () => invoke<void>("end_snooze"),
   status: () => invoke<Status>("status"),
   progress: () => invoke<Progress | null>("progress"),
   conversations: () => invoke<Conversation[]>("conversations"),

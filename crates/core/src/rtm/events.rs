@@ -7,6 +7,18 @@ use crate::api::{Message, User};
 
 #[derive(Debug, Clone)]
 pub enum Event {
+    PresenceChanged {
+        users: Vec<String>,
+        presence: String,
+    },
+    ManualPresenceChanged {
+        user: Option<String>,
+        presence: String,
+    },
+    DndUpdated {
+        user: Option<String>,
+        dnd: crate::api::Dnd,
+    },
     Hello,
     /// Server is about to close; reconnect.
     Goodbye,
@@ -67,6 +79,39 @@ impl Event {
         let kind = str_at(&v, "type").unwrap_or_default();
         let channel = || str_at(&v, "channel").unwrap_or_default();
         match kind.as_str() {
+            "presence_change" => {
+                let users = v
+                    .get("users")
+                    .and_then(Value::as_array)
+                    .map(|ids| {
+                        ids.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_else(|| str_at(&v, "user").into_iter().collect());
+                Event::PresenceChanged {
+                    users,
+                    presence: str_at(&v, "presence").unwrap_or_default(),
+                }
+            }
+            "manual_presence_change" => Event::ManualPresenceChanged {
+                user: str_at(&v, "user"),
+                presence: str_at(&v, "presence").unwrap_or_default(),
+            },
+            "dnd_updated" | "dnd_updated_user" => match v
+                .get("dnd_status")
+                .filter(|d| d.is_object())
+                .and_then(|d| serde_json::from_value(d.clone()).ok())
+            {
+                Some(dnd) if kind == "dnd_updated" || str_at(&v, "user").is_some() => {
+                    Event::DndUpdated {
+                        user: str_at(&v, "user"),
+                        dnd,
+                    }
+                }
+                _ => Event::Unknown { kind },
+            },
             "hello" => Event::Hello,
             "goodbye" => Event::Goodbye,
             "pong" => Event::Pong {
@@ -258,7 +303,7 @@ mod tests {
             Event::Pong { reply_to: 7 }
         ));
         assert!(
-            matches!(parse(json!({"type": "dnd_updated"})), Event::Unknown { ref kind } if kind == "dnd_updated")
+            matches!(parse(json!({"type": "future_unknown"})), Event::Unknown { ref kind } if kind == "future_unknown")
         );
         assert!(matches!(parse(json!({"type": "goodbye"})), Event::Goodbye));
     }

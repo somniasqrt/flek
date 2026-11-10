@@ -238,3 +238,80 @@ verified on the real workspace; tests use wiremock and synthetic sessions only.
   human mode warns on stderr. Authentication errors fail normally (exit 5).
   No additional undocumented endpoint is attempted.
 - **Date checked:** 2026-11-10 (documentation and mock tests only).
+
+### Presence, custom status and DND (M6.7, 2026-11-10)
+
+**Verification boundary:** official documentation, synthetic wiremock/WebSocket
+servers and in-memory SQLite only. All seven new HTTP methods below, presence
+subscriptions/queries, batched/single presence and manual/DND/status live events
+remain **unverified with `xoxc` + `d` on the real workspace**. The captured URL
+above shows `batch_presence_aware=1` for Slack desktop; that does not prove Flek's
+RTM session supports any particular presence or DND operation. Flek now explicitly
+passes `batch_presence_aware=1` to its documented `rtm.connect` request.
+
+Documented methods, sent through the existing authenticated multipart client:
+
+| Method | Fields / response used |
+|---|---|
+| [`users.getPresence`](https://docs.slack.dev/reference/methods/users.getPresence/) | `user` = self; `presence`, `manual_away`, `auto_away`, `online`, `connection_count` |
+| [`users.setPresence`](https://docs.slack.dev/reference/methods/users.setPresence/) | `presence=away` or `auto`; `auto` restores automatic detection, cannot force an offline user active; refresh self details after success |
+| [`users.profile.set`](https://docs.slack.dev/reference/methods/users.profile.set/) | `profile` is JSON with `status_text` (≤100 Unicode code points), `status_emoji` (`:name:`), `status_expiration` (integer Unix seconds); merge returned profile into `users.raw_json.profile` |
+| [`dnd.teamInfo`](https://docs.slack.dev/reference/methods/dnd.teamInfo/) | Explicit comma-separated `users`, at most 50 per request; never omit users (which would request the team); empty set makes no call |
+| [`dnd.info`](https://docs.slack.dev/reference/methods/dnd.info/) | No user argument: self; schedule and snooze fields |
+| [`dnd.setSnooze`](https://docs.slack.dev/reference/methods/dnd.setSnooze/) | Positive `num_minutes`; response can contain only snooze fields, so preserve the stored schedule |
+| [`dnd.endSnooze`](https://docs.slack.dev/reference/methods/dnd.endSnooze/) | No arguments; response may be only `ok`; clear snooze, preserve scheduled DND (Resume does not disable a notification schedule) |
+
+[`presence_sub` and `presence_query`](https://docs.slack.dev/apis/web-api/user-presence-and-status/)
+are documented legacy RTM messages, implemented in core's connection send path.
+Every subscription replaces the entire id set. Each connection and changed set
+sends both messages, plus one DND batch snapshot and self `dnd.info` /
+`users.getPresence`; there is no presence polling. CLI follow makes no presence
+HTTP requests unless given a subscription receiver. The UI requests non-archived
+DM partners, self and the open profile; no channel members, search authors or
+message authors. The set is capped at 500 (self and the open profile first in the
+UI); extra people stay unknown/grey. Newly added ids are invalidated until fresh
+state arrives. Reconnection repeats subscriptions and snapshots. Snapshot source
+versions prevent slow responses from overwriting newer live updates.
+
+Live payloads used:
+
+- [`presence_change`](https://docs.slack.dev/reference/events/presence_change/):
+  `{type, user, presence}` or `{type, users: [...], presence}`. Update each named
+  person's presence, preserving a known self manual-away override.
+- [`manual_presence_change`](https://docs.slack.dev/reference/events/manual_presence_change/):
+  `{type, presence}` (self implied; explicit `user` also accepted). `away` sets
+  the manual override; returning to automatic detection clears it. The following
+  presence event determines active versus away, without manufacturing green.
+- [`dnd_updated`](https://docs.slack.dev/reference/events/dnd_updated/): self,
+  `{type, user?, dnd_status: {dnd_enabled, next_dnd_start_ts,
+  next_dnd_end_ts, snooze_enabled?, snooze_endtime?}}`.
+- [`dnd_updated_user`](https://docs.slack.dev/reference/events/dnd_updated_user/):
+  another named user, same nested schedule shape. Snooze details may not be
+  available for other users; Flek cannot infer AFK or paused notifications when
+  Slack does not disclose them.
+- [`user_change`](https://docs.slack.dev/reference/events/user_change/): merge the
+  stored raw user/profile, including custom status, preserve the existing team
+  when `team_id` is omitted, then emit Directory so open profiles and DM labels /
+  statuses re-read SQLite. Unknown event types keep the existing fallback.
+
+**Indicator mapping** (core and pure UI helpers): stale/unknown → hollow grey;
+self `manual_away=true` → hollow grey; otherwise fresh `snooze_enabled` with
+`snooze_endtime > now` or `dnd_enabled` inside `[next_dnd_start_ts,
+next_dnd_end_ts)` → moon; otherwise `presence=active` → green, except self
+`auto_away`, `online=false` or `connection_count=0` → grey. `presence=away` →
+grey. DND wins over active/automatic away, but the explicit self manual-away
+override wins over DND. A moon means disclosed DND, not an inferred third Slack
+presence value. Separate presence/DND freshness flags reset at app startup,
+disconnect and shutdown; a DND update alone cannot revive yesterday's green.
+
+Status expiration `0` means never. The UI hides expired text and emoji locally
+without a network request. Today = local 23:59:59; This week = local Sunday
+23:59:59; duration options add seconds; calendar arithmetic respects local DST.
+Until tomorrow snoozes to local 09:00, rounded up to whole minutes. Theme and
+clock are local UI concerns; writes persist only after Slack succeeds. Failed
+writes leave the DB unchanged and surface an inline error in the menu/dialog.
+If automatic presence succeeds but the detail read fails, persist the confirmed
+override and show grey until live state arrives. No new undocumented endpoint
+or workspace-wide fallback is used: denied snapshots remain grey, and existing
+message/history sync continues. Owners can use the official client if a setter
+is unsupported by their session.

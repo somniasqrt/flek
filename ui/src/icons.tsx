@@ -78,3 +78,7 @@ export const CopyMessage = (p: { size?: number }) => (
     <path d="M3 6V3h14v3M10 3v14M7 17h6" />
   </Icon>
 );
+
+export const Moon = (p: { size?: number }) => (
+  <Icon size={p.size}><path d="M16.5 12.5A7 7 0 0 1 7.5 3.5a7.25 7.25 0 1 0 9 9Z" /></Icon>
+);

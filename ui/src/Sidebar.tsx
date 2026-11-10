@@ -1,6 +1,8 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
 import type { Conversation } from "./api";
 import Avatar from "./Avatar";
+import CustomStatus from "./CustomStatus";
+import { presenceOf, statuses } from "./presence-store";
 import { Caret, Hash, Lock, People, Search } from "./icons";
 
 /// Channels by name, then direct messages by latest activity.
@@ -47,7 +49,12 @@ export default function Sidebar(props: {
       >
         <span class="conv-icon">
           {p.c.kind === "im" ? (
-            <Avatar id={p.c.dm_user_id} name={p.c.label} size={20} />
+            <Avatar
+              id={p.c.dm_user_id}
+              name={p.c.label}
+              size={20}
+              presence={presenceOf(p.c.dm_user_id)}
+            />
           ) : p.c.kind === "public_channel" ? (
             <Hash />
           ) : p.c.kind === "private_channel" ? (
@@ -56,7 +63,12 @@ export default function Sidebar(props: {
             <People />
           )}
         </span>
-        <span class="name">{p.c.label}</span>
+        <span class="name">
+          {p.c.label}
+          <Show when={p.c.kind === "im" && p.c.dm_user_id}>
+            {(id) => <CustomStatus status={statuses()[id()]} />}
+          </Show>
+        </span>
         <Show when={(p.c.unread ?? 0) > 0 && (p.c.kind === "im" || p.c.kind === "mpim")}>
           <span class="badge">{p.c.unread}</span>
         </Show>

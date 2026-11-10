@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-statuses-for"
+description = "Enables the statuses_for command without any pre-configured scope."
+commands.allow = ["statuses_for"]
+
+[[permission]]
+identifier = "deny-statuses-for"
+description = "Denies the statuses_for command without any pre-configured scope."
+commands.deny = ["statuses_for"]

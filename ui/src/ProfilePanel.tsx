@@ -2,9 +2,11 @@
 // details and a "Message" button, like Slack's. Shares the slot with the
 // thread panel (Workspace keeps only one of them open).
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
-import { api, linkImageUrl, type Profile } from "./api";
+import { api, type Profile } from "./api";
 import Avatar from "./Avatar";
-import { emoji } from "./emoji";
+import CustomStatus from "./CustomStatus";
+import { visibleStatus } from "./presence";
+import { presenceNow, presenceOf, profileRevision } from "./presence-store";
 import { avatars } from "./people";
 import { localTime } from "./time";
 
@@ -25,22 +27,24 @@ export default function ProfilePanel(props: {
   const timer = window.setInterval(() => setNow(new Date()), 15_000);
   onCleanup(() => window.clearInterval(timer));
 
+  let generation = 0;
   createEffect(
     on(
-      () => props.userId,
-      async (id) => {
+      () => [props.userId, profileRevision()] as const,
+      async ([id]) => {
+        const gen = ++generation;
         setLoaded(false);
         setP(null);
         setPhoto(null);
         const profile = await api.profile(id).catch(() => null);
-        if (id !== props.userId) return;
+        if (gen !== generation) return;
         setP(profile);
         setLoaded(true);
         if (profile?.photo) return setPhoto(profile.photo);
         if (!profile?.has_photo) return;
         // The small avatar stands in until the large photo arrives.
         const hash = await api.profilePhoto(id).catch(() => null);
-        if (id === props.userId && hash) setPhoto(hash);
+        if (gen === generation && hash) setPhoto(hash);
       },
     ),
   );
@@ -59,12 +63,6 @@ export default function ProfilePanel(props: {
     const x = p();
     return x && localTime(now(), x.tz, x.tz_offset);
   };
-  const status = () => {
-    const x = p();
-    if (!x?.status_text && !x?.status_emoji) return null;
-    const e = x.status_emoji?.replace(/^:|:$/g, "");
-    return { emoji: e ? (emoji(e) ?? "") : "", text: x.status_text ?? "" };
-  };
 
   return (
     <aside class="thread-panel profile-panel" aria-label="Profile">
@@ -78,17 +76,20 @@ export default function ProfilePanel(props: {
       </header>
       <div class="thread-scroller profile-body">
         <div class="profile-photo">
-          <Show
-            when={photo() ?? small()}
-            fallback={<Avatar id={props.userId} name={name()} size={PHOTO} />}
-          >
-            {(hash) => <img src={linkImageUrl(hash())} alt="" width={PHOTO} height={PHOTO} />}
-          </Show>
+          <Avatar
+            id={props.userId}
+            name={name()}
+            size={PHOTO}
+            photo={photo() ?? small()}
+            presence={presenceOf(props.userId)}
+          />
         </div>
         <Show when={loaded()}>
           <Show
             when={p()}
-            fallback={<p class="muted profile-missing">Flek knows nothing about this person yet.</p>}
+            fallback={
+              <p class="muted profile-missing">Flek knows nothing about this person yet.</p>
+            }
           >
             {(x) => (
               <>
@@ -108,20 +109,23 @@ export default function ProfilePanel(props: {
                 </div>
                 <Show when={handle()}>{(h) => <div class="muted profile-handle">{h()}</div>}</Show>
                 <Show when={x().title}>{(t) => <div class="profile-title">{t()}</div>}</Show>
-                <Show when={status()}>
-                  {(s) => (
+                <Show when={visibleStatus(x(), presenceNow())}>
+                  {(status) => (
                     <div class="profile-status">
-                      <Show when={s().emoji}>
-                        <span class="emoji">{s().emoji}</span>
-                      </Show>
-                      {s().text}
+                      <CustomStatus status={status()} text />
                     </div>
                   )}
                 </Show>
                 <Show when={time()}>
                   {(t) => (
                     <div class="profile-time muted" title={x().tz_label ?? x().tz ?? undefined}>
-                      <svg class="profile-icon" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                      <svg
+                        class="profile-icon"
+                        viewBox="0 0 20 20"
+                        width="16"
+                        height="16"
+                        aria-hidden="true"
+                      >
                         <circle cx="10" cy="10" r="7.25" />
                         <path d="M10 5.5V10l3 2" />
                       </svg>
@@ -162,7 +166,13 @@ export default function ProfilePanel(props: {
                     <Show when={x().email}>
                       {(email) => (
                         <div class="profile-row">
-                          <svg class="profile-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                          <svg
+                            class="profile-icon"
+                            viewBox="0 0 20 20"
+                            width="18"
+                            height="18"
+                            aria-hidden="true"
+                          >
                             <rect x="2.75" y="4.75" width="14.5" height="10.5" rx="2" />
                             <path d="M3.5 6l6.5 5 6.5-5" />
                           </svg>
@@ -184,7 +194,13 @@ export default function ProfilePanel(props: {
                     <Show when={x().phone}>
                       {(phone) => (
                         <div class="profile-row">
-                          <svg class="profile-icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+                          <svg
+                            class="profile-icon"
+                            viewBox="0 0 20 20"
+                            width="18"
+                            height="18"
+                            aria-hidden="true"
+                          >
                             <path d="M6.5 3h-2A1.5 1.5 0 0 0 3 4.6C3.3 11 9 16.7 15.4 17a1.5 1.5 0 0 0 1.6-1.5v-2l-3.4-1.4-1.6 1.6a9 9 0 0 1-4.7-4.7l1.6-1.6z" />
                           </svg>
                           <div>

@@ -4,6 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { render } from "solid-js/web";
 import App from "./App";
+import type { Presence } from "./presence";
 import { overrideCacheUrl, type Conversation, type FileRef, type Hit, type Message, type Profile } from "./api";
 import { MARK_CLOSE as C, MARK_OPEN as O } from "./snippet";
 import "./styles.css";
@@ -16,6 +17,10 @@ const conversations: Conversation[] = [
   { id: "C2", kind: "private_channel", label: "course-project", is_archived: false, topic: null, messages: 0, unread: 0, latest_ts: null, dm_user_id: null },
   { id: "D1", kind: "im", label: "Olena Koval", is_archived: false, topic: null, messages: 1, unread: 1, latest_ts: "1762600500.000000", dm_user_id: "U1" },
 ];
+conversations.push(
+  { ...conversations[2], id: "D2", label: people.U2, dm_user_id: "U2", unread: 0 },
+  { ...conversations[2], id: "D4", label: people.U4, dm_user_id: "U4", unread: 0 },
+);
 const file = (f: Partial<FileRef>): FileRef => ({
   id: "F", name: null, title: null, mimetype: null, filetype: null, size: null, local_path: null,
   permalink: "https://example.com/f", hidden_by_limit: false, width: null, height: null,
@@ -87,7 +92,7 @@ const hits: Hit[] = [
 // Profiles: made-up people (fake email), one with a DM and one without.
 const profile = (id: string, extra: Partial<Profile>): Profile => ({
   id, name: people[id].toLowerCase().replace(" ", "."), real_name: people[id], display_name: null,
-  title: null, email: null, phone: null, pronouns: null, status_text: null, status_emoji: null,
+  title: null, email: null, phone: null, pronouns: null, status_text: null, status_emoji: null, status_expiration: 0,
   tz: null, tz_label: null, tz_offset: null, is_bot: false, deleted: false, avatar: null,
   photo: null, has_photo: false, dm_conversation_id: null, ...extra,
 });
@@ -98,6 +103,7 @@ const profiles: Record<string, Profile> = {
     tz_offset: 7200, avatar: "a1", has_photo: true, dm_conversation_id: "D1",
     status_text: "On a lecture", status_emoji: ":books:",
   }),
+  U3: profile("U3", { display_name: "Me", dm_conversation_id: null }),
   U2: profile("U2", { title: "професор", tz: "America/New_York", tz_label: "Eastern Standard Time", tz_offset: -18000 }),
   U4: profile("U4", { display_name: "iryna", pronouns: "she/her", tz_offset: 3600, avatar: "a4" }),
 };
@@ -136,9 +142,37 @@ async function sendMessage(a: Record<string, unknown>) {
   return { conversation_id: conv, ts, client_msg_id: m.client_msg_id };
 }
 
+const presence: Record<string, Presence> = Object.fromEntries(["U1", "U2", "U3", "U4"].map((user_id) => [user_id, {
+  user_id, presence: user_id === "U4" ? "away" : "active", dnd_enabled: false, dnd_start: 0, dnd_end: 0,
+  snooze_enabled: user_id === "U2", snooze_end: user_id === "U2" ? now + 7200 : 0,
+  manual_away: false, auto_away: false, online: user_id !== "U4", connection_count: 1,
+  presence_fresh: true, dnd_fresh: true, updated_at: now,
+}]));
+
 mockIPC(async (cmd, args) => {
   const a = args as Record<string, string | null>;
   switch (cmd) {
+    case "subscribe_presence": return;
+    case "presence_for": return JSON.parse(JSON.stringify((args as { ids: string[] }).ids.map((id) => presence[id]).filter(Boolean)));
+    case "statuses_for": return JSON.parse(JSON.stringify(Object.fromEntries((args as { ids: string[] }).ids.map((id) => [id, profiles[id] ?? null]))));
+    case "set_status":
+    case "clear_status": {
+      const status = cmd === "clear_status" ? { status_text: "", status_emoji: "", status_expiration: 0 } : (args as { status: object }).status;
+      Object.assign(profiles.U3, status);
+      emit("flek://change", { type: "directory" });
+      return;
+    }
+    case "set_presence": {
+      const away = (args as { away: boolean }).away;
+      Object.assign(presence.U3, { manual_away: away, presence: away ? "away" : "active" });
+      emit("flek://change", { type: "presence" }); return;
+    }
+    case "snooze":
+    case "end_snooze": {
+      const snooze = cmd === "snooze";
+      Object.assign(presence.U3, { snooze_enabled: snooze, snooze_end: snooze ? Math.floor(Date.now()/1000) + Number((args as { minutes: number }).minutes) * 60 : 0 });
+      emit("flek://change", { type: "presence" }); return;
+    }
     case "status":
       return { phase: "ready", team_id: "T1", team: "Demo Team", user_id: "U3", user: "me" };
     case "progress":

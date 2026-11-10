@@ -26,6 +26,14 @@
     "allow-open-url",
     "allow-search",
     "allow-send-message",
-    "allow-set-reaction"
+    "allow-set-reaction",
+    "allow-presence-for",
+    "allow-statuses-for",
+    "allow-subscribe-presence",
+    "allow-set-status",
+    "allow-clear-status",
+    "allow-set-presence",
+    "allow-snooze",
+    "allow-end-snooze"
   ]
 }

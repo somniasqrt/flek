@@ -1,10 +1,14 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
-import { Hash, Lock } from "./icons";
+import Avatar from "./Avatar";
 import Composer from "./Composer";
+import CustomStatus from "./CustomStatus";
+import { Hash, Lock } from "./icons";
 import MessageRow from "./MessageRow";
 import { pendingFor } from "./outbox";
+import { presenceOf, statuses } from "./presence-store";
+import { openProfile } from "./profile";
 import type { Jump } from "./Search";
 
 const PAGE = 60;
@@ -194,7 +198,26 @@ export default function Timeline(props: {
           ) : props.conversation.kind === "private_channel" ? (
             <Lock size={18} />
           ) : null}
+          <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
+            {(id) => (
+              <button
+                class="dm-header-avatar"
+                title="View profile"
+                onClick={() => openProfile(id())}
+              >
+                <Avatar
+                  id={id()}
+                  name={props.conversation.label}
+                  size={28}
+                  presence={presenceOf(id())}
+                />
+              </button>
+            )}
+          </Show>
           {props.conversation.label}
+          <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
+            {(id) => <CustomStatus status={statuses()[id()]} text />}
+          </Show>
         </h2>
         <Show when={props.conversation.topic}>
           <span class="muted topic">{props.conversation.topic}</span>

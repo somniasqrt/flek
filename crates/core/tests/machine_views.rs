@@ -120,7 +120,7 @@ fn complete_views_are_stable_and_resolved_from_db() {
         }));
         let unsynced=views::conversation(c,"G1")?.unwrap();
         assert!(unsynced.synced_at.is_none());assert!(unsynced.unread_count.is_none());assert!(!unsynced.history_complete);assert_eq!(unsynced.kind,"private");
-        assert_eq!(serde_json::to_value(views::user(c,"U1")?.unwrap())?,json!({"id":"U1","name":"alice","display_name":"Ali","real_name":"Alice Example","is_bot":false,"deleted":false,"tz":"Europe/Kyiv","title":null,"status_text":null,"status_emoji":null,"status_expiration":null,"tz_label":null,"email":"alice@example.test","is_admin":null,"is_owner":null,"dm_conversation_id":"D1"}));
+        assert_eq!(serde_json::to_value(views::user(c,"U1")?.unwrap())?,json!({"id":"U1","name":"alice","display_name":"Ali","real_name":"Alice Example","is_bot":false,"deleted":false,"tz":"Europe/Kyiv","title":null,"status_text":null,"status_emoji":null,"status_expiration":null, "presence":"unknown", "dnd_until":null,"tz_label":null,"email":"alice@example.test","is_admin":null,"is_owner":null,"dm_conversation_id":"D1"}));
         assert!(views::user(c,"U404")?.is_none());
         assert_eq!(views::resolve_text(c,"<@U404> <#C404|fallback> &amp;lt; &lt;@U1&gt; <https://a.test>")?,"@U404 #fallback &lt; <@U1> https://a.test");
         assert_eq!(
