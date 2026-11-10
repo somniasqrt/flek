@@ -480,3 +480,15 @@ pub fn search_results(
         })
         .collect()
 }
+
+/// Conversation permalink using the same cached workspace URL as message permalinks.
+pub fn conversation_link(conn: &Connection, id: &str) -> Result<Option<String>> {
+    let url: Option<String> = conn.query_row(
+        "SELECT t.url FROM conversations c JOIN teams t ON t.id = c.team_id WHERE c.id = ?1",
+        [id],
+        |r| r.get(0),
+    )?;
+    Ok(url
+        .filter(|u| !u.is_empty())
+        .map(|url| format!("{}/archives/{id}", url.trim_end_matches('/'))))
+}

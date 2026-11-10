@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-channel-info"
+description = "Enables the channel_info command without any pre-configured scope."
+commands.allow = ["channel_info"]
+
+[[permission]]
+identifier = "deny-channel-info"
+description = "Denies the channel_info command without any pre-configured scope."
+commands.deny = ["channel_info"]

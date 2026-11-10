@@ -23,7 +23,9 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 | planned | Channels, DMs, threads, reactions, images, files |
 | implemented (M6.7; live verification pending) | Presence on DM/profile/self avatars; You menu for custom status, away/active and notification snooze |
 | implemented (M6.8; visual/live verification pending) | Workspace icon, Home/DMs/Activity/Files rail, unread badges, compose picker, notification pause, DM intros; local activity and file browser |
-| planned | Sending messages, replies, reactions, mark as read |
+| implemented (M4.6, M6.9; visual/live verification pending) | Focused visible-message read tracking, opening unread divider, conversation context menu, cached channel details, local stars/mute, leave/close |
+| implemented (M6.3.5; native verification pending) | Window size and position persistence, with fallback when a monitor is removed |
+| planned | Remaining message editing/deletion utilities |
 | done (M1, CLI) | Local full-text search including hidden (>90 days) messages |
 | done (M1) | Import of existing JSON archives (e.g. slackdump) |
 | planned | "Open in Slack" deep link for anything not supported (polls, slash commands, huddles) |

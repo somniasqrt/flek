@@ -44,6 +44,10 @@ export type Change =
   | { type: "progress"; data: Progress };
 
 export type Conversation = {
+  last_read?: string | null;
+  starred?: boolean;
+  notification?: "all" | "mentions" | "muted";
+  is_general?: boolean;
   id: string;
   kind: "public_channel" | "private_channel" | "mpim" | "im";
   label: string;
@@ -225,7 +229,35 @@ export type StoredFile = {
   permalink: string | null;
 };
 
+export type ChannelInfo = {
+  conversation: {
+    id: string;
+    name: string | null;
+    label: string;
+    topic: string | null;
+    purpose: string | null;
+  };
+  created: number | null;
+  creator: string | null;
+  num_members: number | null;
+  members: { id: string; name: string; display_name: string | null }[] | null;
+  pins: { ts: string; text: string }[] | null;
+};
+
 export const api = {
+  markRead: (conversationId: string, ts: string) =>
+    invoke<void>("mark_read", { conversationId, ts }),
+  conversationPreference: (
+    conversationId: string,
+    starred: boolean | null,
+    notification: string | null,
+  ) => invoke<void>("conversation_preference", { conversationId, starred, notification }),
+  dismissConversation: (conversationId: string) =>
+    invoke<void>("dismiss_conversation", { conversationId }),
+  channelInfo: (conversationId: string, fresh = false) =>
+    invoke<ChannelInfo>("channel_info", { conversationId, fresh }),
+  conversationLink: (conversationId: string) =>
+    invoke<string | null>("conversation_link", { conversationId }),
   teamIcon: () => invoke<string | null>("team_icon"),
   directMessages: () => invoke<DirectMessage[]>("direct_messages"),
   activity: (tab: string, unread: boolean, limit: number, offset: number) =>

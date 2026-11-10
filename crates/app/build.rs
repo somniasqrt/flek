@@ -4,6 +4,11 @@
 
 const COMMANDS: &[&str] = &[
     "team_icon",
+    "mark_read",
+    "conversation_preference",
+    "dismiss_conversation",
+    "channel_info",
+    "conversation_link",
     "direct_messages",
     "activity",
     "browse_files",

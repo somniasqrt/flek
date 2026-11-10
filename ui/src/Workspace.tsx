@@ -26,6 +26,10 @@ import { setMe } from "./outbox";
 import { loadPeople } from "./people";
 import { directoryChanged, refreshPresence, watchPresence, tickPresence } from "./presence-store";
 import { closeProfile, profileUser } from "./profile";
+import ConversationMenu, { LeaveConfirmation, type ConversationMenuTarget } from "./ConversationMenu";
+import ChannelPanel from "./ChannelPanel";
+import { hasUnread } from "./conversation-model";
+import { openProfile } from "./profile";
 import ProfilePanel from "./ProfilePanel";
 import Rail from "./Rail";
 import ActivityView from "./ActivityView";
@@ -68,6 +72,22 @@ export default function Workspace(props: { status: Ready }) {
   const [fileCategory, setFileCategory] = createSignal("all");
   const [compose, setCompose] = createSignal(false);
   const [readError, setReadError] = createSignal("");
+  const [actionError, setActionError] = createSignal("");
+  const [leaving, setLeaving] = createSignal<Conversation | null>(null);
+  const [menu, setMenu] = createSignal<ConversationMenuTarget | null>(null);
+  const [channelDetails, setChannelDetails] = createSignal<string | null>(null);
+  const menuConversation = () => conversations.find((c) => c.id === menu()?.id);
+  const details = (c: Conversation) => {
+    if (c.kind === "im" || c.kind === "mpim") {
+      const user = c.dm_user_id ?? dms().find((dm) => dm.id === c.id)?.members[0];
+      if (user) openProfile(user);
+      else setActionError("No cached profile for this conversation");
+    } else {
+      setThread(null);
+      closeProfile();
+      setChannelDetails(c.id);
+    }
+  };
   const chooseView = (next: RailView) => {
     setView(next);
     setSearching(null);
@@ -237,15 +257,21 @@ export default function Workspace(props: { status: Ready }) {
   // Root ts of the thread open in the side panel; closed when switching
   // conversations, or with Esc (unless the viewer is on top).
   const [thread, setThread] = createSignal<string | null>(null);
-  createEffect(on(selected, () => setThread(null), { defer: true }));
+  createEffect(on(selected, () => {
+    setThread(null);
+    setChannelDetails(null);
+  }, { defer: true }));
   // The thread and profile panels share the right pane: opening one closes
   // the other.
   createEffect(on(thread, (t) => t && closeProfile(), { defer: true }));
   createEffect(on(profileUser, (u) => u && setThread(null), { defer: true }));
+  createEffect(on(thread, (t) => t && setChannelDetails(null), { defer: true }));
+  createEffect(on(profileUser, (u) => u && setChannelDetails(null), { defer: true }));
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || isViewing()) return;
-      if (profileUser()) closeProfile();
+      if (channelDetails()) setChannelDetails(null);
+      else if (profileUser()) closeProfile();
       else if (thread()) setThread(null);
     };
     window.addEventListener("keydown", onKey);
@@ -257,7 +283,8 @@ export default function Workspace(props: { status: Ready }) {
   const [sidebarWidth, setSidebarWidth] = createSignal(readPanelSize(SIDEBAR_KEY, DEFAULT_SIDEBAR));
   const [detailWidth, setDetailWidth] = createSignal(readPanelSize(DETAIL_KEY, DEFAULT_DETAIL));
   const [frameWidth, setFrameWidth] = createSignal(window.innerWidth - 78);
-  const detailOpen = () => view() !== "files" && !!(profileUser() || (current() && thread()));
+  const detailOpen = () =>
+    view() !== "files" && !!(channelDetails() || profileUser() || (current() && thread()));
   const sizes = createMemo(() =>
     panelSizes(frameWidth(), sidebarWidth(), detailWidth(), detailOpen()),
   );
@@ -291,7 +318,9 @@ export default function Workspace(props: { status: Ready }) {
           userId={props.status.user_id}
           user={props.status.user}
           view={view()}
-          dms={dms().filter((dm) => (dm.unread ?? 0) > 0).length}
+          dms={dms().filter((dm) => hasUnread({
+            ...dm, notification: conversations.find((c) => c.id === dm.id)?.notification,
+          })).length}
           activity={activityBadge()}
           onView={chooseView}
           onCompose={() => setCompose(true)}
@@ -312,6 +341,7 @@ export default function Workspace(props: { status: Ready }) {
                   rows={dms()}
                   me={props.status.user_id}
                   selected={selected()}
+                  onContext={setMenu}
                   onSelect={select}
                   onCompose={() => setCompose(true)}
                 />
@@ -332,6 +362,7 @@ export default function Workspace(props: { status: Ready }) {
                   team={props.status.team}
                   conversations={conversations}
                   selected={selected()}
+                  onContext={setMenu}
                   onSelect={select}
                 />
               </Match>
@@ -423,6 +454,9 @@ export default function Workspace(props: { status: Ready }) {
                 onResize={setDetailWidth}
                 onCommit={() => savePanelSize(DETAIL_KEY, detailWidth())}
               />
+              <Show when={channelDetails()}>
+                {(id) => <ChannelPanel id={id()} onClose={() => setChannelDetails(null)} />}
+              </Show>
               <Show when={current() && thread()}>
                 {(ts) => (
                   <Thread
@@ -447,6 +481,30 @@ export default function Workspace(props: { status: Ready }) {
           onSelect={composeIn}
           onClose={() => setCompose(false)}
         />
+      </Show>
+      <Show when={menu() && menuConversation()}>
+        {(conversation) => (
+          <ConversationMenu
+            conversation={conversation()}
+            x={menu()!.x}
+            y={menu()!.y}
+            onClose={() => setMenu(null)}
+            onDetails={() => details(conversation())}
+            onError={setActionError}
+            onLeave={setLeaving}
+          />
+        )}
+      </Show>
+      <Show when={leaving()}>
+        {(conversation) => (
+          <LeaveConfirmation conversation={conversation()} onClose={() => setLeaving(null)} />
+        )}
+      </Show>
+      <Show when={actionError()}>
+        <div class="conversation-toast" role="alert">
+          {actionError()}
+          <button aria-label="Dismiss error" onClick={() => setActionError("")}>×</button>
+        </div>
       </Show>
       <Viewer />
     </div>

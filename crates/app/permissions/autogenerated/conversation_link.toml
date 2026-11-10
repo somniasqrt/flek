@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-conversation-link"
+description = "Enables the conversation_link command without any pre-configured scope."
+commands.allow = ["conversation_link"]
+
+[[permission]]
+identifier = "deny-conversation-link"
+description = "Denies the conversation_link command without any pre-configured scope."
+commands.deny = ["conversation_link"]

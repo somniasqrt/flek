@@ -21,7 +21,7 @@ pub struct DirectMessage {
 /// One indexed latest-message lookup per conversation, in one SQL query.
 pub fn direct_messages(c: &Connection, team: &str) -> Result<Vec<DirectMessage>> {
     let mut stmt = c.prepare(
-        "SELECT c.id,COALESCE(c.label,c.name,c.id),c.kind,c.dm_user_id,c.unread_count,
+        "SELECT c.id,COALESCE(c.label,c.name,c.id),c.kind,c.dm_user_id,CASE WHEN c.notification='muted' THEN 0 ELSE c.unread_count END,
             m.ts,m.user_id,COALESCE(m.text,''),COALESCE(m.hidden_by_limit,0),
             (SELECT COALESCE(f.title,f.name) FROM message_files mf JOIN files f ON f.id=mf.file_id
              WHERE mf.conversation_id=c.id AND mf.ts=m.ts ORDER BY f.id LIMIT 1),
@@ -35,7 +35,7 @@ pub fn direct_messages(c: &Connection, team: &str) -> Result<Vec<DirectMessage>>
          FROM conversations c LEFT JOIN users u ON u.id=c.dm_user_id
          LEFT JOIN messages m ON m.id=(SELECT id FROM messages
              WHERE conversation_id=c.id AND deleted=0 ORDER BY ts DESC LIMIT 1)
-         WHERE c.team_id=?1 AND c.kind IN ('im','mpim') AND c.is_member=1 AND c.is_archived=0
+         WHERE c.team_id=?1 AND c.kind IN ('im','mpim') AND c.is_member=1 AND c.is_archived=0 AND c.closed_at IS NULL
          ORDER BY COALESCE(u.deleted,0),m.ts DESC,c.id",
     )?;
     let rows = stmt.query_map([team], |r| {
@@ -121,9 +121,9 @@ pub fn activity(
              WHERE m.user_id=(SELECT id FROM me) AND r.user_id<>(SELECT id FROM me)
                AND m.deleted=0
          ), items AS MATERIALIZED (
-             SELECT x.*,COALESCE(x.timed AND x.event_ts>c.last_read,0) AS unread
+             SELECT x.*,COALESCE(x.timed AND x.event_ts>c.last_read AND c.notification<>'muted',0) AS unread
              FROM candidates x CROSS JOIN conversations c ON c.id=x.conversation_id
-             WHERE c.team_id=?1 AND c.is_member=1 AND c.is_archived=0
+             WHERE c.team_id=?1 AND c.is_member=1 AND c.is_archived=0 AND c.closed_at IS NULL
          ), filtered AS MATERIALIZED (
              SELECT * FROM items WHERE (?3='all' OR kind=?3) AND (NOT ?4 OR unread)
              ORDER BY event_ts DESC,conversation_id,ts,kind,COALESCE(actor,''),

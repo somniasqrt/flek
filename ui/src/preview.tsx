@@ -163,9 +163,21 @@ messages.push(
   msg(now - 86400, "U2", "<@U3> could you take a look?"),
 );
 messages.sort((a, b) => a.ts.localeCompare(b.ts));
+conversations[0].last_read = messages.at(-3)?.ts ?? null;
+conversations[0].latest_ts = messages.at(-1)?.ts ?? null;
+conversations[0].starred = true;
+conversations[0].is_general = true;
+conversations[1].notification = "muted";
+conversations[1].topic = "Muted in Flek — expand the Muted group";
+for (const c of conversations) {
+  c.notification ??= "all";
+  c.starred ??= false;
+}
 
+
+const closed = new Set<string>();
 const directRows = (): DirectMessage[] => conversations
-  .filter((c) => c.kind === "im" || c.kind === "mpim")
+  .filter((c) => !closed.has(c.id) && (c.kind === "im" || c.kind === "mpim"))
   .map((c) => {
     const m = elsewhere.filter((m) => m.conversation_id === c.id).at(-1);
     return {
@@ -174,7 +186,7 @@ const directRows = (): DirectMessage[] => conversations
       kind: c.kind,
       partner_id: c.dm_user_id,
       members: c.kind === "mpim" ? ["U1", "U2"] : [],
-      unread: c.unread,
+      unread: c.notification === "muted" ? 0 : c.unread,
       ts: m?.ts ?? null,
       user_id: m?.user_id ?? null,
       text: m?.text ?? "",
@@ -212,11 +224,20 @@ mockIPC(async (cmd, args) => {
     case "direct_messages": return directRows();
     case "activity": {
       const request = args as { tab: string; unread: boolean; limit: number; offset: number };
-      const rows = activityRows.filter((r) => (request.tab === "all" || r.kind === request.tab)
-        && (!request.unread || r.unread));
+      const currentActivity = activityRows
+        .filter((r) => !closed.has(r.conversation_id))
+        .map((r) => ({
+          ...r,
+          unread: r.unread && conversations.find((c) => c.id === r.conversation_id)
+            ?.notification !== "muted",
+        }));
+      const rows = currentActivity.filter(
+        (r) => (request.tab === "all" || r.kind === request.tab)
+          && (!request.unread || r.unread),
+      );
       return {
         items: rows.slice(request.offset, request.offset + request.limit),
-        unread_count: activityRows.filter((r) => r.unread).length,
+        unread_count: currentActivity.filter((r) => r.unread).length,
         has_more: rows.length > request.offset + request.limit,
       };
     }
@@ -259,7 +280,43 @@ mockIPC(async (cmd, args) => {
     case "progress":
       return { stage: "conversations", done: 7, total: 28, current: "general", deep: true };
     case "conversations":
-      return conversations;
+      return structuredClone(conversations.filter((c) => !closed.has(c.id)));
+    case "mark_read": {
+      const c = conversations.find((c) => c.id === a.conversationId);
+      if (c && (!c.last_read || String(a.ts) > c.last_read)) {
+        c.last_read = String(a.ts);
+        c.unread = 0;
+        for (const row of activityRows) {
+          if (row.conversation_id === c.id && row.event_ts <= c.last_read) row.unread = false;
+        }
+        emit("flek://change", { type: "read_marker", data: { conversation_id: c.id } });
+      }
+      return;
+    }
+    case "conversation_preference": {
+      const c = conversations.find((c) => c.id === a.conversationId);
+      if (c) {
+        if (typeof a.starred === "boolean") c.starred = a.starred;
+        if (a.notification) c.notification = String(a.notification) as Conversation["notification"];
+      }
+      emit("flek://change", { type: "directory" });
+      return;
+    }
+    case "dismiss_conversation":
+      closed.add(String(a.conversationId));
+      emit("flek://change", { type: "directory" });
+      return;
+    case "conversation_link":
+      return `https://demo.slack.com/archives/${a.conversationId}`;
+    case "channel_info": {
+      const c = conversations.find((c) => c.id === a.conversationId)!;
+      return {
+        conversation: { ...c, name: c.label, purpose: "Synthetic preview channel" },
+        created: now - 86400 * 30, creator: "U1", num_members: 3,
+        members: ["U1", "U2", "U3"].map((id) => ({ id, name: people[id] })),
+        pins: [{ ts: ROOT, text: "Pinned preview message" }],
+      };
+    }
     case "people":
       return people;
     case "avatars":

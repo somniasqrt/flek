@@ -39,6 +39,11 @@
     "allow-clear-status",
     "allow-set-presence",
     "allow-snooze",
-    "allow-end-snooze"
+    "allow-end-snooze",
+    "allow-mark-read",
+    "allow-conversation-preference",
+    "allow-dismiss-conversation",
+    "allow-channel-info",
+    "allow-conversation-link"
   ]
 }

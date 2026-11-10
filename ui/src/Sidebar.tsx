@@ -1,5 +1,7 @@
 import { createSignal, For, Show, type JSX } from "solid-js";
 import type { Conversation } from "./api";
+import { isContextKey, menuTarget, type ConversationMenuTarget } from "./ConversationMenu";
+import { hasUnread } from "./conversation-model";
 import Avatar from "./Avatar";
 import CustomStatus from "./CustomStatus";
 import { presenceOf, statuses } from "./presence-store";
@@ -11,6 +13,7 @@ export default function Sidebar(props: {
   conversations: Conversation[];
   selected: string | null;
   onSelect: (id: string) => void;
+  onContext: (target: ConversationMenuTarget) => void;
 }) {
   const [query, setQuery] = createSignal("");
   const live = () => {
@@ -19,19 +22,20 @@ export default function Sidebar(props: {
       (c) => !c.is_archived && (!q || c.label.toLowerCase().includes(q)),
     );
   };
+  const normal = () => live().filter((c) => !c.starred && c.notification !== "muted");
   const channels = () =>
-    live()
+    normal()
       .filter((c) => c.kind === "public_channel" || c.kind === "private_channel")
       .sort((a, b) => a.label.localeCompare(b.label));
   const direct = () =>
-    live()
+    normal()
       .filter((c) => c.kind === "im" || c.kind === "mpim")
       .sort((a, b) => (b.latest_ts ?? "").localeCompare(a.latest_ts ?? ""));
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") setQuery("");
     if (e.key === "Enter") {
-      const first = channels()[0] ?? direct()[0];
+      const first = live().find((c) => c.starred) ?? channels()[0] ?? direct()[0] ?? live()[0];
       if (first) {
         props.onSelect(first.id);
         setQuery("");
@@ -43,7 +47,11 @@ export default function Sidebar(props: {
     <li>
       <button
         class="conv"
-        classList={{ active: p.c.id === props.selected, unread: (p.c.unread ?? 0) > 0 }}
+        classList={{ active: p.c.id === props.selected, unread: hasUnread(p.c), muted: p.c.notification === "muted" }}
+        onContextMenu={(e) => props.onContext(menuTarget(e, p.c.id))}
+        onKeyDown={(e) => {
+          if (isContextKey(e)) props.onContext(menuTarget(e, p.c.id));
+        }}
         onClick={() => props.onSelect(p.c.id)}
         title={p.c.topic ?? p.c.label}
       >
@@ -69,7 +77,7 @@ export default function Sidebar(props: {
             {(id) => <CustomStatus status={statuses()[id()]} />}
           </Show>
         </span>
-        <Show when={(p.c.unread ?? 0) > 0 && (p.c.kind === "im" || p.c.kind === "mpim")}>
+        <Show when={hasUnread(p.c) && (p.c.kind === "im" || p.c.kind === "mpim")}>
           <span class="badge">{p.c.unread}</span>
         </Show>
       </button>
@@ -92,9 +100,20 @@ export default function Sidebar(props: {
         />
       </label>
       <div class="sections">
+        <Section
+          title="Starred"
+          items={live().filter((c) => c.starred && c.notification !== "muted")}
+          item={Item}
+        />
         <Section title="Channels" items={channels()} item={Item} />
         <Section title="Direct messages" items={direct()} item={Item} />
-        <Show when={query() && channels().length + direct().length === 0}>
+        <Section
+          title="Muted"
+          items={live().filter((c) => c.notification === "muted")}
+          item={Item}
+          collapsed
+        />
+        <Show when={query() && live().length === 0}>
           <p class="nothing">No conversations match</p>
         </Show>
       </div>
@@ -104,13 +123,14 @@ export default function Sidebar(props: {
 
 function Section(props: {
   title: string;
+  collapsed?: boolean;
   items: Conversation[];
   item: (p: { c: Conversation }) => JSX.Element;
 }) {
-  const [open, setOpen] = createSignal(true);
+  const [open, setOpen] = createSignal(!props.collapsed);
   // A collapsed section still shows what needs attention, like Slack's.
   const shown = () =>
-    open() ? props.items : props.items.filter((c) => (c.unread ?? 0) > 0);
+    open() ? props.items : props.items.filter(hasUnread);
   return (
     <Show when={props.items.length > 0}>
       <button class="section" classList={{ open: open() }} onClick={() => setOpen(!open())}>

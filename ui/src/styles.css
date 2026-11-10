@@ -2999,3 +2999,96 @@ body.resizing-panels * {
     opacity: 1;
   }
 }
+
+:root { --unread-line: #c52b32; }
+[data-theme="dark"] { --unread-line: #f46b73; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --unread-line: #f46b73; }
+}
+.unread-line {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 20px;
+  color: var(--unread-line);
+  font-size: 12px;
+  font-weight: 600;
+}
+.unread-line::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+}
+.conv.muted { opacity: 0.6; font-weight: normal; }
+.conversation-menu { position: fixed; z-index: 1200; overflow: visible; }
+.conversation-menu > button,
+.conversation-submenu > button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 20px;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.conversation-menu button:disabled { opacity: 0.4; cursor: default; }
+.conversation-menu button:not(:disabled):hover,
+.conversation-menu button:focus-visible { background: var(--blue, #1264a3); color: white; }
+.conversation-menu .danger { color: var(--unread-line); }
+.menu-separator { height: 1px; background: var(--border); margin: 6px 0; }
+.conversation-submenu {
+  position: fixed;
+  width: 240px;
+  max-width: calc(100vw - 16px);
+  background: var(--popover-bg, var(--bg));
+  box-shadow: var(--shadow);
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.menu-note { padding: 4px 12px; margin: 0; font-size: 12px; }
+.channel-panel { height: 100%; display: flex; flex-direction: column; }
+.channel-panel .conv-header { justify-content: space-between; }
+.channel-panel-body { overflow: auto; padding: 20px; overflow-wrap: anywhere; }
+.channel-panel-body h3 { margin-top: 24px; }
+.conversation-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--popover-bg, var(--bg));
+  color: var(--unread-line);
+  box-shadow: 0 4px 20px #0004;
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 1400;
+}
+
+.conversation-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: #0005;
+  display: grid;
+  place-items: center;
+}
+.conversation-confirm {
+  width: min(440px, calc(100vw - 32px));
+  padding: 24px;
+  border-radius: 8px;
+  background: var(--popover-bg, var(--bg));
+  box-shadow: var(--shadow);
+}
+.conversation-confirm footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+.conversation-confirm .danger { color: var(--unread-line); }

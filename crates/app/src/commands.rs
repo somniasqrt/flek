@@ -552,3 +552,75 @@ pub async fn fetch_file(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn mark_read(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    ts: String,
+) -> CmdResult<()> {
+    let client = state.client().ok_or("Not connected")?;
+    flek_core::sync::read::mark(&client, &state.store, &state.bus, &conversation_id, &ts)
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn conversation_preference(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    starred: Option<bool>,
+    notification: Option<String>,
+) -> CmdResult<()> {
+    flek_core::sync::conversation::preference(
+        &state.store,
+        &state.bus,
+        &conversation_id,
+        starred,
+        notification,
+    )
+    .await
+    .map_err(text)
+}
+
+#[tauri::command]
+pub async fn dismiss_conversation(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> CmdResult<()> {
+    let client = state.client().ok_or("Not connected")?;
+    flek_core::sync::conversation::dismiss(&client, &state.store, &state.bus, &conversation_id)
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn channel_info(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    fresh: bool,
+) -> CmdResult<flek_core::reads::ChannelInfo> {
+    if fresh {
+        let client = state.client().ok_or("Not connected")?;
+        flek_core::sync::channel_details::fresh(&client, &state.store, &conversation_id)
+            .await
+            .map_err(text)?;
+    }
+    state
+        .store
+        .read(move |c| flek_core::reads::channel_info(c, &conversation_id))
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn conversation_link(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> CmdResult<Option<String>> {
+    state
+        .store
+        .read(move |c| flek_core::views::conversation_link(c, &conversation_id))
+        .await
+        .map_err(text)
+}

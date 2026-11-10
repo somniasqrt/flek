@@ -174,3 +174,6 @@ pub async fn fresh_message_reference(
 }
 
 pub mod presence;
+
+pub mod conversation;
+pub mod read;

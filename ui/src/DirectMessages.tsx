@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { tsDate, type DirectMessage } from "./api";
+import { isContextKey, menuTarget, type ConversationMenuTarget } from "./ConversationMenu";
 import Avatar from "./Avatar";
 import { emoji } from "./emoji";
 import { Plus } from "./icons";
@@ -13,6 +14,7 @@ export default function DirectMessages(props: {
   me: string;
   selected: string | null;
   onSelect: (id: string) => void;
+  onContext: (target: ConversationMenuTarget) => void;
   onCompose: () => void;
 }) {
   const [query, setQuery] = createSignal("");
@@ -55,6 +57,10 @@ export default function DirectMessages(props: {
               classList={{
                 active: props.selected === r.id,
                 unread: (r.unread ?? 0) > 0,
+              }}
+              onContextMenu={(e) => props.onContext(menuTarget(e, r.id))}
+              onKeyDown={(e) => {
+                if (isContextKey(e)) props.onContext(menuTarget(e, r.id));
               }}
               onClick={() => props.onSelect(r.id)}
             >

@@ -191,6 +191,10 @@ fn conversation_label(c: &Conversation, self_user: &str, users: &UserLabels) -> 
 /// One row for listing.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ConversationRow {
+    pub last_read: Option<String>,
+    pub starred: bool,
+    pub notification: String,
+    pub is_general: bool,
     pub id: String,
     pub kind: String,
     pub label: String,
@@ -219,15 +223,21 @@ pub fn list_conversations_including(
 ) -> Result<Vec<ConversationRow>> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, COALESCE(label, name, id), is_archived, topic,
-                message_count, unread_count, latest_ts, dm_user_id
+                message_count, CASE WHEN notification = 'muted' THEN 0 ELSE unread_count END,
+                latest_ts, dm_user_id, last_read, starred, notification,
+                COALESCE(json_extract(raw_json, '$.is_general'), 0)
          FROM conversations
-         WHERE team_id = ?1 AND (?2 OR is_member = 1)
+         WHERE team_id = ?1 AND (?2 OR is_member = 1) AND closed_at IS NULL
          ORDER BY CASE kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
                   is_archived, lower(COALESCE(label, name, id))",
     )?;
     let rows = stmt
         .query_map(params![team_id, non_member], |r| {
             Ok(ConversationRow {
+                last_read: r.get(9)?,
+                starred: r.get(10)?,
+                notification: r.get(11)?,
+                is_general: r.get(12)?,
                 id: r.get(0)?,
                 kind: r.get(1)?,
                 label: r.get(2)?,

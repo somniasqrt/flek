@@ -69,7 +69,9 @@ pub fn resolve(conn: &Connection, team: &str, query: &str, mode: Match) -> Resul
         "SELECT c.id, c.kind, COALESCE(c.label,c.name,c.id), c.is_archived, c.topic,
                 c.message_count, c.unread_count, c.latest_ts, c.dm_user_id,
                 c.name, u.name, u.display_name, u.real_name,
-                CASE WHEN json_valid(u.raw_json) THEN json_extract(u.raw_json,'$.profile.email') END
+                CASE WHEN json_valid(u.raw_json) THEN json_extract(u.raw_json,'$.profile.email') END,
+                c.last_read,c.starred,c.notification,
+                COALESCE(json_extract(c.raw_json,'$.is_general'),0)
          FROM conversations c LEFT JOIN users u ON u.id=c.dm_user_id
          WHERE c.team_id=?1
          ORDER BY CASE c.kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
@@ -77,6 +79,10 @@ pub fn resolve(conn: &Connection, team: &str, query: &str, mode: Match) -> Resul
     )?;
     let rows = stmt.query_map([team], |r| {
         let row = ConversationRow {
+            last_read: r.get(14)?,
+            starred: r.get(15)?,
+            notification: r.get(16)?,
+            is_general: r.get(17)?,
             id: r.get(0)?,
             kind: r.get(1)?,
             label: r.get(2)?,

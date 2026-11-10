@@ -46,6 +46,11 @@ fn main() {
         .manage(AppState::new(store))
         .invoke_handler(tauri::generate_handler![
             commands::team_icon,
+            commands::mark_read,
+            commands::conversation_preference,
+            commands::dismiss_conversation,
+            commands::channel_info,
+            commands::conversation_link,
             commands::direct_messages,
             commands::activity,
             commands::browse_files,
@@ -99,7 +104,9 @@ fn main() {
                 window_size::save(window.app_handle());
                 hide_main(window.app_handle());
             }
-            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+            WindowEvent::Moved(_)
+            | WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. } => {
                 window_size::capture(window);
             }
             WindowEvent::Destroyed if window.label() == login::LABEL => {

@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "./api";
+import { firstUnread } from "./conversation-model";
 import Avatar from "./Avatar";
 import Composer from "./Composer";
 import DmIntro from "./DmIntro";
@@ -41,10 +42,77 @@ export default function Timeline(props: {
   let scroller!: HTMLDivElement;
   // Bumped on every switch so late pages of the previous conversation are dropped.
   let generation = 0;
+  const [openingRead, setOpeningRead] = createSignal<string | null>(null);
+  const unreadTs = createMemo(() => firstUnread(rows, openingRead()));
+  const [readError, setReadError] = createSignal("");
+  let readTimer: number | undefined;
+  let marking = false;
+  let acknowledged: string | null = null;
+  const focused = () => document.visibilityState === "visible" && document.hasFocus();
+  const seenTs = () => {
+    if (!focused() || loading() || !scroller) return null;
+    const bounds = scroller.getBoundingClientRect();
+    let latest: string | null = null;
+    const stored = new Set(rows.map((m) => m.ts));
+    for (const el of scroller.querySelectorAll<HTMLElement>("[data-ts]")) {
+      if (!el.dataset.ts || !stored.has(el.dataset.ts)) continue;
+      const r = el.getBoundingClientRect();
+      if (r.bottom <= bounds.bottom + 1 && r.bottom > bounds.top && r.top < bounds.bottom) {
+        latest = el.dataset.ts ?? latest;
+      }
+    }
+    return latest;
+  };
+  const scheduleRead = () => {
+    if (readTimer !== undefined || marking) return;
+    const ts = seenTs();
+    const stored = props.conversation.last_read;
+    const last = acknowledged && (!stored || acknowledged > stored) ? acknowledged : stored;
+    if (!ts || (last && ts <= last)) return;
+    const id = props.conversation.id;
+    const gen = generation;
+    readTimer = window.setTimeout(async () => {
+      readTimer = undefined;
+      if (gen !== generation || id !== props.conversation.id || !focused()) return;
+      const latest = seenTs();
+      if (!latest) return;
+      marking = true;
+      try {
+        await api.markRead(id, latest);
+        if (gen === generation) {
+          acknowledged = latest;
+          setReadError("");
+        }
+      } catch (e) {
+        if (gen === generation) setReadError(String(e));
+      } finally {
+        marking = false;
+        // A newer message or a conversation switch may have arrived during IPC.
+        if (gen !== generation || !readError()) scheduleRead();
+      }
+    }, 1000);
+  };
+  const focusRead = () => scheduleRead();
+  window.addEventListener("focus", focusRead);
+  document.addEventListener("visibilitychange", focusRead);
+  onCleanup(() => {
+    generation++;
+    window.clearTimeout(readTimer);
+    window.removeEventListener("focus", focusRead);
+    document.removeEventListener("visibilitychange", focusRead);
+  });
+  createEffect(() => {
+    rows.length;
+    props.conversation.last_read;
+    requestAnimationFrame(scheduleRead);
+  });
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
   const nearBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 150;
-  const toBottom = () => requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
+  const toBottom = () => requestAnimationFrame(() => {
+    scroller.scrollTop = scroller.scrollHeight;
+    scheduleRead();
+  });
 
   const [flash, setFlash] = createSignal<string | null>(null);
   let flashTimer: number | undefined;
@@ -61,16 +129,45 @@ export default function Timeline(props: {
           return;
         }
         const gen = ++generation;
+        window.clearTimeout(readTimer);
+        readTimer = undefined;
+        acknowledged = null;
+        setReadError("");
+        setOpeningRead(props.conversation.last_read ?? null);
         show([]);
         setExhausted(false);
         setLoading(true);
-        const page = await api.messages(id, null, PAGE);
+        let page = await api.messages(id, null, PAGE);
+        // Include the opening cursor, even when unread spans more than one page,
+        // but not a whole never-read channel: the list is not virtualized.
+        for (
+          let pages = 0;
+          pages < 2 && openingRead() && page.length && page[0].ts > openingRead()!;
+          pages++
+        ) {
+          const older = await api.messages(id, page[0].ts, REVEAL_PAGE);
+          if (gen !== generation) return;
+          if (!older.length) break;
+          page = [...older, ...page];
+        }
         if (gen !== generation) return;
         show(page);
         setExhausted(page.length < PAGE);
         setLoading(false);
         if (target) await reveal(target);
-        else toBottom();
+        else requestAnimationFrame(() => {
+          const line = scroller.querySelector<HTMLElement>(".unread-line");
+          const lineTop = line
+            ? line.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+              + scroller.scrollTop
+            : null;
+          if (lineTop !== null && scroller.scrollHeight - lineTop > scroller.clientHeight) {
+            scroller.scrollTop = lineTop;
+          } else {
+            scroller.scrollTop = scroller.scrollHeight;
+          }
+          scheduleRead();
+        });
       },
     ),
   );
@@ -152,7 +249,10 @@ export default function Timeline(props: {
     ),
   );
 
-  const onScroll = () => scroller.scrollTop < LOAD_MARGIN && loadOlder();
+  const onScroll = () => {
+    scheduleRead();
+    if (scroller.scrollTop < LOAD_MARGIN) void loadOlder();
+  };
 
   // Messages split by day. Day keys are strings, so <For> keeps a day's
   // section (and its rows) when other days change or older ones load.
@@ -231,6 +331,9 @@ export default function Timeline(props: {
           <span class="muted topic">{props.conversation.topic}</span>
         </Show>
       </header>
+      <Show when={readError()}>
+        <p class="error" role="alert">{readError()}</p>
+      </Show>
       <div class="scroll-area">
         <div class="scroller" ref={scroller} onScroll={onScroll}>
           <Show
@@ -259,14 +362,19 @@ export default function Timeline(props: {
                   </div>
                   <For each={items()}>
                     {(m, i) => (
-                      <MessageRow
-                        m={m}
-                        conversationId={props.conversation.id}
-                        prev={items()[i() - 1]}
-                        onThread={props.onThread}
-                        active={props.thread === m.ts}
-                        flash={flash() === m.ts}
-                      />
+                      <>
+                        <Show when={m.ts === unreadTs()}>
+                          <div class="unread-line"><span>New</span></div>
+                        </Show>
+                        <MessageRow
+                          m={m}
+                          conversationId={props.conversation.id}
+                          prev={items()[i() - 1]}
+                          onThread={props.onThread}
+                          active={props.thread === m.ts}
+                          flash={flash() === m.ts}
+                        />
+                      </>
                     )}
                   </For>
                 </section>

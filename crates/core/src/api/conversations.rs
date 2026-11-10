@@ -92,3 +92,24 @@ impl Client {
             .collect()
     }
 }
+
+impl Client {
+    /// Documented conversation read cursor; thread subscription cursors are separate.
+    pub async fn conversations_mark(&self, channel: &str, ts: &str) -> Result<()> {
+        self.call::<Value>("conversations.mark", &[("channel", channel), ("ts", ts)])
+            .await?;
+        Ok(())
+    }
+
+    pub async fn conversations_leave(&self, channel: &str) -> Result<()> {
+        self.call::<Value>("conversations.leave", &[("channel", channel)])
+            .await?;
+        Ok(())
+    }
+
+    pub async fn conversations_close(&self, channel: &str) -> Result<()> {
+        self.call::<Value>("conversations.close", &[("channel", channel)])
+            .await?;
+        Ok(())
+    }
+}

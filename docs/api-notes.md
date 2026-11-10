@@ -357,3 +357,47 @@ paths are persisted and change events published before UI re-reads. Hidden
 files may open/download from an existing cache, but cannot trigger a fetch.
 The compose picker selects an existing local conversation; creating a DM with
 a person outside the stored conversation list remains a separate feature.
+
+
+## Conversation actions and notification preferences (2026-11-10)
+
+Documented methods used by the sidebar/read tracking:
+
+- `conversations.mark`: POST `channel`, `ts`; success `{ "ok": true }`.
+  Core serializes marks, skips cursors at/before SQLite's `last_read`, waits for
+  success, then advances SQLite and emits `ReadMarker`. Errors keep local state.
+  UI debounces fully visible messages while focused/visible; thread subscription
+  read state uses a separate undocumented API and is deliberately out of scope.
+- `conversations.leave`: POST `channel`; success `{ "ok": true }`, then
+  `is_member = 0`. Known `is_general` channels are disabled; Slack's
+  `cant_leave_general` error is surfaced without changing membership.
+- `conversations.close`: POST `channel`; success `{ "ok": true }` (including
+  `no_op` / `already_closed`), then local `closed_at = latest_ts`. A newer stored
+  message clears it; replaying older history and directory refresh do not.
+
+References: [mark](https://docs.slack.dev/reference/methods/conversations.mark/),
+[leave](https://docs.slack.dev/reference/methods/conversations.leave/),
+[close](https://docs.slack.dev/reference/methods/conversations.close/).
+All three are tested only with wiremock; **xoxc+d support remains unverified**.
+No real workspace or Keychain was accessed.
+
+### Undocumented prefs — unverified, NOT implemented
+
+Candidate methods are `users.prefs.get` / `users.prefs.set`. The proposed read
+shape is `{ "ok": true, "prefs": { "all_notifications_prefs": "<JSON string>",
+"muted_channels": "C1,C2" } }`. A proposed write is form fields `name` and
+`value` (for example `name=muted_channels`, `value=C1,C2`), with response
+`{ "ok": true }`. The exact per-channel keys/values inside
+`all_notifications_prefs`, merge behavior, and accepted write shape are **not
+verified**. This is a research note, not a captured request/response contract.
+Blindly replacing workspace preference blobs risks losing unrelated settings.
+
+The permitted fallback is implemented instead: migration 0016 stores Flek-local
+`notification = all | mentions | muted` and `starred`. The UI labels notification
+choices “In Flek only”; stars also do not sync to Slack (sections/stars APIs are
+undocumented). No internal prefs calls, parsing, directory prefs fetch, or writes
+are enabled. Mute suppresses unread emphasis/badges and Activity unread, and
+moves Home items into the collapsed Muted group. All/mentions are saved choices;
+OS notification delivery is still the separate planned M6.2.1 feature. A future
+prefs sync must live in `api/internal.rs`, be capability-gated, merge confirmed
+current prefs, and leave SQLite unchanged on any unsupported/error response.

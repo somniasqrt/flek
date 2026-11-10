@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-dismiss-conversation"
+description = "Enables the dismiss_conversation command without any pre-configured scope."
+commands.allow = ["dismiss_conversation"]
+
+[[permission]]
+identifier = "deny-dismiss-conversation"
+description = "Denies the dismiss_conversation command without any pre-configured scope."
+commands.deny = ["dismiss_conversation"]
