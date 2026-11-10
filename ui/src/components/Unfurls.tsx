@@ -1,3 +1,4 @@
+import { externalLink } from "../models/external-link";
 import { For, Show } from "solid-js";
 import { api, linkImageUrl, type Unfurl } from "../api";
 import { ParsedRich } from "./Rich";
@@ -14,8 +15,7 @@ export default function Unfurls(props: { items: Unfurl[] }) {
   return <For each={props.items}>{(u) => <Card u={u} />}</For>;
 }
 
-function open(url: string | null, e?: MouseEvent) {
-  e?.preventDefault();
+function open(url: string | null) {
   if (url) api.openUrl(url).catch(() => {});
 }
 
@@ -41,7 +41,7 @@ function Card(props: { u: Unfurl }) {
           </div>
         </Show>
         <Show when={previewText(u.title)}>
-          <a class="unfurl-title" href={link ?? undefined} onClick={(e) => open(link, e)}>
+          <a class="unfurl-title" {...externalLink(link, open)}>
             {previewText(u.title)}
           </a>
         </Show>

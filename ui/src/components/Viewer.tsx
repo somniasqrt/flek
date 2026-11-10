@@ -1,5 +1,5 @@
 import FileSafety, { fileActionLabel } from "./FileSafety";
-import { canOpen, fileName } from "../models/file-presentation";
+import { isRasterImage, canOpen, fileName } from "../models/file-presentation";
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { t, locale, clock24 } from "../i18n/index";
 import { api, fileUrl, tsDate, type FileRef } from "../api";
@@ -17,7 +17,7 @@ const [viewing, setViewing] = createSignal<Viewing | null>(null);
 
 const isPdf = (f: FileRef) =>
   f.mimetype === "application/pdf" || f.filetype?.toLowerCase() === "pdf";
-const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/");
+const isImage = (f: FileRef) => isRasterImage(f.mimetype);
 
 /// Whether the viewer can show `f` (it has to be downloaded).
 export const canView = (f: FileRef) => !!f.local_path && canOpen(f) && (isImage(f) || isPdf(f));

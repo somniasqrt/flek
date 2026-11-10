@@ -140,6 +140,8 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 
 ### crates/app/src
 
+- `browsing_data.rs` — Versioned legacy Slack website-data cleanup; macOS record-scoped WebKit bridge and completion/marker sequencing.
+- `navigation.rs` — Guarded main-window construction, own-origin navigation and denied native popups.
 - `autostart.rs` — Launch at login (see `platform::autostart_launcher`), started with
 - `commands/account.rs` — Boot status, onboarding, account origin and sign-out IPC.
 - `commands/channels.rs` — Stored channel details, explicit directory/preview/join/create IPC.
@@ -199,6 +201,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `models/emoji-picker-data.ts` — Catalog/category/search/frequency/tone helpers; convenience preferences use localStorage.
 - `models/emoji.ts` — Unicode emoji name and skin-tone lookup.
 - `models/file-presentation.ts` — Real filenames without bidi controls and fail-closed presentation of core launch eligibility.
+- `models/external-link.ts` — Href-free, keyboard-accessible external link interactions through open_url.
 - `models/links.ts` — Link kinds and short display labels.
 - `models/mrkdwn.ts` — Pure Slack text parsing into safe render nodes.
 - `models/presence.ts` — Presence/DND/status expiry and calendar arithmetic.
@@ -316,9 +319,9 @@ Migration 0007 owns counters and uses NULL-safe IS comparisons. Unread means und
 - Undocumented calls live only in api/internal.rs, with non-auth fallback; see api-notes.md and tests/directory.rs / engine.rs. New internal calls need an explicit feature/capability check; no unchecked prefs writes.
 - Normal transport is paced HTTP plus websocket, respecting Retry-After: tests/api.rs::retries_after_http_429, tests/backfill.rs::limiter_spaces_requests and tests/rtm.rs.
 
-M9 invariants to preserve (findings outside M9.1/M9.2 remain open):
+M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Text/names/unfurls are text nodes; rich drafts are sanitized and paste is plain text. models/unfurl-text.test.ts, models/rich-compose.test.ts and i18n.test.ts cover pure pieces; DOM/paste sanitization still needs review.
-- javascript:/file: links never reach the opener: commands/files.rs::open_url permits http/https/mailto; models/rich-compose.test.ts tests editor protocols. Native opener gate currently has no dedicated unit test.
+- javascript:/file: links never reach the opener: commands/files.rs::open_url permits http/https/mailto; models/rich-compose.test.ts tests editor protocols. commands/files.rs tests the native opener scheme decision without launching anything.
 - SQL values use bound parameters; dynamic fragments contain internal expressions only. Agent read/search fixture suites cover quotes/filters; parameter discipline also requires review.
 - Downloaded files receive macOS quarantine after atomic rename; saved copies are explicitly marked. OS actions also protect old cache hits and fail closed on marking errors. tests/files.rs::download_retries_after_429 and files::safety::tests::save_copy_adds_quarantine_even_when_source_has_none guard the attributes; see platforms.md for flags and Windows work.
 - Direct OS open requires the core extension/MIME allowlist using the resolved cached filename. Other types reveal only, with en/uk warnings. files::safety::tests::exact_extension_and_mime_must_agree and tests/files.rs::open_policy_uses_cached_extension_even_with_safe_metadata_name guard the policy; UI consumes core's can_open flag.
@@ -328,7 +331,12 @@ M9 invariants to preserve (findings outside M9.1/M9.2 remain open):
 - Automatic recovery requires desktop_import_on_start=true, a recorded Desktop origin and the same imported team id (including validated identity). Unknown origins stay unknown. Both boot and engine recovery use core's policy. Rejected credentials are deleted before recovery; invalid_auth/token_revoked/account_inactive cannot survive failed recovery. auth::security_tests guard each branch and secret-free errors.
 - Secret Debug/Display and errors redact credentials: secret::tests, tests/secret.rs and CLI output::tests::credential_shaped_error_text_is_redacted. Never serialize Secret to logs/files/fixtures.
 - Sign-in web content has no IPC: capabilities/main.json grants only main; main.rs registers commands through app manifest/build.rs. Enforced by Tauri configuration, no browser test in this pass.
-- UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. tests/unfurls.rs guards proxy/cache parsing; full CSP/navigation needs review (open M9.4).
+- Sign-in uses an ephemeral window (`incognito(true)`). Capture script reads localConfig_v2 in that window; cookies_for_url reads the same window's native cookie store before destroy. Completion is cancelled and accepted only from the exact HTTPS app.slack.com origin, without userinfo/non-default ports. Page metadata has byte limits and no control characters, is never used in paths/commands or logged, and credentials must pass auth.test before OS-store save. login.rs tests URL lookalikes and metadata boundaries; native persistence/cookie capture requires owner QA.
+- Startup cleanup precedes session boot; sign-in retries a failed migration. The app-owned webview_cleanup_version setting is saved only after removal completes, and cannot be overwritten by UI preferences. Sign-out destroys signin and removes legacy Slack data even if credential deletion reports an error. Capture and sign-out share the maintenance lock. browsing_data.rs tests scope, completion-before-marker, failure and repeat behavior; core settings tests legacy defaults/restart persistence. See platforms.md for exactly what is removed.
+- Main never navigates outside tauri://localhost or http(s)://tauri.localhost (no custom port/userinfo); debug alone also permits the configured dev origin, including its exact port. Native popups are always denied; http(s) popup URLs go through open_url. Config disables automatic window creation so navigation.rs attaches both guards before main loads. Pure URL/config tests guard this; gestures require owner QA.
+- Message/unfurl/profile anchors have no href, cannot drag or expose native link context menus, and open only via open_url. role=link, tab focus, Enter, focus ring and URL titles preserve accessibility. There was no custom copy-link menu on these anchors. models/external-link.test.ts tests interactions and checks integration.
+- flekfile only serves allowlisted raster images; all responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs still use pdf_data IPC and pdf.js canvas; video/PDF thumbnails are PNGs, not embedded documents.
+- UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. It also enforces object-src/base-uri/form-action/frame-src 'none'; no object/iframe/base or form actions are used (forms handle submit locally). tests/unfurls.rs guards proxy/cache parsing; config and UI source regressions guard directives and the PDF canvas path.
 
 ## Conventions and extension checklist
 

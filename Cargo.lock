@@ -1325,8 +1325,12 @@ name = "flek-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block2",
  "dirs 6.0.0",
  "flek-core",
+ "objc2",
+ "objc2-foundation",
+ "objc2-web-kit",
  "percent-encoding",
  "serde",
  "serde_json",

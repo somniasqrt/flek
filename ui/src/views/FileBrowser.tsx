@@ -1,5 +1,5 @@
 import FileSafety, { fileActionLabel } from "../components/FileSafety";
-import { fileName } from "../models/file-presentation";
+import { isRasterImage, fileName } from "../models/file-presentation";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { t, errorMessage, locale } from "../i18n/index";
 import { api, fileUrl, tsDate, type Conversation, type StoredFile } from "../api";
@@ -161,7 +161,7 @@ export default function FileBrowser(props: {
             <div class="browser-file">
               <span class="browser-file-icon" data-kind={fileType(f.mimetype)}>
                 <Show
-                  when={fileType(f.mimetype) === "image" && f.local_path}
+                  when={isRasterImage(f.mimetype) && f.local_path}
                   fallback={fileType(f.mimetype) === "pdf" ? "PDF" : <Document size={26} />}
                 >
                   <img src={fileUrl(f.id)} alt="" loading="lazy" />

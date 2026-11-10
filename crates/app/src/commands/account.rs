@@ -23,7 +23,8 @@ pub async fn import_desktop(app: AppHandle) {
 
 /// Open the "Sign in to Slack" window.
 #[tauri::command]
-pub fn sign_in(app: AppHandle) -> CmdResult<()> {
+pub async fn sign_in(app: AppHandle) -> CmdResult<()> {
+    crate::browsing_data::upgrade(&app).await?;
     crate::login::open(&app).map_err(text)
 }
 
@@ -32,14 +33,23 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> CmdResult<(
     let team = state.team_id().ok_or("not_signed_in")?;
     let _maintenance = state.maintenance.lock().await;
     state.stop_and_wait().await;
-    let settings = flek_core::auth::sign_out(
+    let signed_out = flek_core::auth::sign_out(
         &state.creds,
         &team,
         &flek_core::settings::default_path().map_err(text)?,
     )
-    .map_err(text)?;
-    *state.settings.lock().map_err(text)? = settings;
+    .map_err(text);
+    {
+        let mut current = state.settings.lock().map_err(text)?;
+        // Keep stale UI preferences from re-enabling import after a partial
+        // credential-store failure (core has already persisted this intent).
+        current.desktop_import_on_start = false;
+        if let Ok(settings) = &signed_out {
+            *current = settings.clone();
+        }
+    }
     state.forget_session();
+    let cleanup = crate::browsing_data::clear(&app).await;
     state::set_status(
         &app,
         Status::SignIn {
@@ -47,7 +57,8 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> CmdResult<(
             reason: None,
         },
     );
-    Ok(())
+    signed_out?;
+    cleanup
 }
 
 #[tauri::command]

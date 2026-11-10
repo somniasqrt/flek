@@ -1,3 +1,4 @@
+import { externalLink } from "../models/external-link";
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
 import { t, locale, clock24 } from "../i18n/index";
 import { api, type Profile } from "../api";
@@ -181,11 +182,9 @@ export default function ProfilePanel(props: {
                           <div>
                             <div class="profile-label muted">{t("Email address")}</div>
                             <a
-                              href={`mailto:${email()}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                api.openUrl(`mailto:${email()}`).catch(() => {});
-                              }}
+                              {...externalLink(`mailto:${email()}`, (url) => {
+                                api.openUrl(url).catch(() => {});
+                              })}
                             >
                               {email()}
                             </a>

@@ -108,3 +108,38 @@ PDF, plain text/Markdown/CSV, the listed office formats and common audio/video a
 allowed. SVG, HTML, scripts, shortcuts, disk images, installers, archives and unknown
 or mismatched types only reveal in the platform file manager. This policy does not
 inspect file contents or guarantee document safety; quarantine is an independent layer.
+
+## Webview session storage (M9.3 / M9.4)
+
+The bundle identifier is `app.flek.desktop`. Sign-in is incognito on every platform.
+Installed Tauri 2.12.5 / Wry 0.57.1 source confirms that WKWebView uses
+`nonPersistentDataStore`; cookies_for_url reads that same data_store.httpCookieStore.
+WebView2 reads the window's CookieManager; WebKitGTK reads its website_data_manager's
+cookie_manager. The capture script executes in the sign-in document's localStorage
+before the cancelled completion navigation, and the native cookie read precedes
+window destruction. No incognito cookie-read incompatibility was found in source;
+runtime capture and persistence are owner checks, not headless test claims.
+
+On macOS, upgrade cleanup and sign-out use the app's default WKWebsiteDataStore,
+fetch all available website-data types, and remove only records whose displayName
+is `slack.com` or a subdomain (case-insensitive, dot-boundary match). This covers
+WebKit-managed cookies, local/session storage, caches, databases and service-worker
+records for that domain, including old persistent signin data shared with main.
+It does not delete directories, touch Slack desktop or Keychain, or clear app-origin
+drafts/layout. WebKit owns the physical WebKit/HTTPStorages backing files; removal
+is logical website-data removal, not a forensic secure erase of filesystem blocks.
+The completion callback must fire before saving webview_cleanup_version=1 in
+settings.json; failure/timeout leaves the marker pending and blocks session boot.
+
+Tauri's portable clear_all_browsing_data API cannot target origins. The provisional
+Windows/Linux (M7) fallback clears main's entire browser store on migration/sign-out,
+also resetting local UI drafts/layout; SQLite, downloaded files and settings.json
+are retained. Native per-origin cleanup on those platforms is future M7 work.
+
+The macOS record-scoped API requires Objective-C calls absent from Tauri's safe
+abstraction. `browsing_data::macos` is the sole unsafe-code exception, with main-thread,
+object-lifetime and callback safety comments. App uses deny(unsafe_code) elsewhere;
+core/CLI keep the workspace forbid. Dependencies were already present transitively.
+See [Apple's record-scoped removal API](https://developer.apple.com/documentation/webkit/wkwebsitedatastore/removedata(oftypes:for:completionhandler:))
+and [Tauri's window builder API](https://docs.rs/tauri/2.12.5/tauri/struct.WebviewWindowBuilder.html).
+Native store cleanup and persistence need the owner checks in ROADMAP.md.

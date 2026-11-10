@@ -4,10 +4,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod autostart;
+mod browsing_data;
 mod commands;
 mod files;
 mod i18n;
 mod login;
+mod navigation;
 mod platform;
 mod state;
 mod tray;
@@ -101,6 +103,7 @@ fn main() {
         ])
         .setup(move |app| {
             let handle = app.handle();
+            navigation::create_main(handle)?;
             window_size::restore(handle);
             tray::create(handle)?;
             state::forward_changes(handle);
@@ -109,7 +112,19 @@ fn main() {
             } else {
                 show_main(handle);
             }
-            tauri::async_runtime::spawn(state::boot(handle.clone()));
+            let handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                match browsing_data::upgrade(&handle).await {
+                    Ok(()) => state::boot(handle).await,
+                    Err(reason) => state::set_status(
+                        &handle,
+                        state::Status::SignIn {
+                            desktop: false,
+                            reason: Some(reason),
+                        },
+                    ),
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| match event {

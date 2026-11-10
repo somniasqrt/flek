@@ -70,12 +70,21 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             crate::i18n::Key::SignIn,
         ))
         .inner_size(520.0, 760.0)
+        .incognito(true)
         .initialization_script(CAPTURE_SCRIPT)
         .on_navigation(move |url| {
             if url.host_str() != Some(DONE_HOST) {
                 return true;
             }
+            // Read the source window, not a substring of the destination URL.
+            let current = handle.get_webview_window(LABEL).and_then(|w| w.url().ok());
+            if !completion_allowed(current.as_ref(), url) {
+                return false;
+            }
             let fragment = url.fragment().unwrap_or_default();
+            if fragment.len() > 256 * 1024 {
+                return false;
+            }
             let decoded = percent_encoding::percent_decode_str(fragment).decode_utf8_lossy();
             let captured = serde_json::from_str::<Captured>(&decoded).ok();
             let app = handle.clone();
@@ -104,8 +113,16 @@ pub fn closed(app: &AppHandle) {
 }
 
 async fn finish(app: AppHandle, captured: Option<Captured>) {
+    let state = app.state::<AppState>();
+    // Sign-out cannot race a pending auth.test and let it save credentials later.
+    let _maintenance = state.maintenance.lock().await;
     let result = async {
-        let captured = captured.ok_or_else(|| "the sign-in page sent nothing usable".to_owned())?;
+        let mut captured =
+            captured.ok_or_else(|| "the sign-in page sent nothing usable".to_owned())?;
+        captured.user_agent = bounded_page_text(&captured.user_agent, 512);
+        if captured.teams.is_empty() || captured.teams.len() > 64 {
+            return Err("invalid sign-in workspace count".to_owned());
+        }
         let window = app
             .get_webview_window(LABEL)
             .ok_or_else(|| "the sign-in window is gone".to_owned())?;
@@ -115,16 +132,25 @@ async fn finish(app: AppHandle, captured: Option<Captured>) {
 
         let mut first = None;
         let mut last_err = None;
-        for team in captured.teams {
-            match auth::validate(Secret::new(team.token), cookie.clone(), Some(origin.clone()))
-                .await
+        for mut team in captured.teams {
+            team.id = bounded_page_text(&team.id, 128);
+            team.name = bounded_page_text(&team.name, 256);
+            match auth::validate(
+                Secret::new(team.token),
+                cookie.clone(),
+                Some(origin.clone()),
+            )
+            .await
             {
                 Ok(session) => {
-                    creds.save(&session.credentials).map_err(|e| e.to_string())?;
+                    creds
+                        .save(&session.credentials)
+                        .map_err(|e| e.to_string())?;
                     first.get_or_insert(session);
                 }
                 Err(e) => {
-                    tracing::warn!(team = %team.id, name = %team.name, "sign-in validation failed: {e}");
+                    // Do not log metadata supplied by a page (it may contain secrets).
+                    tracing::warn!("sign-in validation failed");
                     last_err = Some(e.to_string());
                 }
             }
@@ -160,4 +186,84 @@ fn session_cookie(window: &WebviewWindow) -> Result<Secret, String> {
         .find(|c| c.name() == "d" && c.value().starts_with("xoxd-"))
         .map(|c| Secret::new(c.value().to_owned()))
         .ok_or_else(|| "signed in, but the session cookie is missing".to_owned())
+}
+
+/// Only the actual HTTPS Slack app page can hand off a captured session.
+fn completion_allowed(current: Option<&Url>, destination: &Url) -> bool {
+    current.is_some_and(|url| {
+        url.scheme() == "https"
+            && url.host_str() == Some("app.slack.com")
+            && url.port_or_known_default() == Some(443)
+            && url.username().is_empty()
+            && url.password().is_none()
+    }) && destination.scheme() == "https"
+        && destination.host_str() == Some(DONE_HOST)
+        && destination.port_or_known_default() == Some(443)
+        && destination.username().is_empty()
+        && destination.password().is_none()
+        && destination.path() == "/signed-in"
+}
+
+/// Page metadata is display/header input only, never a path or command.
+fn bounded_page_text(value: &str, max_bytes: usize) -> String {
+    let mut result = String::new();
+    for c in value.chars().filter(|c| !c.is_control()) {
+        if result.len() + c.len_utf8() > max_bytes {
+            break;
+        }
+        result.push(c);
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completion_requires_the_exact_slack_source_origin() {
+        let done = Url::parse("https://flek.invalid/signed-in#fake").unwrap();
+        for source in [
+            "https://app.slack.com/client/T",
+            "https://app.slack.com:443/",
+        ] {
+            assert!(completion_allowed(
+                Some(&Url::parse(source).unwrap()),
+                &done
+            ));
+        }
+        for source in [
+            "https://app.slack.com.evil.test",
+            "http://app.slack.com",
+            "https://evil.test/?u=app.slack.com",
+            "https://app.slack.com@evil.test",
+            "https://evil@app.slack.com",
+            "https://app.slack.com:8443/",
+        ] {
+            assert!(
+                !completion_allowed(Some(&Url::parse(source).unwrap()), &done),
+                "{source}"
+            );
+        }
+        assert!(!completion_allowed(None, &done));
+        let slack = Url::parse(SLACK_URL).unwrap();
+        for target in [
+            "http://flek.invalid/signed-in",
+            "https://flek.invalid/other",
+            "https://flek.invalid.evil.test/signed-in",
+            "https://evil@flek.invalid/signed-in",
+        ] {
+            assert!(!completion_allowed(
+                Some(&slack),
+                &Url::parse(target).unwrap()
+            ));
+        }
+    }
+
+    #[test]
+    fn untrusted_page_metadata_is_bounded_and_has_no_controls() {
+        assert_eq!(bounded_page_text("team\r\n\0\tname", 256), "teamname");
+        assert_eq!(bounded_page_text(&"я".repeat(300), 511).len(), 510);
+        assert_eq!(bounded_page_text(&"a".repeat(1024), 512).len(), 512);
+    }
 }

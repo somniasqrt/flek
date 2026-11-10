@@ -1,5 +1,5 @@
 import FileSafety from "./FileSafety";
-import { fileName } from "../models/file-presentation";
+import { isRasterImage, fileName } from "../models/file-presentation";
 import { For, Show } from "solid-js";
 import { t } from "../i18n/index";
 import { settings } from "../stores/settings";
@@ -48,7 +48,7 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
   );
 }
 
-const isImage = (f: FileRef) => !!f.mimetype?.startsWith("image/") && !f.hidden_by_limit;
+const isImage = (f: FileRef) => isRasterImage(f.mimetype) && !f.hidden_by_limit;
 
 function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: FileRef) => void }) {
   // Reserve the final size up front so loading images never shift the timeline.

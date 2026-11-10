@@ -1,3 +1,4 @@
+import { externalLink } from "../models/external-link";
 import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { api } from "../api";
@@ -108,14 +109,12 @@ function node(n: Inline): JSX.Element {
 
 export function Link(props: { url: string; label?: Inline[] }) {
   const info = linkInfo(props.url);
-  const open = (e: MouseEvent) => {
-    // Never navigate Flek's own window; links go to the browser.
-    e.preventDefault();
-    api.openUrl(props.url).catch(() => {});
+  const open = (url: string) => {
+    api.openUrl(url).catch(() => {});
   };
   if (props.url.startsWith("mailto:")) {
     return (
-      <a class="link" href={props.url} onClick={open}>
+      <a class="link" {...externalLink(props.url, open)}>
         {props.label ? inlines(props.label) : props.url.slice(7)}
       </a>
     );
@@ -126,9 +125,7 @@ export function Link(props: { url: string; label?: Inline[] }) {
     return (
       <a
         class="chip"
-        href={props.url}
-        onClick={open}
-        title={props.url}
+        {...externalLink(props.url, open)}
         style={{ "--chip": info.color }}
       >
         <LinkIcon kind={info.kind} />
@@ -140,7 +137,7 @@ export function Link(props: { url: string; label?: Inline[] }) {
     );
   }
   return (
-    <a class="link" href={props.url} onClick={open} title={props.url}>
+    <a class="link" {...externalLink(props.url, open)}>
       {inlines(props.label)}
     </a>
   );

@@ -121,3 +121,7 @@ button {
   color: var(--muted);
 }
 
+
+/* Href-free external links retain keyboard focus and a link affordance. */
+[role="link"] { cursor: pointer; }
+[role="link"]:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

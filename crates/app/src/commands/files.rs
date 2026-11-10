@@ -58,7 +58,7 @@ pub async fn pdf_data(
 #[tauri::command]
 pub fn open_url(app: AppHandle, url: String) -> CmdResult<()> {
     let parsed = tauri::Url::parse(&url).map_err(text)?;
-    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+    if !external_scheme_allowed(&parsed) {
         return Err(format!("not opening {} links", parsed.scheme()));
     }
     app.opener()
@@ -149,4 +149,32 @@ pub async fn fetch_file(
         app.opener().reveal_item_in_dir(path).map_err(text)?;
     }
     Ok(())
+}
+
+fn external_scheme_allowed(url: &tauri::Url) -> bool {
+    matches!(url.scheme(), "http" | "https" | "mailto")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn external_opener_rejects_non_web_and_non_mail_schemes() {
+        for value in [
+            "https://example.test",
+            "http://example.test",
+            "mailto:a@example.test",
+        ] {
+            assert!(external_scheme_allowed(&tauri::Url::parse(value).unwrap()));
+        }
+        for value in [
+            "file:///tmp/a",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "flekfile://localhost/F",
+            "slack://channel?id=C",
+        ] {
+            assert!(!external_scheme_allowed(&tauri::Url::parse(value).unwrap()));
+        }
+    }
 }

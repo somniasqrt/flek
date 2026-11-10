@@ -45,6 +45,8 @@ pub enum DmSort {
 #[serde(default)]
 pub struct Settings {
     pub version: u32,
+    /// App-owned migration marker; never supplied by page input.
+    pub webview_cleanup_version: u32,
     pub language: Language,
     pub theme: Theme,
     pub text_size: TextSize,
@@ -68,6 +70,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: 1,
+            webview_cleanup_version: 0,
             language: Language::System,
             theme: Theme::System,
             text_size: TextSize::Default,
@@ -166,6 +169,20 @@ mod tests {
         assert!(s.save(&path).is_err());
         assert_eq!(Settings::load(&path).unwrap().refresh_days, 7);
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn legacy_preferences_require_cleanup_and_marker_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, br#"{"version":1,"theme":"dark"}"#).unwrap();
+        let mut settings = Settings::load(&path).unwrap();
+        assert_eq!(settings.webview_cleanup_version, 0);
+        settings.webview_cleanup_version = 1;
+        settings.save(&path).unwrap();
+        let restarted = Settings::load(&path).unwrap();
+        assert_eq!(restarted.webview_cleanup_version, 1);
+        assert_eq!(restarted.theme, Theme::Dark);
     }
 
     #[test]
