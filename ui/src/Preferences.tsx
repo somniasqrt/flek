@@ -5,36 +5,42 @@ import {
   For,
   onCleanup,
   onMount,
+  Match,
   Show,
-  type JSX,
+  Switch,
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import { t, errorMessage } from "./i18n";
-import { api, linkImageUrl, type Status } from "./api";
-import Avatar from "./Avatar";
-import { people } from "./people";
-import { clock24 } from "./i18n";
-import { changeSetting, settings, setPreferencesOpen } from "./settings";
+import { api, type Status } from "./api";
+import { Cross, Gear, ImageIcon, Palette, Person, Refresh, SidebarPanel } from "./icons";
+import { changeSetting, setPreferencesOpen } from "./settings";
 import type { Settings } from "./settings-model";
+import AccountSection from "./preferences/AccountSection";
+import type { Confirmable, PrefsContext } from "./preferences/context";
+import {
+  AppearanceSection,
+  GeneralSection,
+  MediaSection,
+  SidebarSection,
+} from "./preferences/sections";
+import SyncSection from "./preferences/SyncSection";
 
 const sections = [
-  "General",
-  "Appearance",
-  "Sidebar",
-  "Messages & media",
-  "Sync & storage",
-  "Account",
+  ["General", Gear],
+  ["Appearance", Palette],
+  ["Sidebar", SidebarPanel],
+  ["Messages & media", ImageIcon],
+  ["Sync & storage", Refresh],
+  ["Account", Person],
 ] as const;
-type Section = (typeof sections)[number];
+type Section = (typeof sections)[number][0];
 
 export default function Preferences(props: { status: Status }) {
   const [section, setSection] = createSignal<Section>("General");
   const [error, setError] = createSignal("");
   const [busy, setBusy] = createSignal(false);
-  const [confirm, setConfirm] = createSignal<"cache" | "sync" | "signout" | null>(null);
+  const [confirm, setConfirm] = createSignal<Confirmable | null>(null);
   const [storage, { refetch }] = createResource(api.storageInfo);
-  const [origin] = createResource(api.accountOrigin);
-  const [icon] = createResource(api.teamIcon);
   const ready = () => (props.status.phase === "ready" ? props.status : null);
   let panel!: HTMLDivElement;
   const close = () => setPreferencesOpen(false);
@@ -66,33 +72,25 @@ export default function Preferences(props: { status: Status }) {
   };
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     run(() => changeSetting(key, value));
-  const Toggle = (p: { setting: keyof Settings; label: string }) => (
-    <label class="preference-toggle">
-      <input
-        type="checkbox"
-        checked={!!settings()[p.setting]}
-        disabled={busy()}
-        onChange={(e) => update(p.setting, e.currentTarget.checked)}
-      />
-      {p.label}
-    </label>
-  );
-  const Select = (p: {
-    label: string;
-    value: string;
-    options: readonly (readonly [string, string])[];
-    change: (value: string) => void;
-  }) => (
-    <label class="preference-field">
-      <span>{p.label}</span>
-      <select value={p.value} disabled={busy()} onChange={(e) => p.change(e.currentTarget.value)}>
-        <For each={p.options}>{([value, label]) => <option value={value}>{label}</option>}</For>
-      </select>
-    </label>
-  );
-  const Pane = (p: { name: Section; children: JSX.Element }) => (
-    <Show when={section() === p.name}>{p.children}</Show>
-  );
+  const ctx: PrefsContext = {
+    busy,
+    update,
+    run,
+    ask: setConfirm,
+    ready,
+    storage,
+  };
+  const moveSection = (e: KeyboardEvent) => {
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const index = sections.findIndex(([name]) => name === section());
+    const next = sections[(index + step + sections.length) % sections.length]![0];
+    setSection(next);
+    queueMicrotask(() => {
+      panel.querySelector<HTMLElement>('nav button[aria-current="page"]')?.focus();
+    });
+  };
   const confirmed = async () => {
     const action = confirm();
     setConfirm(null);
@@ -145,200 +143,50 @@ export default function Preferences(props: { status: Status }) {
             }
           }}
         >
-          <header inert={confirm() ? true : undefined}>
+          <header class="preferences-header" inert={confirm() ? true : undefined}>
             <h2>{t("Preferences")}</h2>
             <button aria-label={t("Close")} disabled={busy()} onClick={close}>
-              ×
+              <Cross size={18} />
             </button>
           </header>
           <div class="preferences-layout" inert={confirm() ? true : undefined}>
-            <nav aria-label={t("Preferences sections")}>
+            <nav aria-label={t("Preferences sections")} onKeyDown={moveSection}>
               <For each={sections}>
-                {(name) => (
+                {([name, SectionIcon]) => (
                   <button
                     aria-current={section() === name ? "page" : undefined}
                     onClick={() => setSection(name)}
                   >
-                    {t(name)}
+                    <SectionIcon size={18} />
+                    <span>{t(name)}</span>
                   </button>
                 )}
               </For>
             </nav>
             <div class="preferences-pane">
               <h3>{t(section())}</h3>
-              <Pane name="General">
-                <Select
-                  label={t("Language")}
-                  value={settings().language}
-                  options={[
-                    ["system", t("System")],
-                    ["en", t("English")],
-                    ["uk", t("Українська")],
-                  ]}
-                  change={(v) => update("language", v as Settings["language"])}
-                />
-                <Toggle setting="launch_at_login" label={t("Launch at login")} />
-                <Toggle
-                  setting="keep_in_menu_bar"
-                  label={t("Closing the window keeps Flek in the menu bar")}
-                />
-              </Pane>
-              <Pane name="Appearance">
-                <Select
-                  label={t("Theme")}
-                  value={settings().theme}
-                  options={[
-                    ["system", t("System")],
-                    ["light", t("Light")],
-                    ["dark", t("Dark")],
-                  ]}
-                  change={(v) => update("theme", v as Settings["theme"])}
-                />
-                <Select
-                  label={t("Message text size")}
-                  value={settings().text_size}
-                  options={[
-                    ["small", t("Small")],
-                    ["default", t("Default")],
-                    ["large", t("Large")],
-                  ]}
-                  change={(v) => update("text_size", v as Settings["text_size"])}
-                />
-                <Select
-                  label={t("Clock")}
-                  value={settings().clock_24 === null ? "locale" : String(settings().clock_24)}
-                  options={[
-                    ["locale", t("Language default")],
-                    ["false", t("12-hour")],
-                    ["true", t("24-hour")],
-                  ]}
-                  change={(v) => update("clock_24", v === "locale" ? null : v === "true")}
-                />
-                <p class="muted">
-                  {clock24() ? t("Using a 24-hour clock") : t("Using a 12-hour clock")}
-                </p>
-              </Pane>
-              <Pane name="Sidebar">
-                <Select
-                  label={t("Sort direct messages")}
-                  value={settings().dm_sort}
-                  options={[
-                    ["recent", t("Recent activity")],
-                    ["name", t("Name")],
-                  ]}
-                  change={(v) => update("dm_sort", v as Settings["dm_sort"])}
-                />
-                <Toggle
-                  setting="show_muted"
-                  label={t("Show muted conversations in a collapsed group")}
-                />
-                <Toggle setting="presence_dots" label={t("Show presence dots in DMs")} />
-              </Pane>
-              <Pane name="Messages & media">
-                <Toggle setting="link_previews" label={t("Show link previews")} />
-                <Toggle setting="image_previews" label={t("Show image previews inline")} />
-                <Select
-                  label={t("Auto-download files up to")}
-                  value={String(settings().max_file_bytes)}
-                  options={[
-                    ["0", t("Off")],
-                    [String(10 << 20), t("10 MB")],
-                    [String(25 << 20), t("25 MB")],
-                    [String(100 << 20), t("100 MB")],
-                    ["null", t("No limit")],
-                  ]}
-                  change={(v) => update("max_file_bytes", v === "null" ? null : Number(v))}
-                />
-                <p class="muted">{t("Download changes apply to the next sync pass.")}</p>
-              </Pane>
-              <Pane name="Sync & storage">
-                <label class="preference-field">
-                  <span>{t("Re-check edits for the last N days when reopening")}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    step="1"
-                    value={settings().refresh_days}
-                    disabled={busy()}
-                    onChange={(e) => {
-                      const n = e.currentTarget.valueAsNumber;
-                      if (Number.isInteger(n) && n >= 0 && n <= 30) update("refresh_days", n);
-                      else e.currentTarget.value = String(settings().refresh_days);
-                    }}
-                  />
-                </label>
-                <Select
-                  label={t("Re-check no more often than")}
-                  value={String(settings().refresh_hours)}
-                  options={[
-                    ["1", t("1 hour")],
-                    ["3", t("3 hours")],
-                    ["12", t("12 hours")],
-                    ["24", t("24 hours")],
-                  ]}
-                  change={(v) => update("refresh_hours", Number(v))}
-                />
-                <p class="muted">
-                  {t("Edit checks apply when reopening. Zero days disables them.")}
-                </p>
-                <Show when={storage()} fallback={<p>{t("Loading storage…")}</p>}>
-                  {(s) => (
-                    <div class="storage-info">
-                      <h4>{t("Database")}</h4>
-                      <code>{s().db_path}</code>
-                      <p>{t("{size} MB", { size: (s().db_bytes / 1024 / 1024).toFixed(1) })}</p>
-                      <button onClick={() => run(api.showStorage)}>{t("Show in Finder")}</button>
-                      <h4>{t("File cache")}</h4>
-                      <p>{t("{size} MB", { size: (s().cache_bytes / 1024 / 1024).toFixed(1) })}</p>
-                      <button disabled={busy()} onClick={() => setConfirm("cache")}>
-                        {t("Clear file cache")}
-                      </button>
-                      <p class="muted">
-                        {t(
-                          "Messages, avatars and emoji are kept. Files may download on the next sync pass.",
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </Show>
-                <Show when={storage.error}>
-                  <p class="error">{t("Could not read storage information")}</p>
-                </Show>
-                <button disabled={busy() || !ready()} onClick={() => setConfirm("sync")}>
-                  {t("Run a full re-sync")}
-                </button>
-              </Pane>
-              <Pane name="Account">
-                <Show when={ready()} fallback={<p>{t("Not signed in")}</p>}>
-                  {(s) => (
-                    <>
-                      <Show when={icon()}>
-                        {(hash) => (
-                          <img class="preferences-team" src={linkImageUrl(hash())} alt="" />
-                        )}
-                      </Show>
-                      <h4>{s().team}</h4>
-                      <Avatar id={s().user_id} name={people()[s().user_id] ?? s().user} />
-                      <p>{people()[s().user_id] ?? s().user}</p>
-                      <p>
-                        {origin() === "desktop"
-                          ? t("Slack desktop import")
-                          : origin() === "webview"
-                            ? t("Sign-in")
-                            : t("Session source unknown")}
-                      </p>
-                      <button
-                        class="danger"
-                        disabled={busy()}
-                        onClick={() => setConfirm("signout")}
-                      >
-                        {t("Sign out of {name}", { name: s().team })}
-                      </button>
-                    </>
-                  )}
-                </Show>
-              </Pane>
+              <div class="preferences-sections">
+                <Switch>
+                  <Match when={section() === "General"}>
+                    <GeneralSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Appearance"}>
+                    <AppearanceSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Sidebar"}>
+                    <SidebarSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Messages & media"}>
+                    <MediaSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Sync & storage"}>
+                    <SyncSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Account"}>
+                    <AccountSection ctx={ctx} />
+                  </Match>
+                </Switch>
+              </div>
             </div>
           </div>
           <Show when={error()}>
@@ -367,10 +215,14 @@ export default function Preferences(props: { status: Status }) {
                     ? t("Flek will re-read available history in the background.")
                     : t("The session will be removed from Keychain. The local archive is kept.")}
               </p>
-              <button onClick={() => setConfirm(null)}>{t("Cancel")}</button>
-              <button class="danger" onClick={confirmed}>
-                {t("Confirm")}
-              </button>
+              <div class="preferences-confirm-actions">
+                <button class="pref-button" onClick={() => setConfirm(null)}>
+                  {t("Cancel")}
+                </button>
+                <button class="pref-button danger" onClick={confirmed}>
+                  {t("Confirm")}
+                </button>
+              </div>
             </div>
           </Show>
         </div>

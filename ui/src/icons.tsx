@@ -101,3 +101,52 @@ export const Plus = (p: { size?: number }) => (
     <path d="M10 3v14M3 10h14" />
   </Icon>
 );
+
+export const Gear = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <circle cx="10" cy="10" r="2.5" />
+    <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" />
+  </Icon>
+);
+export const Palette = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M10 2.5a7.5 7.5 0 0 0 0 15c1.2 0 1.8-.8 1.8-1.6 0-1-.9-1.4-.9-2.3 0-.8.7-1.4 1.5-1.4h1.6a3.5 3.5 0 0 0 3.5-3.5C17.5 5.6 14.2 2.5 10 2.5Z" />
+    <circle cx="6.5" cy="9" r=".7" fill="currentColor" stroke="none" />
+    <circle cx="9" cy="6" r=".7" fill="currentColor" stroke="none" />
+    <circle cx="13" cy="6.5" r=".7" fill="currentColor" stroke="none" />
+  </Icon>
+);
+export const SidebarPanel = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+    <path d="M7.5 3.5v13M4.5 7h1M4.5 9.5h1M4.5 12h1" />
+  </Icon>
+);
+export const ImageIcon = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <rect x="2.5" y="3.5" width="15" height="13" rx="2" />
+    <circle cx="7" cy="8" r="1.4" />
+    <path d="M3 15l4.5-4.5 3 3 2-2 4.5 4.5" />
+  </Icon>
+);
+export const Refresh = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M16.5 10a6.5 6.5 0 0 1-11.3 4.4M3.5 10a6.5 6.5 0 0 1 11.3-4.4M15 2.5v3.3h-3.3M5 17.5v-3.3h3.3" />
+  </Icon>
+);
+export const Person = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <circle cx="10" cy="7" r="3" />
+    <path d="M3.5 17c.6-3.2 3.2-5 6.5-5s5.9 1.8 6.5 5" />
+  </Icon>
+);
+export const Cross = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M5 5l10 10M15 5L5 15" />
+  </Icon>
+);
+export const Minus = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <path d="M4 10h12" />
+  </Icon>
+);
