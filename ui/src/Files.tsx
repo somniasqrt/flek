@@ -54,7 +54,8 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
     const w = props.f.width ?? MAX_W;
     const h = props.f.height ?? MAX_H;
     const k = props.single ? Math.min(1, MAX_W / w, MAX_H / h) : Math.min(ROW_H / h, MAX_W / w);
-    return { width: `${Math.round(w * k)}px`, height: `${Math.round(h * k)}px` };
+    // The height follows from the ratio, so the CSS width cap can shrink it.
+    return { width: `${Math.round(w * k)}px`, "aspect-ratio": `${w} / ${h}` };
   };
   return (
     <button

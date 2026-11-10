@@ -26,7 +26,8 @@ function Card(props: { u: Unfurl }) {
     const w = u.image_width ?? MAX_W;
     const h = u.image_height ?? MAX_H;
     const k = Math.min(1, MAX_W / w, MAX_H / h);
-    return { width: `${Math.round(w * k)}px`, height: `${Math.round(h * k)}px` };
+    // The height follows from the ratio, so the CSS width cap can shrink it.
+    return { width: `${Math.round(w * k)}px`, "aspect-ratio": `${w} / ${h}` };
   };
   return (
     <div class="unfurl" style={u.color ? { "--bar": u.color } : {}}>

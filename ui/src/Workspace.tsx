@@ -348,9 +348,16 @@ export default function Workspace(props: { status: Ready }) {
 
   const SIDEBAR_KEY = "flek.sidebarWidth";
   const DETAIL_KEY = "flek.detailWidth";
-  const [sidebarWidth, setSidebarWidth] = createSignal(readPanelSize(SIDEBAR_KEY, DEFAULT_SIDEBAR));
-  const [detailWidth, setDetailWidth] = createSignal(readPanelSize(DETAIL_KEY, DEFAULT_DETAIL));
-  const [frameWidth, setFrameWidth] = createSignal(window.innerWidth - 78);
+  // Widths are kept as fractions of the frame; old pixel values are converted once.
+  const startWidth = window.innerWidth - 78;
+  const initialSize = (key: string, fallback: number) => {
+    const value = readPanelSize(key, fallback, startWidth);
+    if (value !== fallback) savePanelSize(key, value);
+    return value;
+  };
+  const [sidebarWidth, setSidebarWidth] = createSignal(initialSize(SIDEBAR_KEY, DEFAULT_SIDEBAR));
+  const [detailWidth, setDetailWidth] = createSignal(initialSize(DETAIL_KEY, DEFAULT_DETAIL));
+  const [frameWidth, setFrameWidth] = createSignal(startWidth);
   const detailOpen = () =>
     !browsing() && view() !== "files" && !!(channelDetails() || profileUser() || (current() && thread()));
   const sizes = createMemo(() =>
@@ -400,7 +407,10 @@ export default function Workspace(props: { status: Ready }) {
         />
         <div
           class="frame"
-          classList={{ "rail-view-frame": view() !== "home" }}
+          classList={{
+            "rail-view-frame": view() !== "home",
+            "detail-overlay": sizes().overlay,
+          }}
           ref={frame}
           style={{
             "--sidebar-width": `${sizes().sidebar}px`,
@@ -451,8 +461,8 @@ export default function Workspace(props: { status: Ready }) {
               value={sizes().sidebar}
               min={MIN_SIDEBAR}
               max={sizes().sidebarMax}
-              initial={DEFAULT_SIDEBAR}
-              onResize={setSidebarWidth}
+              initial={DEFAULT_SIDEBAR * frameWidth()}
+              onResize={(px) => setSidebarWidth(px / frameWidth())}
               onCommit={() => savePanelSize(SIDEBAR_KEY, sidebarWidth())}
             />
           </div>
@@ -538,8 +548,8 @@ export default function Workspace(props: { status: Ready }) {
                 value={sizes().detail}
                 min={MIN_DETAIL}
                 max={sizes().detailMax}
-                initial={DEFAULT_DETAIL}
-                onResize={setDetailWidth}
+                initial={DEFAULT_DETAIL * frameWidth()}
+                onResize={(px) => setDetailWidth(px / frameWidth())}
                 onCommit={() => savePanelSize(DETAIL_KEY, detailWidth())}
               />
               <Show when={channelDetails()}>
