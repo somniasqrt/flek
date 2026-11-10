@@ -21,22 +21,45 @@ pub struct DirectMessage {
 /// One indexed latest-message lookup per conversation, in one SQL query.
 pub fn direct_messages(c: &Connection, team: &str) -> Result<Vec<DirectMessage>> {
     let mut stmt = c.prepare(
-        "SELECT c.id,COALESCE(c.label,c.name,c.id),c.kind,c.dm_user_id,CASE WHEN c.notification='muted' THEN 0 ELSE c.unread_count END,
-            m.ts,m.user_id,COALESCE(m.text,''),COALESCE(m.hidden_by_limit,0),
-            (SELECT COALESCE(f.title,f.name) FROM message_files mf JOIN files f ON f.id=mf.file_id
-             WHERE mf.conversation_id=c.id AND mf.ts=m.ts ORDER BY f.id LIMIT 1),
-            COALESCE(NULLIF((SELECT json_group_array(user_id) FROM conversation_members cm
-                      WHERE cm.conversation_id=c.id),'[]'),
-                json_extract(c.raw_json,'$.members'),
-                (SELECT json_group_array(u.id) FROM users u WHERE u.team_id=c.team_id
-                 AND c.kind='mpim' AND (c.name GLOB 'mpdm-'||u.name||'--*'
-                   OR c.name GLOB '*--'||u.name||'--*'
-                   OR c.name GLOB '*--'||u.name||'-[0-9]*')),'[]')
-         FROM conversations c LEFT JOIN users u ON u.id=c.dm_user_id
-         LEFT JOIN messages m ON m.id=(SELECT id FROM messages
-             WHERE conversation_id=c.id AND deleted=0 ORDER BY ts DESC LIMIT 1)
-         WHERE c.team_id=?1 AND c.kind IN ('im','mpim') AND c.is_member=1 AND c.is_archived=0 AND c.closed_at IS NULL
-         ORDER BY COALESCE(u.deleted,0),m.ts DESC,c.id",
+        "
+            SELECT c.id, COALESCE(c.label, c.name, c.id), c.kind, c.dm_user_id, CASE
+            WHEN c.notification = 'muted' THEN 0
+            ELSE c.unread_count END, m.ts, m.user_id, COALESCE(m.text, ''), COALESCE(m.hidden_by_limit,
+                    0), (
+                SELECT COALESCE(f.title, f.name)
+                FROM message_files mf
+                JOIN files f ON f.id = mf.file_id
+                WHERE mf.conversation_id = c.id
+                AND mf.ts = m.ts
+                ORDER BY f.id
+                LIMIT 1), COALESCE(NULLIF( (
+                        SELECT json_group_array(user_id)
+                        FROM conversation_members cm
+                        WHERE cm.conversation_id = c.id), '[]'), json_extract(c.raw_json,
+                        '$.members'), (
+                    SELECT json_group_array(u.id)
+                    FROM users u
+                    WHERE u.team_id = c.team_id
+                    AND c.kind = 'mpim'
+                    AND (c.name GLOB 'mpdm-' || u.name || '--*'
+                        OR c.name GLOB '*--' || u.name || '--*'
+                        OR c.name GLOB '*--' || u.name || '-[0-9]*')), '[]')
+            FROM conversations c
+            LEFT JOIN users u ON u.id = c.dm_user_id
+            LEFT JOIN messages m ON m.id = (
+                SELECT id
+                FROM messages
+                WHERE conversation_id = c.id
+                AND deleted = 0
+                ORDER BY ts DESC
+                LIMIT 1)
+            WHERE c.team_id = ?1
+            AND c.kind IN ('im', 'mpim')
+            AND c.is_member = 1
+            AND c.is_archived = 0
+            AND c.closed_at IS NULL
+            ORDER BY COALESCE(u.deleted, 0), m.ts DESC, c.id
+        ",
     )?;
     let rows = stmt.query_map([team], |r| {
         Ok(DirectMessage {
@@ -92,56 +115,115 @@ pub fn activity(
     // CROSS JOIN keeps SQLite on the bounded candidate set; otherwise its
     // planner can choose a full conversation-message scan before the limit.
     let sql = format!(
-        "WITH me AS (SELECT self_user_id AS id FROM teams WHERE id=?1),
-         mine AS MATERIALIZED (
-             SELECT DISTINCT conversation_id,COALESCE(thread_ts,ts) AS root
-             FROM messages WHERE user_id=(SELECT id FROM me) AND deleted=0
-               AND conversation_id IN (SELECT id FROM conversations WHERE team_id=?1)
-         ), candidates AS (
-             SELECT 'dm' AS kind,m.id,m.user_id AS actor,m.ts AS event_ts,NULL AS reaction,
-                 1 AS timed,COALESCE(c.unread_count,0) AS unread_count,
-                 m.conversation_id,m.ts
-             FROM conversations c JOIN messages m ON m.id=(
-                 SELECT id FROM messages WHERE conversation_id=c.id AND deleted=0
-                 AND user_id IS NOT (SELECT id FROM me) ORDER BY ts DESC LIMIT 1)
-             WHERE c.team_id=?1 AND c.kind IN ('im','mpim')
-             UNION ALL
-             SELECT 'mention',m.id,m.user_id,m.ts,NULL,1,1,m.conversation_id,m.ts
-             {}
-             UNION ALL
-             SELECT 'thread',m.id,m.user_id,m.ts,NULL,1,1,m.conversation_id,m.ts FROM mine
-             JOIN messages m ON m.id=(
-                 SELECT id FROM messages WHERE conversation_id=mine.conversation_id
-                   AND thread_ts=mine.root AND ts<>mine.root AND deleted=0
-                   AND user_id IS NOT (SELECT id FROM me) ORDER BY ts DESC LIMIT 1)
-             UNION ALL
-             SELECT 'reaction',m.id,r.user_id,COALESCE(r.event_ts,m.ts),r.name,
-                 r.event_ts IS NOT NULL,1,m.conversation_id,m.ts
-             FROM reactions r CROSS JOIN messages m ON r.conversation_id=m.conversation_id AND r.ts=m.ts
-             WHERE m.user_id=(SELECT id FROM me) AND r.user_id<>(SELECT id FROM me)
-               AND m.deleted=0
-         ), items AS MATERIALIZED (
-             SELECT x.*,COALESCE(x.timed AND x.event_ts>c.last_read AND c.notification<>'muted',0) AS unread
-             FROM candidates x CROSS JOIN conversations c ON c.id=x.conversation_id
-             WHERE c.team_id=?1 AND c.is_member=1 AND c.is_archived=0 AND c.closed_at IS NULL
-         ), filtered AS MATERIALIZED (
-             SELECT * FROM items WHERE (?3='all' OR kind=?3) AND (NOT ?4 OR unread)
-             ORDER BY event_ts DESC,conversation_id,ts,kind,COALESCE(actor,''),
-                 COALESCE(reaction,'') LIMIT ?5 OFFSET ?6
-         ) SELECT kind,filtered.conversation_id,filtered.ts,event_ts,m.thread_ts,actor,
-             COALESCE(m.text,''),m.hidden_by_limit,
-             reaction,unread,unread_count,
-             (SELECT COALESCE(f.title,f.name) FROM message_files mf JOIN files f ON f.id=mf.file_id
-              WHERE mf.conversation_id=filtered.conversation_id AND mf.ts=filtered.ts
-              ORDER BY f.id LIMIT 1),
-             (SELECT COUNT(*) FROM items WHERE unread)
-         FROM filtered CROSS JOIN messages m ON m.id=filtered.id
-         ORDER BY event_ts DESC,filtered.conversation_id,filtered.ts,kind,COALESCE(actor,''),
-             COALESCE(reaction,'')",
-        reads::mention_source("?2", "?1", "(SELECT id FROM me)", "0")
+        "
+            WITH me AS (
+                SELECT self_user_id AS id
+                FROM teams
+                WHERE id = ?1), mine AS MATERIALIZED (
+                SELECT DISTINCT conversation_id, COALESCE(thread_ts, ts) AS root
+                FROM messages
+                WHERE user_id = (
+                    SELECT id
+                    FROM me)
+                AND deleted = 0
+                AND conversation_id IN (
+                    SELECT id
+                    FROM conversations
+                    WHERE team_id = ?1)), candidates AS (
+                SELECT 'dm' AS kind, m.id, m.user_id AS actor, m.ts AS event_ts, NULL AS
+                    reaction, 1 AS timed, COALESCE(c.unread_count, 0) AS unread_count, m.conversation_id,
+                    m.ts
+                FROM conversations c
+                JOIN messages m ON m.id = (
+                    SELECT id
+                    FROM messages
+                    WHERE conversation_id = c.id
+                    AND deleted = 0
+                    AND user_id IS NOT (
+                        SELECT id
+                        FROM me)
+                    ORDER BY ts DESC
+                    LIMIT 1)
+                WHERE c.team_id = ?1
+                AND c.kind IN ('im', 'mpim')
+                UNION ALL
+                SELECT 'mention', m.id, m.user_id, m.ts, NULL, 1, 1, m.conversation_id, m.ts {}
+                UNION ALL
+                SELECT 'thread', m.id, m.user_id, m.ts, NULL, 1, 1, m.conversation_id, m.ts
+                FROM mine
+                JOIN messages m ON m.id = (
+                    SELECT id
+                    FROM messages
+                    WHERE conversation_id = mine.conversation_id
+                    AND thread_ts = mine.root
+                    AND ts <> mine.root
+                    AND deleted = 0
+                    AND user_id IS NOT (
+                        SELECT id
+                        FROM me)
+                    ORDER BY ts DESC
+                    LIMIT 1)
+                UNION ALL
+                SELECT 'reaction', m.id, r.user_id, COALESCE(r.event_ts, m.ts), r.name, r.event_ts
+                    IS NOT NULL, 1, m.conversation_id, m.ts
+                FROM reactions r
+                CROSS JOIN messages m ON r.conversation_id = m.conversation_id
+                AND r.ts = m.ts
+                WHERE m.user_id = (
+                    SELECT id
+                    FROM me)
+                AND r.user_id <> (
+                    SELECT id
+                    FROM me)
+                AND m.deleted = 0), items AS MATERIALIZED (
+                SELECT x.*, COALESCE(x.timed
+                    AND x.event_ts > c.last_read
+                    AND c.notification <> 'muted', 0) AS unread
+                FROM candidates x
+                CROSS JOIN conversations c ON c.id = x.conversation_id
+                WHERE c.team_id = ?1
+                AND c.is_member = 1
+                AND c.is_archived = 0
+                AND c.closed_at IS NULL), filtered AS MATERIALIZED (
+                SELECT *
+                FROM items
+                WHERE (?3 = 'all'
+                    OR kind = ?3)
+                AND (NOT ?4
+                    OR unread)
+                ORDER BY event_ts DESC, conversation_id, ts, kind, COALESCE(actor, ''), COALESCE(
+                        reaction, '')
+                LIMIT ?5
+                OFFSET ?6)
+            SELECT kind, filtered.conversation_id, filtered.ts, event_ts, m.thread_ts, actor,
+                COALESCE(m.text, ''), m.hidden_by_limit, reaction, unread, unread_count, (
+                SELECT COALESCE(f.title, f.name)
+                FROM message_files mf
+                JOIN files f ON f.id = mf.file_id
+                WHERE mf.conversation_id = filtered.conversation_id
+                AND mf.ts = filtered.ts
+                ORDER BY f.id
+                LIMIT 1), (
+                SELECT COUNT(*)
+                FROM items
+                WHERE unread)
+            FROM filtered
+            CROSS JOIN messages m ON m.id = filtered.id
+            ORDER BY event_ts DESC, filtered.conversation_id, filtered.ts, kind, COALESCE(actor,
+                    ''), COALESCE(reaction, '')
+        ",
+        reads::mention_source("?2", "?1", "
+            (
+                SELECT id
+                FROM me)
+        ", "0")
     );
     let me: String = c.query_row(
-        "SELECT COALESCE(self_user_id,'') FROM teams WHERE id=?1",
+        "
+            SELECT COALESCE(self_user_id, '')
+            FROM teams
+            WHERE id = ?1
+        ",
         [team],
         |r| r.get(0),
     )?;

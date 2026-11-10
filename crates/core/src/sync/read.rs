@@ -21,7 +21,12 @@ pub async fn mark(
     let needed = store
         .read(move |c| {
             Ok(c.query_row(
-                "SELECT last_read IS NULL OR last_read < ?2 FROM conversations WHERE id = ?1",
+                "
+                    SELECT last_read IS NULL
+                    OR last_read < ?2
+                    FROM conversations
+                    WHERE id = ?1
+                ",
                 rusqlite::params![id, target],
                 |r| r.get::<_, bool>(0),
             )?)
@@ -35,8 +40,13 @@ pub async fn mark(
     store
         .call(move |c| {
             c.execute(
-                "UPDATE conversations SET last_read = ?2
-             WHERE id = ?1 AND (last_read IS NULL OR last_read < ?2)",
+                "
+                    UPDATE conversations
+                    SET last_read = ?2
+                    WHERE id = ?1
+                    AND (last_read IS NULL
+                        OR last_read < ?2)
+                ",
                 rusqlite::params![id, target],
             )?;
             Ok(())

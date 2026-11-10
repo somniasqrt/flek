@@ -1,0 +1,33 @@
+/* An optimistic copy: muted while sending, flagged when it failed. */
+.msg.sending .body > :not(.meta) {
+  opacity: 0.5;
+}
+.msg.failed .body > :not(.meta):not(.send-failed) {
+  opacity: 0.6;
+}
+.send-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--error);
+}
+.send-failed button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font-size: 13px;
+  cursor: pointer;
+}
+.send-failed button:hover {
+  text-decoration: underline;
+}
+.send-reason {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--muted);
+}
+

@@ -50,16 +50,19 @@ impl FileRow {
 /// one, and `local_path` is never touched here.
 pub(crate) fn upsert_file(tx: &Transaction<'_>, f: &FileRow) -> Result<()> {
     tx.prepare_cached(
-        "INSERT INTO files (id, name, title, mimetype, filetype, size, url_private,
-                            url_private_download, permalink, is_external, hidden_by_limit, raw_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
-         ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name, title = excluded.title, mimetype = excluded.mimetype,
-            filetype = excluded.filetype, size = excluded.size, url_private = excluded.url_private,
-            url_private_download = excluded.url_private_download, permalink = excluded.permalink,
-            is_external = excluded.is_external, hidden_by_limit = excluded.hidden_by_limit,
-            raw_json = excluded.raw_json
-         WHERE excluded.hidden_by_limit = 0 OR files.hidden_by_limit = 1",
+        "
+            INSERT INTO files(id, name, title, mimetype, filetype, SIZE, url_private,
+                    url_private_download, permalink, is_external, hidden_by_limit, raw_json)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ON CONFLICT (id) DO UPDATE
+            SET name = excluded.name, title = excluded.title, mimetype = excluded.mimetype,
+                filetype = excluded.filetype, SIZE = excluded.size, url_private = excluded.url_private,
+                url_private_download = excluded.url_private_download, permalink = excluded.permalink,
+                is_external = excluded.is_external, hidden_by_limit = excluded.hidden_by_limit,
+                raw_json = excluded.raw_json
+            WHERE excluded.hidden_by_limit = 0
+            OR files.hidden_by_limit = 1
+        ",
     )?
     .execute(params![
         f.id,
@@ -93,10 +96,16 @@ pub struct PendingDownload {
 /// Downloadable files: hosted by Slack, not hidden, within `max_size`.
 pub fn downloadable(conn: &Connection, max_size: Option<i64>) -> Result<Vec<PendingDownload>> {
     let mut stmt = conn.prepare(
-        "SELECT id, name, mimetype, size, url_private_download, local_path FROM files
-         WHERE hidden_by_limit = 0 AND is_external = 0 AND url_private_download IS NOT NULL
-           AND (?1 IS NULL OR COALESCE(size, 0) <= ?1)
-         ORDER BY id",
+        "
+            SELECT id, name, mimetype, SIZE, url_private_download, local_path
+            FROM files
+            WHERE hidden_by_limit = 0
+            AND is_external = 0
+            AND url_private_download IS NOT NULL
+            AND (?1 IS NULL
+                OR COALESCE(SIZE, 0) <= ?1)
+            ORDER BY id
+        ",
     )?;
     let rows = stmt
         .query_map([max_size], |r| {
@@ -115,7 +124,11 @@ pub fn downloadable(conn: &Connection, max_size: Option<i64>) -> Result<Vec<Pend
 
 pub fn set_local_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     conn.execute(
-        "UPDATE files SET local_path = ?2 WHERE id = ?1",
+        "
+            UPDATE files
+            SET local_path = ?2
+            WHERE id = ?1
+        ",
         params![id, path],
     )?;
     Ok(())
@@ -125,13 +138,18 @@ pub fn set_local_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
 /// that should be cached. `local_path` is the recorded preview path.
 pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
     let mut stmt = conn.prepare(
-        "SELECT id, url, preview_path FROM (
-            SELECT id, preview_path, hidden_by_limit, is_external,
-                   COALESCE(json_extract(raw_json, '$.thumb_pdf'),
-                            json_extract(raw_json, '$.thumb_video')) AS url
-            FROM files)
-         WHERE hidden_by_limit = 0 AND is_external = 0 AND url IS NOT NULL
-         ORDER BY id",
+        "
+            SELECT id, url, preview_path
+            FROM (
+                SELECT id, preview_path, hidden_by_limit, is_external, COALESCE(json_extract(
+                        raw_json, '$.thumb_pdf'), json_extract(raw_json, '$.thumb_video')) AS
+                    url
+                FROM files)
+            WHERE hidden_by_limit = 0
+            AND is_external = 0
+            AND url IS NOT NULL
+            ORDER BY id
+        ",
     )?;
     let rows = stmt
         .query_map([], |r| {
@@ -150,7 +168,11 @@ pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
 
 pub fn set_preview_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     conn.execute(
-        "UPDATE files SET preview_path = ?2 WHERE id = ?1",
+        "
+            UPDATE files
+            SET preview_path = ?2
+            WHERE id = ?1
+        ",
         params![id, path],
     )?;
     Ok(())

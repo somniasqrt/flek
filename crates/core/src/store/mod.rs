@@ -96,10 +96,14 @@ impl Store {
         // checked once afterwards instead of during.
         conn.pragma_update(None, "foreign_keys", false)?;
         migrations::migrate(&mut conn)?;
-        let broken: i64 =
-            conn.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |r| {
-                r.get(0)
-            })?;
+        let broken: i64 = conn.query_row(
+            "
+                SELECT COUNT(*)
+                FROM pragma_foreign_key_check
+            ",
+            [],
+            |r| r.get(0),
+        )?;
         if broken > 0 {
             return Err(Error::Store(format!(
                 "{broken} foreign key violations after migration"

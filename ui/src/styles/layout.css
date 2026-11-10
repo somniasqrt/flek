@@ -1,0 +1,90 @@
+/* Splitter hit areas straddle the borders without taking space from the panes. */
+.sidebar-pane,
+.detail-pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.sidebar-pane > .sidebar {
+  height: 100%;
+  min-width: 0;
+}
+.detail-pane {
+  position: relative;
+  width: var(--detail-width, 30%);
+  min-width: 0;
+}
+/* Narrow windows: the detail panel floats over the timeline instead. */
+.frame.detail-overlay .detail-pane {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  max-width: calc(100% - 200px);
+  background: var(--bg);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+}
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  z-index: 12;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.resize-handle-left {
+  right: -4px;
+}
+.resize-handle-right {
+  left: -4px;
+}
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms;
+}
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle.dragging::after {
+  background: #1d9bd1;
+}
+body.resizing-panels,
+body.resizing-panels * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* Composer actions follow the pane width, including while a splitter moves. */
+.main,
+.detail-pane {
+  container-type: inline-size;
+}
+@container (max-width: 520px) {
+  .composer-bar > span:has(.compose-future) {
+    display: none;
+  }
+  .composer-bar .compose-future {
+    display: none;
+  }
+}
+@container (max-width: 300px) {
+  .composer {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .composer-bar > span,
+  .composer-bar > .composer-format-divider {
+    display: none;
+  }
+  .composer-bar > .compose-tool[aria-label="Toggle formatting"] {
+    display: none;
+  }
+}
+

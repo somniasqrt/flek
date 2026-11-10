@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
-    "test": "node --test src/*.test.ts"
+    "test": "node --test src/*.test.ts src/models/*.test.ts src/stores/*.test.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

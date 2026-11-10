@@ -60,10 +60,12 @@ pub async fn refresh(client: &Client, store: &Store, team: &str, force: bool) ->
                 channel_browser::upsert(&tx, &team, &channel, false)?;
             }
             tx.execute(
-                "INSERT INTO channel_directory_sync (team_id, fetched_at, truncated)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(team_id) DO UPDATE SET
-                 fetched_at = excluded.fetched_at, truncated = excluded.truncated",
+                "
+                    INSERT INTO channel_directory_sync(team_id, fetched_at, truncated)
+                    VALUES (?1, ?2, ?3)
+                    ON CONFLICT (team_id) DO UPDATE
+                    SET fetched_at = excluded.fetched_at, truncated = excluded.truncated
+                ",
                 rusqlite::params![team, now, directory.truncated],
             )?;
             tx.commit()?;
@@ -79,8 +81,13 @@ pub async fn preview(client: &Client, store: &Store, team: &str, id: &str) -> Re
     let allowed = store
         .read(move |c| {
             Ok(c.query_row(
-                "SELECT kind = 'public_channel' OR is_member = 1
-         FROM conversations WHERE id = ?1 AND team_id = ?2",
+                "
+                    SELECT kind = 'public_channel'
+                    OR is_member = 1
+                    FROM conversations
+                    WHERE id = ?1
+                    AND team_id = ?2
+                ",
                 rusqlite::params![key, team],
                 |r| r.get::<_, bool>(0),
             )?)
@@ -165,8 +172,11 @@ pub async fn create(
                 store
                     .call(move |c| {
                         c.execute(
-                            "UPDATE conversations SET purpose = ?2,
-                         raw_json = json_set(raw_json, '$.purpose.value', ?2) WHERE id = ?1",
+                            "
+                                UPDATE conversations
+                                SET purpose = ?2, raw_json = json_set(raw_json, '$.purpose.value', ?2)
+                                WHERE id = ?1
+                            ",
                             rusqlite::params![key, value],
                         )?;
                         Ok(())

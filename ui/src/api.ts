@@ -1,5 +1,5 @@
 // Typed wrappers over the Rust commands and events (crates/app/src).
-import type { Presence, CustomStatus } from "./presence";
+import type { Presence, CustomStatus } from "./models/presence";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { platform } from "./platform";
@@ -277,9 +277,9 @@ export const api = {
   createChannel: (name: string, privateChannel: boolean, purpose: string) =>
     invoke<ChannelAction>("create_channel", { name, private: privateChannel, purpose }),
   validateChannelName: (name: string) => invoke<string>("validate_channel_name", { name }),
-  getSettings: () => invoke<import("./settings-model").Settings>("get_settings"),
-  setSettings: (settings: import("./settings-model").Settings) =>
-    invoke<import("./settings-model").Settings>("set_settings", { settings }),
+  getSettings: () => invoke<import("./models/settings-model").Settings>("get_settings"),
+  setSettings: (settings: import("./models/settings-model").Settings) =>
+    invoke<import("./models/settings-model").Settings>("set_settings", { settings }),
   storageInfo: () => invoke<StorageInfo>("storage_info"),
   showStorage: () => invoke<void>("show_storage"),
   clearFileCache: () => invoke<void>("clear_file_cache"),

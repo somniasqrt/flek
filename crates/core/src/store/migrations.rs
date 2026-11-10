@@ -38,7 +38,13 @@ pub fn latest_version() -> u32 {
 /// Current schema version of the database (0 for a fresh one).
 pub fn current_version(conn: &Connection) -> Result<u32> {
     let exists: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version')",
+        "
+            SELECT EXISTS (
+                SELECT 1
+                FROM sqlite_master
+                WHERE TYPE = 'table'
+                AND name = 'schema_version')
+        ",
         [],
         |r| r.get(0),
     )?;
@@ -46,7 +52,10 @@ pub fn current_version(conn: &Connection) -> Result<u32> {
         return Ok(0);
     }
     Ok(conn.query_row(
-        "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+        "
+            SELECT COALESCE(MAX(VERSION), 0)
+            FROM schema_version
+        ",
         [],
         |r| r.get(0),
     )?)
@@ -83,9 +92,10 @@ pub fn migrate_to(conn: &mut Connection, target: u32) -> Result<Vec<u32>> {
     }
 
     tx.execute_batch(
-        "CREATE TABLE IF NOT EXISTS schema_version (
-        version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL
-    )",
+        "
+            CREATE TABLE IF NOT EXISTS schema_version(VERSION INTEGER PRIMARY KEY, applied_at
+                    INTEGER NOT NULL)
+        ",
     )?;
     let mut applied = Vec::new();
     for &(version, sql) in MIGRATIONS
@@ -94,7 +104,10 @@ pub fn migrate_to(conn: &mut Connection, target: u32) -> Result<Vec<u32>> {
     {
         tx.execute_batch(sql)?;
         tx.execute(
-            "INSERT INTO schema_version (version, applied_at) VALUES (?1, unixepoch())",
+            "
+                INSERT INTO schema_version(VERSION, applied_at)
+                VALUES (?1, unixepoch())
+            ",
             params![version],
         )?;
         tracing::info!(version, "applied migration");

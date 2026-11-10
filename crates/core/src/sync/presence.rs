@@ -164,7 +164,11 @@ pub async fn set_presence(
                 )?;
                 if !away {
                     c.execute(
-                        "UPDATE presence SET presence_fresh = 0 WHERE user_id = ?1",
+                        "
+                            UPDATE presence
+                            SET presence_fresh = 0
+                            WHERE user_id = ?1
+                        ",
                         [&user],
                     )?;
                 }

@@ -243,18 +243,26 @@ pub fn search_page(
         "substr(COALESCE(m.text, ''), 1, 200)".to_owned()
     };
     let mut sql = format!(
-        "SELECT m.conversation_id, COALESCE(c.label, c.name, c.id), m.ts, m.thread_ts,
-                COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit,
-                m.user_id
-         FROM messages m
-         JOIN conversations c ON c.id = m.conversation_id
-         LEFT JOIN users u ON u.id = m.user_id"
+        "
+            SELECT m.conversation_id, COALESCE(c.label, c.name, c.id), m.ts, m.thread_ts,
+                COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit, m.user_id
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            LEFT JOIN users u ON u.id = m.user_id
+        "
     );
     if text_search {
-        sql.push_str(" JOIN messages_fts ON messages_fts.rowid = m.id");
+        sql.push_str(
+            "
+                JOIN messages_fts ON messages_fts.rowid = m.id
+            ",
+        );
     }
     sql.push_str(&format!(
-        " WHERE c.team_id = {} AND m.deleted = 0",
+        "
+            WHERE c.team_id = {}
+            AND m.deleted = 0
+        ",
         arg(team_id.to_owned().into())
     ));
     if text_search {
@@ -272,9 +280,16 @@ pub fn search_page(
                 continue;
             }
             ors.push(format!(
-                "m.user_id IN (SELECT id FROM users WHERE lower(name) = {p} OR lower(display_name) = {p}
-                               OR lower(real_name) = {p} OR lower(id) = {p})
-                 OR lower(m.author_name) = {p}"
+                "
+                    m.user_id IN (
+                        SELECT id
+                        FROM users
+                        WHERE lower(name) = {p}
+                        OR lower(display_name) = {p}
+                        OR lower(real_name) = {p}
+                        OR lower(id) = {p})
+                    OR lower(m.author_name) = {p}
+                "
             ));
         }
         sql.push_str(&format!(" AND ({})", ors.join(" OR ")));
@@ -298,22 +313,48 @@ pub fn search_page(
     }
     if q.has_file {
         sql.push_str(
-            " AND (EXISTS (SELECT 1 FROM message_files f WHERE f.conversation_id = m.conversation_id AND f.ts = m.ts)
-                   OR m.text LIKE '%[file]%')",
+            "
+                AND (EXISTS (
+                        SELECT 1
+                        FROM message_files f
+                        WHERE f.conversation_id = m.conversation_id
+                        AND f.ts = m.ts)
+                    OR m.text LIKE '%[file]%')
+            ",
         );
     }
     if let Some(b) = &q.before {
-        sql.push_str(&format!(" AND m.ts < {}", arg(b.clone().into())));
+        sql.push_str(&format!(
+            "
+                AND m.ts < {}
+            ",
+            arg(b.clone().into())
+        ));
     }
     if let Some(a) = &q.after {
-        sql.push_str(&format!(" AND m.ts >= {}", arg(a.clone().into())));
+        sql.push_str(&format!(
+            "
+                AND m.ts >= {}
+            ",
+            arg(a.clone().into())
+        ));
     }
     sql.push_str(match (sort, text_search) {
-        (Sort::Relevance, true) => " ORDER BY bm25(messages_fts), m.ts DESC, m.conversation_id",
-        _ => " ORDER BY m.ts DESC, m.conversation_id",
+        (Sort::Relevance, true) => {
+            "
+                ORDER BY bm25(messages_fts), m.ts DESC, m.conversation_id
+            "
+        }
+        _ => {
+            "
+                ORDER BY m.ts DESC, m.conversation_id
+            "
+        }
     });
     sql.push_str(&format!(
-        " LIMIT {}",
+        "
+            LIMIT {}
+        ",
         arg(i64::try_from(limit).unwrap_or(i64::MAX).into())
     ));
 

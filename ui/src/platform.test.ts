@@ -13,7 +13,7 @@ import {
   setPlatform,
   trayName,
 } from "./platform.ts";
-import { shortcutLabel } from "./shortcuts.ts";
+import { shortcutLabel } from "./models/shortcuts.ts";
 
 test("platform is parsed from Rust OS names, navigator.platform and user agents", () => {
   assert.equal(parsePlatform("macos"), "mac");

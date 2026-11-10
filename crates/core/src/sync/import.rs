@@ -163,8 +163,13 @@ fn simple_row(
 
 /// Lowercased display name, real name and handle → user id.
 fn author_index(conn: &Connection) -> Result<HashMap<String, String>> {
-    let mut stmt =
-        conn.prepare("SELECT id, name, real_name, display_name FROM users ORDER BY deleted DESC")?;
+    let mut stmt = conn.prepare(
+        "
+            SELECT id, name, real_name, display_name
+            FROM users
+            ORDER BY deleted DESC
+        ",
+    )?;
     let mut map = HashMap::new();
     let rows = stmt.query_map([], |r| {
         Ok((
@@ -313,13 +318,28 @@ fn import_export_users(conn: &mut Connection, team_id: &str, path: &Path) -> Res
         };
         let team = u.team_id.as_deref().unwrap_or(team_id);
         tx.execute(
-            "INSERT OR IGNORE INTO teams (id, name) VALUES (?1, '')",
+            "
+                INSERT OR IGNORE INTO teams(id, name)
+                VALUES (?1, '')
+            ",
             [team],
         )?;
         tx.execute(
-            "INSERT OR IGNORE INTO users (id, team_id, name, real_name, display_name, is_bot, deleted, raw_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![u.id, team, u.name, u.real_name, u.label(), u.is_bot, u.deleted, v.to_string()],
+            "
+                INSERT OR IGNORE INTO users(id, team_id, name, real_name, display_name, is_bot,
+                        deleted, raw_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ",
+            params![
+                u.id,
+                team,
+                u.name,
+                u.real_name,
+                u.label(),
+                u.is_bot,
+                u.deleted,
+                v.to_string()
+            ],
         )?;
     }
     tx.commit()?;
@@ -348,9 +368,11 @@ fn insert_export_conversation(
             .filter(|v| !v.is_empty())
     };
     conn.execute(
-        "INSERT OR IGNORE INTO conversations
-            (id, team_id, kind, name, label, dm_user_id, topic, purpose, is_archived, is_member, created)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10)",
+        "
+            INSERT OR IGNORE INTO conversations(id, team_id, kind, name, label, dm_user_id,
+                    topic, purpose, is_archived, is_member, created)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, ?10)
+        ",
         params![
             c.id,
             team_id,

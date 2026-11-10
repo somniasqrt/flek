@@ -25,12 +25,14 @@ pub struct Directory {
 
 pub fn read(c: &Connection, team: &str) -> Result<Directory> {
     let mut stmt = c.prepare(
-        "SELECT id, COALESCE(name, label, id), topic, purpose, is_member,
-                kind = 'private_channel', is_archived,
-                json_extract(raw_json, '$.num_members'), created,
+        "
+            SELECT id, COALESCE(name, label, id), topic, purpose, is_member, kind =
+                'private_channel', is_archived, json_extract(raw_json, '$.num_members'), created,
                 json_extract(raw_json, '$.creator')
-         FROM conversations
-         WHERE team_id = ?1 AND kind IN ('public_channel', 'private_channel')",
+            FROM conversations
+            WHERE team_id = ?1
+            AND kind IN ('public_channel', 'private_channel')
+        ",
     )?;
     let channels = stmt
         .query_map([team], |r| {
@@ -50,7 +52,11 @@ pub fn read(c: &Connection, team: &str) -> Result<Directory> {
         .collect::<std::result::Result<_, _>>()?;
     let stamp = c
         .query_row(
-            "SELECT fetched_at, truncated FROM channel_directory_sync WHERE team_id = ?1",
+            "
+                SELECT fetched_at, truncated
+                FROM channel_directory_sync
+                WHERE team_id = ?1
+            ",
             [team],
             |r| Ok((r.get::<_, i64>(0)?, r.get::<_, bool>(1)?)),
         )
@@ -71,17 +77,17 @@ pub fn upsert(c: &Connection, team: &str, channel: &Conversation, joined: bool) 
         channel.raw["is_member"].as_bool()
     };
     c.execute(
-        "INSERT INTO conversations
-            (id, team_id, kind, name, label, topic, purpose, is_archived,
-             is_member, created, raw_json)
-         VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, COALESCE(?8, 0), ?9, ?10)
-         ON CONFLICT(id) DO UPDATE SET
-             name = excluded.name, label = excluded.label, kind = excluded.kind,
-             topic = excluded.topic, purpose = excluded.purpose,
-             is_archived = excluded.is_archived,
-             is_member = COALESCE(?8, conversations.is_member),
-             created = COALESCE(excluded.created, conversations.created),
-             raw_json = json_patch(conversations.raw_json, excluded.raw_json)",
+        "
+            INSERT INTO conversations(id, team_id, kind, name, label, topic, purpose,
+                    is_archived, is_member, created, raw_json)
+            VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6, ?7, COALESCE(?8, 0), ?9, ?10)
+            ON CONFLICT (id) DO UPDATE
+            SET name = excluded.name, label = excluded.label, kind = excluded.kind, topic =
+                excluded.topic, purpose = excluded.purpose, is_archived = excluded.is_archived,
+                is_member = COALESCE(?8, conversations.is_member), created = COALESCE(excluded.created,
+                    conversations.created), raw_json = json_patch(conversations.raw_json,
+                    excluded.raw_json)
+        ",
         params![
             channel.id,
             team,

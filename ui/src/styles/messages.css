@@ -1,0 +1,207 @@
+/* Message */
+.msg {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  column-gap: 8px;
+  padding: 8px 20px 6px;
+}
+.msg.grouped {
+  padding-top: 1px;
+}
+.msg:hover {
+  background: var(--hover);
+}
+.gutter {
+  padding-top: 2px;
+}
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: hsl(var(--hue) 45% 48%);
+  user-select: none;
+}
+img.avatar {
+  display: block;
+  object-fit: cover;
+  background: var(--rule);
+}
+.hover-time {
+  display: block;
+  visibility: hidden;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+  padding-top: 3px;
+}
+.msg:hover .hover-time {
+  visibility: visible;
+}
+.body {
+  min-width: 0;
+}
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.author {
+  font-weight: 900;
+}
+time {
+  font-size: 12px;
+}
+.tag {
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--tag);
+  color: var(--tag-text);
+}
+.edited {
+  font-size: 12px;
+}
+
+/* Message text */
+.rich {
+  line-height: 1.4667;
+  overflow-wrap: anywhere;
+}
+.rich p {
+  margin: 0;
+}
+.rich p + p,
+.rich p + .list,
+.rich .list + p {
+  margin-top: 6px;
+}
+.rich .h {
+  font-weight: 700;
+  margin: 6px 0 2px;
+}
+.rich .h1 {
+  font-size: 18px;
+}
+.rich .h2 {
+  font-size: 16px;
+}
+.rich .h3 {
+  font-size: 14px;
+}
+.rich .list {
+  margin: 2px 0;
+  padding-left: 22px;
+}
+.rich .list li {
+  margin: 1px 0;
+}
+.rich blockquote {
+  margin: 4px 0;
+  padding: 0 0 0 10px;
+  border-left: 4px solid var(--border);
+  color: var(--muted);
+}
+.rich code,
+.rich pre {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 4px;
+}
+.rich code {
+  padding: 0 4px;
+  color: var(--code-text);
+}
+.rich pre {
+  margin: 4px 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+}
+.mention {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--mention-bg);
+  color: var(--mention-text);
+}
+.emoji {
+  font-size: 1.15em;
+  line-height: 1;
+}
+.emoji.custom {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Workspace emoji: cached images, sized like a glyph of the line. */
+.emoji-img {
+  display: inline-block;
+  height: 1.35em;
+  width: auto;
+  max-width: 4em;
+  vertical-align: -0.3em;
+  object-fit: contain;
+}
+.emoji-img.reaction-img {
+  height: 16px;
+  max-width: 48px;
+  vertical-align: middle;
+}
+
+/* Links */
+a.link {
+  color: var(--link);
+  text-decoration: none;
+}
+a.link:hover {
+  text-decoration: underline;
+}
+a.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  min-width: 0;
+  margin: 1px 0;
+  padding: 1px 8px 1px 6px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--chip) 35%, transparent);
+  background: color-mix(in srgb, var(--chip) 12%, transparent);
+  color: var(--text);
+  text-decoration: none;
+  vertical-align: baseline;
+  cursor: pointer;
+}
+a.chip:hover {
+  background: color-mix(in srgb, var(--chip) 22%, transparent);
+}
+a.chip .icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--chip);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* In a narrow column the label shrinks (with an ellipsis); the service
+   name never wraps. */
+a.chip .service {
+  flex: none;
+  font-weight: 600;
+  color: var(--chip);
+  white-space: nowrap;
+}
+a.chip .label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

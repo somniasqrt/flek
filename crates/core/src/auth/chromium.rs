@@ -109,7 +109,12 @@ pub fn read_cookie(cookies_db: &Path, hosts: &[&str], name: &str) -> Result<Opti
     let conn =
         rusqlite::Connection::open_with_flags(&copy, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let mut stmt = conn.prepare(
-        "SELECT host_key, value, encrypted_value FROM cookies WHERE name = ?1 ORDER BY expires_utc DESC",
+        "
+            SELECT host_key, value, encrypted_value
+            FROM cookies
+            WHERE name = ?1
+            ORDER BY expires_utc DESC
+        ",
     )?;
     let mut rows = stmt.query([name])?;
     while let Some(row) = rows.next()? {

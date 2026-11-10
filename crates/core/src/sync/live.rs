@@ -152,8 +152,14 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     let applied = reaction(c, channel.clone(), ts.clone(), &name, &user, true)?;
                     if let Some(time) = event_ts {
                         c.execute(
-                            "UPDATE reactions SET event_ts=COALESCE(event_ts,?5)
-                             WHERE conversation_id=?1 AND ts=?2 AND name=?3 AND user_id=?4",
+                            "
+                                UPDATE reactions
+                                SET event_ts = COALESCE(event_ts, ?5)
+                                WHERE conversation_id = ?1
+                                AND ts = ?2
+                                AND name = ?3
+                                AND user_id = ?4
+                            ",
                             rusqlite::params![channel, ts, name, user, time],
                         )?;
                     }
@@ -228,9 +234,15 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     let team = match user.team_id.clone() {
                         Some(team) => team,
                         None => c
-                            .query_row("SELECT team_id FROM users WHERE id = ?1", [&user.id], |r| {
-                                r.get::<_, String>(0)
-                            })
+                            .query_row(
+                                "
+                                    SELECT team_id
+                                    FROM users
+                                    WHERE id = ?1
+                                ",
+                                [&user.id],
+                                |r| r.get::<_, String>(0),
+                            )
                             .unwrap_or_default(),
                     };
                     directory::upsert_user_change(c, &team, &user)?;

@@ -103,12 +103,17 @@ pub async fn fresh_unread(
     let ids = store
         .read(move |c| {
             let mut stmt = c.prepare(
-                "SELECT c.id FROM conversations c
-                 LEFT JOIN sync_state s ON s.conversation_id = c.id
-                 WHERE c.team_id = ?1 AND c.is_member = 1
-                   AND (c.remote_latest IS NULL OR s.newest_ts IS NULL
+                "
+                    SELECT c.id
+                    FROM conversations c
+                    LEFT JOIN sync_state s ON s.conversation_id = c.id
+                    WHERE c.team_id = ?1
+                    AND c.is_member = 1
+                    AND (c.remote_latest IS NULL
+                        OR s.newest_ts IS NULL
                         OR c.remote_latest > s.newest_ts)
-                 ORDER BY c.latest_ts DESC, c.id",
+                    ORDER BY c.latest_ts DESC, c.id
+                ",
             )?;
             let ids = stmt
                 .query_map([team], |r| r.get::<_, String>(0))?

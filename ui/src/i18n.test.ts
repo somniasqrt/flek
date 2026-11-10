@@ -7,7 +7,7 @@ import { en } from "./i18n/en.ts";
 import { uk } from "./i18n/uk.ts";
 import { errorMessage, interpolate, plural, resolveLocale, translate } from "./i18n/index.ts";
 import { renderRichMessage } from "./i18n/rich-message.ts";
-import { activityDay, listTime, localTime, relativeTime } from "./time.ts";
+import { activityDay, listTime, localTime, relativeTime } from "./models/time.ts";
 
 // TypeScript also enforces exact dictionary keys in uk.ts via `satisfies`.
 test("dictionaries preserve keys, interpolation parameters and literal values", () => {
@@ -159,7 +159,7 @@ test("JSX copy and accessibility attributes cannot bypass translation", () => {
   const allowed = new Set(["Flek", "URL", "PDF", "MB", "R", "T", "L", "Enter", "Aa"]);
   const failures: string[] = [];
   for (const file of readdirSync(root, { recursive: true }) as string[]) {
-    if (!file.endsWith(".tsx") || file === "preview.tsx") continue; // synthetic user content
+    if (!file.endsWith(".tsx") || (file === "preview.tsx" || file.startsWith("preview/"))) continue; // synthetic user content
     const source = ts.createSourceFile(
       file,
       readFileSync(root + file, "utf8"),

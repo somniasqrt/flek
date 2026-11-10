@@ -72,15 +72,19 @@ pub async fn clear(store: &Store, cache: &Path) -> Result<Vec<String>> {
         .call(|c| {
             let conversations = {
                 let mut stmt = c.prepare(
-                    "SELECT DISTINCT conversation_id
-                     FROM message_files",
+                    "
+                        SELECT DISTINCT conversation_id
+                        FROM message_files
+                    ",
                 )?;
                 let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
                 rows.collect::<std::result::Result<Vec<_>, _>>()?
             };
             c.execute(
-                "UPDATE files
-                 SET local_path = NULL, preview_path = NULL",
+                "
+                    UPDATE files
+                    SET local_path = NULL, preview_path = NULL
+                ",
                 [],
             )?;
             Ok(conversations)
@@ -104,8 +108,10 @@ mod tests {
         store
             .with_conn(|c| {
                 c.execute(
-                    "INSERT INTO files (id, local_path, preview_path, raw_json)
-                 VALUES ('F1', 'file', 'preview', '{}')",
+                    "
+                        INSERT INTO files(id, local_path, preview_path, raw_json)
+                        VALUES ('F1', 'file', 'preview', '{}')
+                    ",
                     [],
                 )?;
                 Ok(())
@@ -118,7 +124,11 @@ mod tests {
         store
             .with_conn(|c| {
                 let paths: (Option<String>, Option<String>) = c.query_row(
-                    "SELECT local_path, preview_path FROM files WHERE id = 'F1'",
+                    "
+                        SELECT local_path, preview_path
+                        FROM files
+                        WHERE id = 'F1'
+                    ",
                     [],
                     |r| Ok((r.get(0)?, r.get(1)?)),
                 )?;

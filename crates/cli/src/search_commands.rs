@@ -1,6 +1,13 @@
 //! Thin adapter for core agent search; credentials only for explicit --remote.
-use super::*;
+use crate::read_commands;
+use crate::{default_team, format_ts, open_db, output::emit, Global};
+use anyhow::Result;
+use clap::Args;
 use flek_core::search;
+use flek_core::{
+    auth::{self, CredentialStore},
+    views,
+};
 use std::io::IsTerminal;
 
 #[derive(Args)]

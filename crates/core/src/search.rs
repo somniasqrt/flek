@@ -403,9 +403,11 @@ fn ingest(
         // Search does not establish membership. Existing metadata is authoritative;
         // unknown conversations are discoverable but never auto-synced/listed.
         c.execute(
-            "INSERT OR IGNORE INTO conversations
-             (id, team_id, kind, name, label, is_member, is_archived, raw_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)",
+            "
+                INSERT OR IGNORE INTO conversations(id, team_id, kind, name, label, is_member,
+                        is_archived, raw_json)
+                VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
+            ",
             params![
                 id,
                 team,
@@ -416,16 +418,26 @@ fn ingest(
                 hit.channel.raw.to_string()
             ],
         )?;
-        let owner: String =
-            c.query_row("SELECT team_id FROM conversations WHERE id=?1", [id], |r| {
-                r.get(0)
-            })?;
+        let owner: String = c.query_row(
+            "
+                SELECT team_id
+                FROM conversations
+                WHERE id = ?1
+            ",
+            [id],
+            |r| r.get(0),
+        )?;
         if owner != team {
             continue;
         }
         if let Some(user) = hit.user {
             let known: bool = c.query_row(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE id=?1)",
+                "
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM users
+                        WHERE id = ?1)
+                ",
                 [&user.id],
                 |r| r.get(0),
             )?;
@@ -435,7 +447,12 @@ fn ingest(
         }
         let exists = c
             .query_row(
-                "SELECT 1 FROM messages WHERE conversation_id=?1 AND ts=?2",
+                "
+                    SELECT 1
+                    FROM messages
+                    WHERE conversation_id = ?1
+                    AND ts = ?2
+                ",
                 params![id, hit.message.ts],
                 |_| Ok(()),
             )

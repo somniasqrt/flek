@@ -23,8 +23,11 @@ pub async fn preference(
     store
         .call(move |c| {
             c.execute(
-                "UPDATE conversations SET starred = COALESCE(?2, starred),
-                notification = COALESCE(?3, notification) WHERE id = ?1",
+                "
+                    UPDATE conversations
+                    SET starred = COALESCE(?2, starred), notification = COALESCE(?3, notification)
+                    WHERE id = ?1
+                ",
                 rusqlite::params![id, starred, notification],
             )?;
             Ok(())
@@ -39,8 +42,11 @@ pub async fn dismiss(client: &Client, store: &Store, bus: &Bus, id: &str) -> Res
     let (kind, general) = store
         .read(move |c| {
             Ok(c.query_row(
-                "SELECT kind, COALESCE(json_extract(raw_json, '$.is_general'), 0)
-             FROM conversations WHERE id = ?1",
+                "
+                    SELECT kind, COALESCE(json_extract(raw_json, '$.is_general'), 0)
+                    FROM conversations
+                    WHERE id = ?1
+                ",
                 [key],
                 |r| Ok((r.get::<_, String>(0)?, r.get::<_, bool>(1)?)),
             )?)
@@ -62,11 +68,22 @@ pub async fn dismiss(client: &Client, store: &Store, bus: &Bus, id: &str) -> Res
         .call(move |c| {
             if dm {
                 c.execute(
-                    "UPDATE conversations SET closed_at = COALESCE(latest_ts, '0') WHERE id = ?1",
+                    "
+                        UPDATE conversations
+                        SET closed_at = COALESCE(latest_ts, '0')
+                        WHERE id = ?1
+                    ",
                     [id],
                 )?;
             } else {
-                c.execute("UPDATE conversations SET is_member = 0 WHERE id = ?1", [id])?;
+                c.execute(
+                    "
+                        UPDATE conversations
+                        SET is_member = 0
+                        WHERE id = ?1
+                    ",
+                    [id],
+                )?;
             }
             Ok(())
         })

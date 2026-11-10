@@ -146,7 +146,11 @@ pub async fn stored_cached_path(
     let (name, recorded): (Option<String>, Option<String>) = store
         .read(move |c| {
             Ok(c.query_row(
-                "SELECT name,local_path FROM files WHERE id=?1",
+                "
+                    SELECT name, local_path
+                    FROM files
+                    WHERE id = ?1
+                ",
                 [file_id],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )?)

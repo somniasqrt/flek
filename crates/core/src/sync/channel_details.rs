@@ -18,13 +18,27 @@ pub async fn fresh(client: &Client, store: &Store, id: &str) -> Result<()> {
             let tx = c.transaction()?;
             crate::store::messages::upsert_messages_in_transaction(&tx, &id, &messages)?;
             tx.execute(
-                "DELETE FROM conversation_members WHERE conversation_id=?1",
+                "
+                    DELETE
+                    FROM conversation_members
+                    WHERE conversation_id = ?1
+                ",
                 [&id],
             )?;
-            tx.execute("DELETE FROM pins WHERE conversation_id=?1", [&id])?;
+            tx.execute(
+                "
+                    DELETE
+                    FROM pins
+                    WHERE conversation_id = ?1
+                ",
+                [&id],
+            )?;
             for user in members {
                 tx.execute(
-                    "INSERT OR IGNORE INTO conversation_members VALUES (?1,?2)",
+                    "
+                        INSERT OR IGNORE INTO conversation_members
+                        VALUES (?1, ?2)
+                    ",
                     params![id, user],
                 )?;
             }
@@ -32,14 +46,20 @@ pub async fn fresh(client: &Client, store: &Store, id: &str) -> Result<()> {
                 if pin.kind == "message" {
                     if let Some(m) = pin.message {
                         tx.execute(
-                            "INSERT OR REPLACE INTO pins VALUES (?1,?2,?3,?4)",
+                            "
+                                INSERT OR REPLACE INTO pins
+                                VALUES (?1, ?2, ?3, ?4)
+                            ",
                             params![id, m.ts, pin.created_by, pin.created],
                         )?;
                     }
                 }
             }
             tx.execute(
-                "INSERT OR REPLACE INTO conversation_details_sync VALUES (?1,unixepoch())",
+                "
+                    INSERT OR REPLACE INTO conversation_details_sync
+                    VALUES (?1, unixepoch())
+                ",
                 [&id],
             )?;
             tx.commit()?;

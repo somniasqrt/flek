@@ -1,0 +1,390 @@
+/* Composer: the same compact Slack-style toolbar in a channel or thread. */
+:root {
+  --composer-bg: #fff;
+  --composer-border: #b9b9b9;
+  --composer-focus: #7c7d7f;
+  --send-bg: #007a5a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --composer-bg: #222529;
+    --composer-border: #65666a;
+    --composer-focus: #949599;
+  }
+}
+
+  :root[data-theme="dark"] {
+    --composer-bg: #222529;
+    --composer-border: #65666a;
+    --composer-focus: #949599;
+  }
+
+.composer {
+  flex: none;
+  min-width: 0;
+  padding: 0 20px 12px;
+}
+.thread-panel .composer {
+  padding: 0 16px 12px;
+}
+.composer-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--composer-border);
+  border-radius: 8px;
+  background: var(--composer-bg);
+}
+.composer-box:focus-within {
+  border-color: var(--composer-focus);
+}
+.composer-format {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 5px 8px 1px;
+  flex-wrap: wrap;
+}
+.compose-tool {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  background: none;
+  cursor: pointer;
+}
+.compose-tool svg,
+.composer-send svg,
+.compose-send-options svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.compose-tool:hover:not(:disabled),
+.compose-tool[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--hover);
+}
+.compose-tool[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--mention-bg);
+}
+.compose-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.compose-glyph {
+  font-size: 20px;
+  line-height: 20px;
+}
+.compose-glyph-bold {
+  font-weight: 700;
+}
+.compose-glyph-italic {
+  font-family: Georgia, serif;
+  font-style: italic;
+}
+.compose-glyph-underline {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.compose-glyph-strike {
+  text-decoration: line-through;
+}
+.compose-glyph-format {
+  font-size: 17px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.compose-paragraph {
+  display: flex;
+  width: 42px;
+  gap: 2px;
+}
+.compose-paragraph svg:last-child {
+  width: 12px;
+}
+.composer-format-divider {
+  flex: none;
+  height: 19px;
+  border-left: 1px solid var(--border);
+  margin: 0 5px;
+}
+.composer-editor {
+  position: relative;
+  width: 100%;
+  min-height: 48px;
+  max-height: 30vh;
+  padding: 10px 12px 8px;
+  outline: none;
+  overflow-y: auto;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.4667;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+.composer-editor[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  color: var(--muted);
+  opacity: 0.8;
+  pointer-events: none;
+}
+.composer-editor p,
+.composer-editor div {
+  margin: 0;
+}
+.composer-editor blockquote {
+  margin: 3px 0;
+  padding-left: 10px;
+  border-left: 3px solid var(--muted);
+}
+.composer-editor pre {
+  margin: 3px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+.composer-editor code {
+  font-family: var(--font-mono);
+  padding: 1px 3px;
+  background: var(--code-bg);
+  border: 1px solid var(--code-border);
+  border-radius: 3px;
+  color: var(--code-text);
+}
+.composer-editor a {
+  color: var(--link);
+  text-decoration: underline;
+}
+.composer-editor ul,
+.composer-editor ol {
+  margin: 0;
+  padding-left: 24px;
+}
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-height: 38px;
+  padding: 3px 7px 6px;
+}
+.compose-add {
+  border-radius: 50%;
+  background: var(--hover);
+}
+.composer-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.composer-send-group {
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  color: var(--muted);
+}
+.composer-send-group.ready {
+  background: var(--send-bg);
+  color: white;
+}
+.composer-send {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 28px;
+  padding: 5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  border-radius: 4px 0 0 4px;
+  cursor: pointer;
+}
+.composer-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.compose-send-options {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 28px;
+  border: 0;
+  border-radius: 0 4px 4px 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.compose-send-options svg {
+  width: 13px;
+}
+.composer-send-group.ready .compose-send-options {
+  border-left: 1px solid #ffffff30;
+}
+.composer-send-group.ready button:hover {
+  background: #ffffff18;
+}
+.composer-broadcast {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 10px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.composer-broadcast input {
+  accent-color: var(--send-bg);
+}
+.compose-popover {
+  position: absolute;
+  z-index: 40;
+  bottom: calc(100% + 6px);
+  max-width: calc(100vw - 48px);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 13px;
+}
+.compose-popover input:not([type="radio"]) {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+}
+.compose-popover button {
+  font: inherit;
+  cursor: pointer;
+}
+.compose-emoji-popover {
+  left: 64px;
+  width: min(286px, calc(100vw - 16px));
+  padding: 5px;
+}
+.compose-paragraph-menu {
+  left: 96px;
+  width: min(250px, calc(100vw - 16px));
+  padding: 5px;
+}
+.compose-paragraph-menu button,
+.compose-people button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 4px;
+  text-align: left;
+  background: none;
+}
+.compose-paragraph-menu button:hover,
+.compose-people button:hover {
+  background: var(--hover);
+}
+.compose-paragraph-menu kbd {
+  font: inherit;
+  color: var(--muted);
+  font-size: 11px;
+}
+.compose-mention-popover {
+  left: 12px;
+  width: min(280px, calc(100vw - 16px));
+}
+.compose-people {
+  max-height: 200px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.compose-link-popover {
+  left: 12px;
+  width: min(300px, calc(100vw - 16px));
+}
+.compose-link-popover label {
+  display: block;
+  margin-top: 8px;
+}
+.compose-link-popover label input {
+  display: block;
+  margin-top: 3px;
+}
+.compose-link-popover > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+.compose-link-popover button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 10px;
+  background: var(--bg);
+}
+.compose-link-popover button[type="submit"] {
+  background: var(--send-bg);
+  color: white;
+}
+.compose-link-popover button:disabled {
+  opacity: 0.5;
+}
+.compose-send-popover {
+  right: 0;
+  width: min(260px, calc(100vw - 16px));
+}
+.compose-send-popover label {
+  display: flex;
+  gap: 7px;
+  padding-top: 9px;
+  cursor: pointer;
+}
+.compose-send-popover input {
+  accent-color: var(--accent);
+}
+.compose-send-popover small {
+  display: block;
+  color: var(--muted);
+}
+.rich-blocks {
+  white-space: pre-wrap;
+}
+@media (max-width: 900px) {
+  .compose-future {
+    display: none;
+  }
+}
+.thread-panel .compose-future {
+  display: none;
+}
+.thread-panel .composer-format {
+  gap: 0;
+}
+.thread-panel .compose-tool {
+  width: 25px;
+}
+.thread-panel .compose-paragraph {
+  width: 36px;
+}
+.thread-panel .composer-format-divider {
+  margin: 0 3px;
+}
+

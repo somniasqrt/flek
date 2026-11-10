@@ -25,10 +25,20 @@ pub struct CustomEmoji {
 /// as `emoji.list` returns it) and records the time.
 pub fn replace(conn: &mut Connection, team_id: &str, list: &HashMap<String, String>) -> Result<()> {
     let tx = conn.transaction()?;
-    tx.execute("DELETE FROM custom_emoji WHERE team_id = ?1", [team_id])?;
+    tx.execute(
+        "
+            DELETE
+            FROM custom_emoji
+            WHERE team_id = ?1
+        ",
+        [team_id],
+    )?;
     {
         let mut insert = tx.prepare(
-            "INSERT INTO custom_emoji (team_id, name, url, alias_of) VALUES (?1, ?2, ?3, ?4)",
+            "
+                INSERT INTO custom_emoji(team_id, name, url, alias_of)
+                VALUES (?1, ?2, ?3, ?4)
+            ",
         )?;
         for (name, value) in list {
             let (url, alias) = match value.strip_prefix("alias:") {
@@ -42,8 +52,12 @@ pub fn replace(conn: &mut Connection, team_id: &str, list: &HashMap<String, Stri
         }
     }
     tx.execute(
-        "INSERT INTO custom_emoji_sync (team_id, synced_at) VALUES (?1, unixepoch())
-         ON CONFLICT(team_id) DO UPDATE SET synced_at = excluded.synced_at",
+        "
+            INSERT INTO custom_emoji_sync(team_id, synced_at)
+            VALUES (?1, unixepoch())
+            ON CONFLICT (team_id) DO UPDATE
+            SET synced_at = excluded.synced_at
+        ",
         [team_id],
     )?;
     tx.commit()?;
@@ -54,7 +68,11 @@ pub fn replace(conn: &mut Connection, team_id: &str, list: &HashMap<String, Stri
 pub fn synced_at(conn: &Connection, team_id: &str) -> Result<Option<i64>> {
     Ok(conn
         .query_row(
-            "SELECT synced_at FROM custom_emoji_sync WHERE team_id = ?1",
+            "
+                SELECT synced_at
+                FROM custom_emoji_sync
+                WHERE team_id = ?1
+            ",
             [team_id],
             |r| r.get(0),
         )
@@ -67,8 +85,13 @@ fn resolved(
     conn: &Connection,
     team_id: &str,
 ) -> Result<(HashMap<String, String>, HashMap<String, String>)> {
-    let mut stmt =
-        conn.prepare("SELECT name, url, alias_of FROM custom_emoji WHERE team_id = ?1")?;
+    let mut stmt = conn.prepare(
+        "
+            SELECT name, url, alias_of
+            FROM custom_emoji
+            WHERE team_id = ?1
+        ",
+    )?;
     let rows: HashMap<String, (Option<String>, Option<String>)> = stmt
         .query_map([team_id], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
         .collect::<Result<_, _>>()?;
@@ -121,7 +144,13 @@ fn names_in(text: &str) -> impl Iterator<Item = &str> {
 /// were not tried yet, at most `limit`. Unused emoji are never fetched.
 pub fn to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Result<Vec<String>> {
     let (urls, _) = resolved(conn, team_id)?;
-    let mut known = conn.prepare_cached("SELECT 1 FROM link_images WHERE hash = ?1")?;
+    let mut known = conn.prepare_cached(
+        "
+            SELECT 1
+            FROM link_images
+            WHERE HASH = ?1
+        ",
+    )?;
     let mut pending: HashMap<&str, &str> = HashMap::new();
     for (name, url) in &urls {
         if !known.exists([unfurls::url_hash(url)])? {
@@ -140,17 +169,26 @@ pub fn to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Result<Vec<St
         }
     };
     let mut reactions = conn.prepare(
-        "SELECT DISTINCT r.name FROM reactions r
-         JOIN conversations c ON c.id = r.conversation_id WHERE c.team_id = ?1",
+        "
+            SELECT DISTINCT r.name
+            FROM reactions r
+            JOIN conversations c ON c.id = r.conversation_id
+            WHERE c.team_id = ?1
+        ",
     )?;
     let mut rows = reactions.query([team_id])?;
     while let Some(r) = rows.next()? {
         add(&r.get::<_, String>(0)?);
     }
     let mut texts = conn.prepare(
-        "SELECT m.text FROM messages m
-         JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.team_id = ?1 AND m.deleted = 0 AND m.text LIKE '%:%:%'",
+        "
+            SELECT m.text
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.team_id = ?1
+            AND m.deleted = 0
+            AND m.text LIKE '%:%:%'
+        ",
     )?;
     let mut rows = texts.query([team_id])?;
     while let Some(r) = rows.next()? {

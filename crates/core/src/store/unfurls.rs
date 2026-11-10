@@ -123,11 +123,21 @@ pub fn from_raw(raw: &str, cached: &dyn Fn(&str) -> bool) -> Vec<Unfurl> {
 /// Preview images not tried yet, newest messages first.
 pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT m.raw_json FROM messages m
-         WHERE m.deleted = 0 AND m.raw_json LIKE '%\"attachments\"%'
-         ORDER BY m.ts DESC",
+        "
+            SELECT m.raw_json
+            FROM messages m
+            WHERE m.deleted = 0
+            AND m.raw_json LIKE '%\"attachments\"%'
+            ORDER BY m.ts DESC
+        ",
     )?;
-    let mut known = conn.prepare_cached("SELECT 1 FROM link_images WHERE hash = ?1")?;
+    let mut known = conn.prepare_cached(
+        "
+            SELECT 1
+            FROM link_images
+            WHERE HASH = ?1
+        ",
+    )?;
     let mut out: Vec<String> = Vec::new();
     let mut rows = stmt.query([])?;
     while let Some(r) = rows.next()? {
@@ -158,10 +168,13 @@ pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
 /// Records a fetched image (`Some(path)`) or a failed one (`None`, not retried).
 pub fn set_image(conn: &Connection, url: &str, path: Option<&str>) -> Result<()> {
     conn.execute(
-        "INSERT INTO link_images (hash, url, local_path, failed, fetched_at)
-         VALUES (?1, ?2, ?3, ?4, unixepoch())
-         ON CONFLICT(hash) DO UPDATE SET local_path = excluded.local_path,
-            failed = excluded.failed, fetched_at = excluded.fetched_at",
+        "
+            INSERT INTO link_images(HASH, url, local_path, failed, fetched_at)
+            VALUES (?1, ?2, ?3, ?4, unixepoch())
+            ON CONFLICT (HASH) DO UPDATE
+            SET local_path = excluded.local_path, failed = excluded.failed, fetched_at =
+                excluded.fetched_at
+        ",
         params![url_hash(url), url, path, path.is_none()],
     )?;
     Ok(())
@@ -170,7 +183,11 @@ pub fn set_image(conn: &Connection, url: &str, path: Option<&str>) -> Result<()>
 pub fn image_path(conn: &Connection, hash: &str) -> Result<Option<String>> {
     Ok(conn
         .query_row(
-            "SELECT local_path FROM link_images WHERE hash = ?1",
+            "
+                SELECT local_path
+                FROM link_images
+                WHERE HASH = ?1
+            ",
             [hash],
             |r| r.get(0),
         )
@@ -180,7 +197,14 @@ pub fn image_path(conn: &Connection, hash: &str) -> Result<Option<String>> {
 
 /// Whether `url` is cached (for [`from_raw`]).
 pub fn is_cached(conn: &Connection, url: &str) -> bool {
-    conn.prepare_cached("SELECT 1 FROM link_images WHERE hash = ?1 AND local_path IS NOT NULL")
-        .and_then(|mut s| s.exists([url_hash(url)]))
-        .unwrap_or(false)
+    conn.prepare_cached(
+        "
+            SELECT 1
+            FROM link_images
+            WHERE HASH = ?1
+            AND local_path IS NOT NULL
+        ",
+    )
+    .and_then(|mut s| s.exists([url_hash(url)]))
+    .unwrap_or(false)
 }

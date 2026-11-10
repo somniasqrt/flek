@@ -63,8 +63,11 @@ impl Presence {
 
 pub fn mark_stale(c: &Connection) -> Result<()> {
     c.execute(
-        "UPDATE presence SET presence_fresh = 0, dnd_fresh = 0,
-             presence_version = presence_version + 1, dnd_version = dnd_version + 1",
+        "
+            UPDATE presence
+            SET presence_fresh = 0, dnd_fresh = 0, presence_version = presence_version + 1,
+                dnd_version = dnd_version + 1
+        ",
         [],
     )?;
     Ok(())
@@ -72,15 +75,16 @@ pub fn mark_stale(c: &Connection) -> Result<()> {
 
 pub fn set_presence(c: &Connection, user: &str, p: &UserPresence) -> Result<()> {
     c.execute(
-        "INSERT INTO presence (user_id, presence, manual_away, auto_away, online,
-                               connection_count, presence_fresh, presence_version, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, unixepoch())
-         ON CONFLICT(user_id) DO UPDATE SET presence = excluded.presence,
-             manual_away = COALESCE(excluded.manual_away, presence.manual_away),
-             auto_away = excluded.auto_away, online = excluded.online,
-             connection_count = excluded.connection_count, presence_fresh = 1,
-             presence_version = presence_version + 1,
-             updated_at = excluded.updated_at",
+        "
+            INSERT INTO presence(user_id, presence, manual_away, auto_away, ONLINE,
+                    connection_count, presence_fresh, presence_version, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, unixepoch())
+            ON CONFLICT (user_id) DO UPDATE
+            SET presence = excluded.presence, manual_away = COALESCE(excluded.manual_away,
+                    presence.manual_away), auto_away = excluded.auto_away, ONLINE = excluded.online,
+                connection_count = excluded.connection_count, presence_fresh = 1,
+                presence_version = presence_version + 1, updated_at = excluded.updated_at
+        ",
         params![
             user,
             p.presence,
@@ -95,13 +99,16 @@ pub fn set_presence(c: &Connection, user: &str, p: &UserPresence) -> Result<()> 
 
 pub fn set_dnd(c: &Connection, user: &str, d: &Dnd) -> Result<()> {
     c.execute(
-        "INSERT INTO presence (user_id, dnd_enabled, dnd_start, dnd_end, snooze_enabled,
-                               snooze_end, dnd_fresh, dnd_version, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, unixepoch())
-         ON CONFLICT(user_id) DO UPDATE SET dnd_enabled = excluded.dnd_enabled,
-             dnd_start = excluded.dnd_start, dnd_end = excluded.dnd_end,
-             snooze_enabled = excluded.snooze_enabled, snooze_end = excluded.snooze_end,
-             dnd_fresh = 1, dnd_version = dnd_version + 1, updated_at = excluded.updated_at",
+        "
+            INSERT INTO presence(user_id, dnd_enabled, dnd_start, dnd_end, snooze_enabled,
+                    snooze_end, dnd_fresh, dnd_version, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, unixepoch())
+            ON CONFLICT (user_id) DO UPDATE
+            SET dnd_enabled = excluded.dnd_enabled, dnd_start = excluded.dnd_start, dnd_end =
+                excluded.dnd_end, snooze_enabled = excluded.snooze_enabled, snooze_end =
+                excluded.snooze_end, dnd_fresh = 1, dnd_version = dnd_version + 1, updated_at =
+                excluded.updated_at
+        ",
         params![
             user,
             d.dnd_enabled,
@@ -116,10 +123,13 @@ pub fn set_dnd(c: &Connection, user: &str, d: &Dnd) -> Result<()> {
 
 pub fn get(c: &Connection, user: &str) -> Result<Option<Presence>> {
     Ok(c.query_row(
-        "SELECT user_id, presence, dnd_enabled, dnd_start, dnd_end, snooze_enabled,
-                snooze_end, manual_away, auto_away, online, connection_count,
-                presence_fresh, dnd_fresh, updated_at
-         FROM presence WHERE user_id = ?1",
+        "
+            SELECT user_id, presence, dnd_enabled, dnd_start, dnd_end, snooze_enabled,
+                snooze_end, manual_away, auto_away, ONLINE, connection_count, presence_fresh,
+                dnd_fresh, updated_at
+            FROM presence
+            WHERE user_id = ?1
+        ",
         [user],
         |r| {
             Ok(Presence {
@@ -157,9 +167,12 @@ pub fn for_users(c: &Connection, ids: &[String]) -> Result<Vec<Presence>> {
 /// Merge only the returned profile; directory fields and cached photo URLs survive.
 pub fn set_profile(c: &Connection, user: &str, profile: &serde_json::Value) -> Result<()> {
     c.execute(
-        "UPDATE users SET raw_json = json_set(COALESCE(raw_json, '{}'), '$.profile',
-             json_patch(COALESCE(json_extract(raw_json, '$.profile'), '{}'), json(?2)))
-         WHERE id = ?1",
+        "
+            UPDATE users
+            SET raw_json = json_set(COALESCE(raw_json, '{}'), '$.profile', json_patch(COALESCE(
+                        json_extract(raw_json, '$.profile'), '{}'), json(?2)))
+            WHERE id = ?1
+        ",
         params![user, profile.to_string()],
     )?;
     Ok(())
@@ -167,9 +180,14 @@ pub fn set_profile(c: &Connection, user: &str, profile: &serde_json::Value) -> R
 
 /// Invalidate people newly added to a subscription before showing snapshots.
 pub fn stale_users(c: &Connection, ids: &[String]) -> Result<()> {
-    let mut stmt =
-        c.prepare("UPDATE presence SET presence_fresh = 0, dnd_fresh = 0,
-             presence_version = presence_version + 1, dnd_version = dnd_version + 1 WHERE user_id = ?1")?;
+    let mut stmt = c.prepare(
+        "
+            UPDATE presence
+            SET presence_fresh = 0, dnd_fresh = 0, presence_version = presence_version + 1,
+                dnd_version = dnd_version + 1
+            WHERE user_id = ?1
+        ",
+    )?;
     for id in ids {
         stmt.execute([id])?;
     }
@@ -179,7 +197,11 @@ pub fn stale_users(c: &Connection, ids: &[String]) -> Result<()> {
 /// Snapshot guards: a slow HTTP response cannot replace a newer live update.
 pub fn versions(c: &Connection, user: &str) -> Result<(i64, i64)> {
     Ok(c.query_row(
-        "SELECT presence_version, dnd_version FROM presence WHERE user_id = ?1",
+        "
+            SELECT presence_version, dnd_version
+            FROM presence
+            WHERE user_id = ?1
+        ",
         [user],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )
@@ -191,13 +213,16 @@ pub fn versions(c: &Connection, user: &str) -> Result<(i64, i64)> {
 /// ok). Preserve the schedule read from dnd.info/teamInfo or a live event.
 pub fn set_snooze(c: &Connection, user: &str, enabled: bool, end: i64) -> Result<()> {
     c.execute(
-        "INSERT INTO presence (user_id, snooze_enabled, snooze_end, dnd_fresh, dnd_version, updated_at)
-         VALUES (?1, ?2, ?3, 1, 1, unixepoch())
-         ON CONFLICT(user_id) DO UPDATE SET snooze_enabled = excluded.snooze_enabled,
-             snooze_end = excluded.snooze_end,
-             dnd_enabled = CASE WHEN dnd_fresh THEN dnd_enabled ELSE 0 END,
-             dnd_fresh = 1,
-             dnd_version = dnd_version + 1, updated_at = excluded.updated_at",
+        "
+            INSERT INTO presence(user_id, snooze_enabled, snooze_end, dnd_fresh, dnd_version,
+                    updated_at)
+            VALUES (?1, ?2, ?3, 1, 1, unixepoch())
+            ON CONFLICT (user_id) DO UPDATE
+            SET snooze_enabled = excluded.snooze_enabled, snooze_end = excluded.snooze_end,
+                dnd_enabled = CASE
+            WHEN dnd_fresh THEN dnd_enabled
+            ELSE 0 END, dnd_fresh = 1, dnd_version = dnd_version + 1, updated_at = excluded.updated_at
+        ",
         params![user, enabled, end],
     )?;
     Ok(())
@@ -205,7 +230,12 @@ pub fn set_snooze(c: &Connection, user: &str, enabled: bool, end: i64) -> Result
 
 pub fn user_exists(c: &Connection, user: &str) -> Result<bool> {
     Ok(c.query_row(
-        "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1)",
+        "
+            SELECT EXISTS (
+                SELECT 1
+                FROM users
+                WHERE id = ?1)
+        ",
         [user],
         |r| r.get(0),
     )?)

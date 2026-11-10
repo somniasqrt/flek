@@ -66,16 +66,22 @@ pub fn resolve(conn: &Connection, team: &str, query: &str, mode: Match) -> Resul
     let mut best = 5;
     let mut found = Vec::new();
     let mut stmt = conn.prepare(
-        "SELECT c.id, c.kind, COALESCE(c.label,c.name,c.id), c.is_archived, c.topic,
-                c.message_count, c.unread_count, c.latest_ts, c.dm_user_id,
-                c.name, u.name, u.display_name, u.real_name,
-                CASE WHEN json_valid(u.raw_json) THEN json_extract(u.raw_json,'$.profile.email') END,
-                c.last_read,c.starred,c.notification,
-                COALESCE(json_extract(c.raw_json,'$.is_general'),0), c.is_member
-         FROM conversations c LEFT JOIN users u ON u.id=c.dm_user_id
-         WHERE c.team_id=?1
-         ORDER BY CASE c.kind WHEN 'public_channel' THEN 0 WHEN 'private_channel' THEN 0 WHEN 'mpim' THEN 1 ELSE 2 END,
-                  c.is_archived, lower(COALESCE(c.label,c.name,c.id))"
+        "
+            SELECT c.id, c.kind, COALESCE(c.label, c.name, c.id), c.is_archived, c.topic, c.message_count,
+                c.unread_count, c.latest_ts, c.dm_user_id, c.name, u.name, u.display_name, u.real_name,
+                CASE
+            WHEN json_valid(u.raw_json) THEN json_extract(u.raw_json, '$.profile.email') END, c.last_read,
+                c.starred, c.notification, COALESCE(json_extract(c.raw_json, '$.is_general'), 0),
+                c.is_member
+            FROM conversations c
+            LEFT JOIN users u ON u.id = c.dm_user_id
+            WHERE c.team_id = ?1
+            ORDER BY CASE c.kind
+            WHEN 'public_channel' THEN 0
+            WHEN 'private_channel' THEN 0
+            WHEN 'mpim' THEN 1
+            ELSE 2 END, c.is_archived, lower(COALESCE(c.label, c.name, c.id))
+        "
     )?;
     let rows = stmt.query_map([team], |r| {
         let row = ConversationRow {

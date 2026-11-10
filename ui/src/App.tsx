@@ -1,12 +1,12 @@
 import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js";
 import { Show } from "solid-js";
 import { api, onStatus, type Status } from "./api";
-import Onboarding from "./Onboarding";
-import Workspace from "./Workspace";
-import Preferences from "./Preferences";
-import { observeSettings, preferencesOpen, setPreferencesOpen } from "./settings";
+import Onboarding from "./views/Onboarding";
+import Workspace from "./views/Workspace";
+import Preferences from "./views/Preferences";
+import { observeSettings, preferencesOpen, setPreferencesOpen } from "./stores/settings";
 import { listen } from "@tauri-apps/api/event";
-import { primaryModifier, usesMacShortcuts } from "./shortcuts";
+import { primaryModifier, usesMacShortcuts } from "./models/shortcuts";
 
 export default function App() {
   const [status, setStatus] = createSignal<Status>({ phase: "starting" });
