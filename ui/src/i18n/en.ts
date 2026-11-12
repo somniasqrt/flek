@@ -1,6 +1,7 @@
 export const en = {
   "No cells in this preview.": "No cells in this preview.",
-  "This document exceeds the viewer's safety limits. Open it in the default app.": "This document exceeds the viewer's safety limits. Open it in the default app.",
+  "This file is too large to preview (over 50 MB). Open it in the default app.": "This file is too large to preview (over 50 MB). Open it in the default app.",
+  "This document is too large or complex to preview here. Open it in the default app.": "This document is too large or complex to preview here. Open it in the default app.",
   "Can't show this document here. It may be damaged, encrypted or unsupported.": "Can't show this document here. It may be damaged, encrypted or unsupported.",
   "Loading document…": "Loading document…",
   "Sheets": "Sheets",

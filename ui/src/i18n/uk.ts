@@ -5,7 +5,8 @@ import type { Dictionary } from "./en.ts";
 
 export const uk = {
   "No cells in this preview.": "У цьому перегляді немає клітинок.",
-  "This document exceeds the viewer's safety limits. Open it in the default app.": "Цей документ перевищує безпечні межі переглядача. Відкрийте його типовим застосунком.",
+  "This file is too large to preview (over 50 MB). Open it in the default app.": "Файл завеликий для перегляду (понад 50 МБ). Відкрийте його в типовому застосунку.",
+  "This document is too large or complex to preview here. Open it in the default app.": "Документ завеликий або надто складний для перегляду тут. Відкрийте його в типовому застосунку.",
   "Can't show this document here. It may be damaged, encrypted or unsupported.": "Не вдалося показати документ. Він може бути пошкоджений, зашифрований або мати непідтримуваний вміст.",
   "Loading document…": "Завантаження документа…",
   "Sheets": "Аркуші",

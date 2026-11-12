@@ -7,8 +7,13 @@ export const ENTRY_LIMIT = 8 * 1024 * 1024;
 const FILE_LIMIT = 512;
 const NODE_LIMIT = 200000;
 const GRID_LIMIT = 1000000;
+/// Too big or too complex for the viewer, though possibly a valid file.
 const fail = () => {
   throw new Error("document_limit");
+};
+/// Malformed, hostile or unsupported structure.
+const invalid = () => {
+  throw new Error("invalid_document");
 };
 const escapeXml = (s: string) =>
   s
@@ -48,7 +53,7 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       Object.hasOwn(files, file.name) ||
       /(^\/|\\|(^|\/)\.\.?(\/|$))/.test(file.name)
     )
-      fail();
+      invalid();
     files[file.name] = new Uint8Array();
     let size = 0;
     const parts: Uint8Array[] = [];
@@ -78,11 +83,11 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       bytes.subarray(offset, offset + 256),
       offset + 256 >= bytes.length,
     );
-  if (!count) fail();
+  if (!count) invalid();
   for (const [name, bytes] of Object.entries(files)) {
     if (!/\.(xml|rels)$/i.test(name)) continue;
     const xml = strFromU8(bytes);
-    if (/<!DOCTYPE|<!ENTITY/i.test(xml)) fail();
+    if (/<!DOCTYPE|<!ENTITY/i.test(xml)) invalid();
     // The reader strips namespace prefixes and accepts sheetData under any
     // root. Filter every spreadsheet XML entry with the same interpretation.
     const sheet = spreadsheet;
@@ -97,8 +102,8 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
     // elements, outside any row. 0 = not inside sheetData.
     let dataDepth = 0;
     const parser = new Parser();
-    parser.on("error", fail);
-    parser.on("warn", fail);
+    parser.on("error", invalid);
+    parser.on("warn", invalid);
     parser.on("openTag", (tag, attrs, decode, selfClosing) => {
       if (++nodes > NODE_LIMIT || ++depth > 128) fail();
       if (!sheet) return;
@@ -112,7 +117,7 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       for (const [key, value] of Object.entries(rawAttributes)) {
         if (key === "xmlns" || key.startsWith("xmlns:")) continue;
         const localKey = key.split(":").pop()!;
-        if (Object.hasOwn(attributes, localKey)) fail();
+        if (Object.hasOwn(attributes, localKey)) invalid();
         attributes[localKey] = decode(value);
       }
       if (name === "xl/workbook.xml" && local === "sheet") {
@@ -131,7 +136,7 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       if (local === "row" && dataDepth) {
         row = attributes.r === undefined ? row + 1 : Number(attributes.r);
         column = 0;
-        if (!Number.isSafeInteger(row) || row < 1) fail();
+        if (!Number.isSafeInteger(row) || row < 1) invalid();
         if (row > ROW_LIMIT) {
           truncatedPaths.add(name);
           skip = true;
@@ -142,12 +147,12 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
         if (attributes.r === undefined) column++;
         else {
           const ref = attributes.r.match(/^([A-Z]{1,3})([1-9][0-9]{0,6})$/);
-          if (!ref) fail();
+          if (!ref) invalid();
           column = [...ref![1]].reduce(
             (n, c) => n * 26 + c.charCodeAt(0) - 64,
             0,
           );
-          if (Number(ref![2]) !== row) fail();
+          if (Number(ref![2]) !== row) invalid();
         }
         if (column > COLUMN_LIMIT) {
           truncatedPaths.add(name);
@@ -182,7 +187,7 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       if (sheet && !skipped) output.push(escapeXml(text));
     });
     parser.parse(xml);
-    if (depth !== 0) fail();
+    if (depth !== 0) invalid();
     if (sheet) {
       gridSize += maxRow * maxColumn;
       if (gridSize > GRID_LIMIT) fail();

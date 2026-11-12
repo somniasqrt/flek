@@ -17,6 +17,7 @@ import {
   type Sheet,
 } from "../models/document";
 import { parseOffice } from "../models/document-client";
+import { viewerFailure } from "../models/document";
 import { sanitizeDocument } from "../models/document-sanitize";
 import { fileActionLabel } from "./FileSafety";
 
@@ -41,15 +42,13 @@ export default function OfficeDocument(props: {
       setDocument(result);
     } catch (e) {
       if (!controller.signal.aborted) {
-        const limit = /document_(too_large|limit)/.test(String(e));
+        const failure = viewerFailure(e);
         setError(
-          limit
-            ? t(
-                "This document exceeds the viewer's safety limits. Open it in the default app.",
-              )
-            : t(
-                "Can't show this document here. It may be damaged, encrypted or unsupported.",
-              ),
+          failure === "too_large"
+            ? t("This file is too large to preview (over 50 MB). Open it in the default app.")
+            : failure === "limit"
+              ? t("This document is too large or complex to preview here. Open it in the default app.")
+              : t("Can't show this document here. It may be damaged, encrypted or unsupported."),
         );
       }
     }

@@ -26,6 +26,7 @@ On Slack's Free plan, messages, files and links older than 90 days get hidden. R
 | done (M1) | Backfill of all available history into SQLite, resumable, with threads, reactions and files |
 | done (M2, CLI) | Live updates over websocket, survives network drops and sleep |
 | planned | Channels, DMs, threads, reactions, images, files |
+| implemented (M3.5, M3.5.6; visual verification pending) | In-app file viewer for images, PDF, Excel (.xlsx) and Word (.docx) from the local cache, including files Slack already hid |
 | implemented (M6.7; live verification pending) | Presence on DM/profile/self avatars; You menu for custom status, away/active and notification snooze |
 | implemented (M6.8; visual/live verification pending) | Workspace icon, Home/DMs/Activity/Files rail, unread badges, compose picker, notification pause, DM intros; local activity and file browser |
 | implemented (M4.6, M6.9; visual/live verification pending) | Focused visible-message read tracking, opening unread divider, conversation context menu, cached channel details, local stars/mute, leave/close |
@@ -284,6 +285,25 @@ They follow the Slack desktop app (Mod = Command/Ctrl) and work while typing.
 | Mark the conversation read | Esc (when no panel is open) |
 | Zoom in / out / actual size | Mod+= / Mod+- / Mod+0 (View menu, remembered) |
 | Full screen, minimize, close window | Ctrl+Cmd+F, Mod+M, Mod+W (macOS menus) |
+
+## File viewer
+
+Click a downloaded image, PDF, Excel (.xlsx) or Word (.docx) file to open it in
+the viewer; Esc or a click outside closes it, and the arrow button opens the file
+in its default app. Everything is read from the local cache, so it also works
+offline and for files Slack hides on the Free plan. Videos play inline in the
+timeline.
+
+- **Excel**: one tab per sheet (←/→ switch tabs), cell values as saved in the
+  file. Formulas are not recalculated and macros never run. Up to 1000 rows ×
+  100 columns per sheet are shown; larger sheets say they are truncated.
+- **Word**: text, headings, lists, tables and embedded images on a white page.
+  Links are shown as text, and page layout and fonts are not reproduced.
+- Documents are parsed in a separate worker with size and complexity limits.
+  Files over 50 MB, documents that are too large or complex, and damaged or
+  encrypted files each show their own message with the "open in default app"
+  action. Legacy .xls/.doc, PowerPoint and other formats open in their default
+  app directly.
 
 ## Message menu and reactions
 

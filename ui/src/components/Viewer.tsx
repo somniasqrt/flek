@@ -4,7 +4,7 @@ import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "sol
 import { t, locale, clock24 } from "../i18n/index";
 import { api, fileUrl, tsDate, type FileRef } from "../api";
 import Avatar from "./Avatar";
-import { documentKind } from "../models/document";
+import { documentKind, viewerFailure } from "../models/document";
 export { canView } from "../models/document";
 
 const OfficeDocument = lazy(() => import("./OfficeDocument"));
@@ -156,7 +156,13 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       lazy(stage);
       if (strip) lazy(strip);
     } catch (e) {
-      if (!closed) setFailed(String(e).includes("document_too_large") ? t("This document exceeds the viewer's safety limits. Open it in the default app.") : t("Can't show this PDF here."));
+      if (!closed) {
+        setFailed(
+          viewerFailure(e) === "too_large"
+            ? t("This file is too large to preview (over 50 MB). Open it in the default app.")
+            : t("Can't show this PDF here."),
+        );
+      }
     }
   });
 

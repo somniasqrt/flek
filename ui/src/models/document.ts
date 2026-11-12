@@ -35,6 +35,16 @@ export const canView = (file: ViewableFile) =>
   canOpen(file) &&
   (isRasterImage(file.mimetype) || documentKind(file) !== null);
 
+/// Why the viewer cannot show a document: over the IPC byte cap, over the
+/// parser limits (size, complexity, time), or unreadable.
+export type ViewerFailure = "too_large" | "limit" | "invalid";
+export function viewerFailure(error: unknown): ViewerFailure {
+  const text = String(error);
+  if (text.includes("document_too_large")) return "too_large";
+  if (text.includes("document_limit")) return "limit";
+  return "invalid";
+}
+
 export type CellValue = string | number | boolean | Date | null;
 export type Sheet = { name: string; rows: CellValue[][]; truncated: boolean };
 export type OfficeResult =

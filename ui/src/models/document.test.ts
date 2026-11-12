@@ -14,6 +14,7 @@ import {
   ROW_LIMIT,
   COLUMN_LIMIT,
   HTML_LIMIT,
+  viewerFailure,
 } from "./document.ts";
 import { sanitizeDocument } from "./document-sanitize.ts";
 import { boundedArchive, ENTRY_LIMIT } from "./document-archive.ts";
@@ -177,7 +178,7 @@ test("archive rejects broken, encrypted, traversal, oversized and deeply nested 
     assert.throws(() => boundedArchive(data as ArrayBuffer, false));
   assert.throws(
     () => boundedArchive(archive({ "../escape.xml": strToU8("<a/>") }), false),
-    /document_limit/,
+    /invalid_document/,
   );
   assert.throws(
     () =>
@@ -205,7 +206,7 @@ test("archive rejects broken, encrypted, traversal, oversized and deeply nested 
         }),
         false,
       ),
-    /document_limit/,
+    /invalid_document/,
   );
   assert.throws(
     () =>
@@ -261,6 +262,13 @@ test("Excel's calcChain and cells without r are not grid violations", () => {
   const safe = unzipSync(new Uint8Array(result.data));
   assert.match(new TextDecoder().decode(safe["xl/calcChain.xml"]), /r="E5"/);
   assert.match(new TextDecoder().decode(safe["xl/worksheets/sheet1.xml"]), /<v>2<\/v>/);
+});
+
+test("viewer failures keep size, complexity and broken files apart", () => {
+  assert.equal(viewerFailure("Error: document_too_large: viewer limit is 50 MiB"), "too_large");
+  assert.equal(viewerFailure(new Error("document_limit")), "limit");
+  assert.equal(viewerFailure(new Error("invalid_document")), "invalid");
+  assert.equal(viewerFailure("closed"), "invalid");
 });
 
 test("worker client terminates after success, failure, close and deadline", async (context) => {
@@ -341,6 +349,6 @@ test("namespace aliases and unusual roots cannot bypass sparse worksheet limits"
   );
   assert.throws(
     () => boundedArchive(zipSync(files).buffer as ArrayBuffer, true),
-    /document_limit/,
+    /invalid_document/,
   );
 });
