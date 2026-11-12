@@ -35,7 +35,8 @@ type ConversationMenuTarget
 import type { ChannelAction } from "../api";
 import { openProfile } from "../stores/profile";
 import { readRail, type RailView } from "../models/rail-model";
-import { jumpOf, type Jump } from "./Search";
+import { jumpOf, scopeFilter, type Jump, type SearchRequest } from "./Search";
+import { hasUnread } from "../models/conversation-model";
 import { isViewing } from "../components/Viewer";
 import {
 DEFAULT_SIDEBAR,
@@ -111,6 +112,10 @@ export function useWorkspace(props: { status: Ready }) {
   // after opening a result (a fresh object per click, so it re-triggers).
   const [searching, setSearching] = createSignal<string | null>(null);
   const [jump, setJump] = createSignal<Jump | null>(null);
+  const [searchRequest, setSearchRequest] = createSignal<SearchRequest | null>(null);
+  // ⌘[ / ⌘] walk through conversations opened before, like Slack's history arrows.
+  const past: string[] = [];
+  let future: string[] = [];
 
   // Counts move with every message; re-read the list at most every 500 ms.
   let refreshTimer: number | undefined;
@@ -152,7 +157,13 @@ export function useWorkspace(props: { status: Ready }) {
     }
   };
 
-  const select = (id: string) => {
+  const select = (id: string, fromHistory = false) => {
+    const before = selected();
+    if (!fromHistory && before && before !== id) {
+      past.push(before);
+      if (past.length > 100) past.shift();
+      future = [];
+    }
     openingChannel++;
     setBrowsing(false);
     if (preview()?.id !== id) setPreview(null);
@@ -323,12 +334,32 @@ export function useWorkspace(props: { status: Ready }) {
   createEffect(on(profileUser, (u) => u && setThread(null), { defer: true }));
   createEffect(on(thread, (t) => t && setChannelDetails(null), { defer: true }));
   createEffect(on(profileUser, (u) => u && setChannelDetails(null), { defer: true }));
+  // Closes the top panel; returns false when none was open.
+  const closePanel = () => {
+    if (channelDetails()) setChannelDetails(null);
+    else if (profileUser()) closeProfile();
+    else if (thread()) setThread(null);
+    else return false;
+    return true;
+  };
+  const go = (from: string[], to: string[]) => {
+    let id = from.pop();
+    while (id && !conversations.some((c) => c.id === id) && preview()?.id !== id) id = from.pop();
+    const now = selected();
+    if (!id) return;
+    if (now) to.push(now);
+    if (view() === "files") chooseView("home");
+    select(id, true);
+  };
   onMount(() => {
+    // Esc closes the top panel; with none open it marks the conversation read, as in Slack.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || isViewing()) return;
-      if (channelDetails()) setChannelDetails(null);
-      else if (profileUser()) closeProfile();
-      else if (thread()) setThread(null);
+      if (e.key !== "Escape" || isViewing() || closePanel() || e.defaultPrevented) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('input, textarea, select, [role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+      const c = current();
+      if (!c?.latest_ts || !hasUnread(c) || browsing() || searching() || view() === "files") return;
+      api.markRead(c.id, c.latest_ts).catch((err) => setActionError(String(err)));
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -344,6 +375,21 @@ export function useWorkspace(props: { status: Ready }) {
       if (!action) return;
       e.preventDefault();
       if (action === "switcher") { e.stopPropagation(); setSwitcher(true); return; }
+      const c = current();
+      switch (action) {
+        case "home": case "dms": case "activity": return chooseView(action);
+        case "browse": return browseChannels();
+        case "compose": return setCompose(true);
+        case "close-panel": return void closePanel();
+        case "back": return go(past, future);
+        case "forward": return go(future, past);
+        case "search": return setSearchRequest({ prefill: "" });
+        case "search-here": return setSearchRequest({ prefill: c ? scopeFilter(c) : "" });
+        case "details":
+          if (!c) return;
+          if (channelDetails() === c.id) return setChannelDetails(null);
+          return details(c);
+      }
       const rows = sidebarOrder(conversations, settings().dm_sort, locale(), settings().show_muted);
       const next = adjacentConversation(rows, selected(), action.startsWith("previous") ? -1 : 1, action.endsWith("unread"));
       if (next) {
@@ -389,7 +435,7 @@ export function useWorkspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchRequest, jump, select, openHit, openJump, composeIn, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame: (el: HTMLDivElement) => { frame = el; },

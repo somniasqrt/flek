@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setPlatform } from "../platform.ts";
-import { editShortcut, shortcutLabel, usesMacShortcuts } from "./shortcuts.ts";
+import { ariaShortcut, editShortcut, shortcutLabel, usesMacShortcuts } from "./shortcuts.ts";
 const event = (extra = {}) => ({
   code: "KeyB",
   metaKey: false,
@@ -48,4 +48,16 @@ test("IME and AltGr never trigger formatting, ordinary copy is untouched", () =>
   assert.equal(editShortcut(event({ code: "KeyK", metaKey: true }), true), undefined);
   assert.equal(editShortcut(event({ code: "KeyU", metaKey: true, shiftKey: true }), true), "link");
   assert.equal(shortcutLabel("pre", false), "Ctrl+Shift+J");
+});
+
+test("code block uses Slack's chord on macOS and keeps the older one", () => {
+  const pre = { code: "KeyC", shiftKey: true, altKey: true };
+  assert.equal(editShortcut(event({ ...pre, metaKey: true }), true), "pre");
+  assert.equal(editShortcut(event({ ...pre, ctrlKey: true }), false), undefined);
+  assert.equal(editShortcut(event({ code: "KeyC", metaKey: true, shiftKey: true }), true), "code");
+  assert.equal(editShortcut(event({ code: "KeyJ", metaKey: true, shiftKey: true }), true), "pre");
+  assert.equal(editShortcut(event({ code: "KeyJ", ctrlKey: true, shiftKey: true }), false), "pre");
+  assert.equal(shortcutLabel("pre", true), "⌘⌥⇧C");
+  assert.equal(ariaShortcut("pre", true), "Meta+Alt+Shift+C");
+  assert.equal(ariaShortcut("pre", false), "Control+Shift+J");
 });

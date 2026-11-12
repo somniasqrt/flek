@@ -265,6 +265,25 @@ See [the CLI JSON contract](docs/cli-json.md) for full schemas and stream
 semantics. Agent reads are available; editing, reactions and channel creation
 remain on the roadmap.
 
+## Navigation shortcuts
+
+They follow the Slack desktop app (Mod = Command/Ctrl) and work while typing.
+
+| Action | Shortcut |
+|---|---|
+| Quick switcher | Mod+K |
+| Previous / next conversation | Alt+↑ / Alt+↓ (add Shift for unread only) |
+| Back / forward | Mod+[ / Mod+] |
+| Home / DMs / Activity | Ctrl+1 / Mod+Shift+K / Mod+Shift+M |
+| Browse channels | Mod+Shift+L |
+| Conversation details | Mod+Shift+I |
+| New message | Mod+N |
+| Search / search this conversation | Mod+G / Mod+F |
+| Close the side panel | Mod+. or Esc |
+| Mark the conversation read | Esc (when no panel is open) |
+| Zoom in / out / actual size | Mod+= / Mod+- / Mod+0 (View menu, remembered) |
+| Full screen, minimize, close window | Ctrl+Cmd+F, Mod+M, Mod+W (macOS menus) |
+
 ## Message menu and reactions
 
 Right-click a message for **Add reaction** (R), **Reply in thread** (T),
@@ -288,7 +307,7 @@ tooltips show the platform's shortcut.
 | Insert link | Mod+Shift+U |
 | Numbered / bulleted list | Mod+Shift+7 / Mod+Shift+8 |
 | Quote | Mod+Shift+9 |
-| Inline code / code block | Mod+Shift+C / Mod+Shift+J |
+| Inline code / code block | Mod+Shift+C / Cmd+Option+Shift+C (macOS), Mod+Shift+J |
 | Clear formatting | Mod+\ |
 | Toggle formatting toolbar | Mod+Shift+F |
 | Emoji picker | Mod+Shift+E |

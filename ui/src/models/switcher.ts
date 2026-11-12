@@ -61,9 +61,53 @@ export function adjacentConversation(
   }
 }
 
-export function conversationShortcut(e: ShortcutEvent, mac: boolean, editing: boolean) {
+// Slack's desktop shortcuts; chords with the primary modifier work while typing too.
+const PRIMARY: Record<string, WorkspaceAction> = {
+  KeyK: "switcher",
+  KeyN: "compose",
+  KeyG: "search",
+  KeyF: "search-here",
+  Period: "close-panel",
+  BracketLeft: "back",
+  BracketRight: "forward",
+};
+const PRIMARY_SHIFT: Record<string, WorkspaceAction> = {
+  KeyK: "dms",
+  KeyM: "activity",
+  KeyL: "browse",
+  KeyI: "details",
+};
+
+export type WorkspaceAction =
+  | "switcher"
+  | "previous"
+  | "next"
+  | "previous-unread"
+  | "next-unread"
+  | "home"
+  | "dms"
+  | "activity"
+  | "browse"
+  | "details"
+  | "compose"
+  | "search"
+  | "search-here"
+  | "close-panel"
+  | "back"
+  | "forward";
+
+export function conversationShortcut(
+  e: ShortcutEvent,
+  mac: boolean,
+  editing: boolean,
+): WorkspaceAction | undefined {
   if (e.isComposing) return;
-  if (!e.altKey && !e.shiftKey && primaryModifier(e, mac) && e.code === "KeyK") return "switcher";
+  if (!e.altKey && primaryModifier(e, mac)) {
+    const action = (e.shiftKey ? PRIMARY_SHIFT : PRIMARY)[e.code];
+    if (action) return action;
+  }
+  // Slack opens Home with Control+1 on every platform.
+  if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === "Digit1") return "home";
   if (editing || !e.altKey || e.metaKey || e.ctrlKey) return;
   if (e.code === "ArrowUp") return e.shiftKey ? "previous-unread" : "previous";
   if (e.code === "ArrowDown") return e.shiftKey ? "next-unread" : "next";

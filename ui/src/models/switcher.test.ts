@@ -88,3 +88,23 @@ test("shortcuts preserve input editing, IME and AltGr; primary K works on physic
     "switcher",
   );
 });
+
+test("Slack navigation chords use physical keys and the platform modifier", () => {
+  const e = { code: "KeyM", metaKey: true, ctrlKey: false, altKey: false, shiftKey: true, isComposing: false };
+  assert.equal(conversationShortcut(e, true, true), "activity");
+  assert.equal(conversationShortcut({ ...e, code: "KeyK" }, true, false), "dms");
+  assert.equal(conversationShortcut({ ...e, code: "KeyL" }, true, false), "browse");
+  assert.equal(conversationShortcut({ ...e, code: "KeyI" }, true, false), "details");
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "KeyG" }, true, false), "search");
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "KeyF" }, true, false), "search-here");
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "BracketLeft" }, true, false), "back");
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "Period" }, true, false), "close-panel");
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "KeyN" }, true, false), "compose");
+  assert.equal(conversationShortcut({ ...e, metaKey: false, ctrlKey: true }, false, false), "activity");
+  assert.equal(conversationShortcut({ ...e, metaKey: false, ctrlKey: true }, true, false), undefined);
+  assert.equal(conversationShortcut({ ...e, altKey: true }, true, false), undefined);
+  assert.equal(conversationShortcut({ ...e, shiftKey: false, code: "KeyB" }, true, true), undefined);
+  const home = { ...e, metaKey: false, ctrlKey: true, shiftKey: false, code: "Digit1" };
+  assert.equal(conversationShortcut(home, true, true), "home");
+  assert.equal(conversationShortcut(home, false, false), "home");
+});

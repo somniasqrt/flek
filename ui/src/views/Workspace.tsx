@@ -49,7 +49,7 @@ export default function Workspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchRequest, jump, select, openHit, openJump, composeIn, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame,
@@ -62,6 +62,7 @@ export default function Workspace(props: { status: Ready }) {
         <SearchBar
           team={props.status.team}
           conversations={conversations}
+          request={searchRequest()}
           onSubmit={setSearching}
           onOpen={openHit}
         />

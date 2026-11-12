@@ -7,16 +7,22 @@ import { Hash, Lock, People, Search } from "../components/icons";
 import { emoji } from "../models/emoji";
 import { people } from "../stores/people";
 import { keyCombo, modKeyLabel } from "../platform";
-import { primaryModifier, usesMacShortcuts } from "../models/shortcuts";
 import { pieces, readable } from "../models/snippet";
 
 // Search over the local archive, like Slack's: a field in the middle of the
-// top bar (⌘F), a dropdown with filter hints and the first few matches while
+// top bar (⌘G), a dropdown with filter hints and the first few matches while
 // typing, and Enter for the full results in the main pane.
 
 /// Where a result lives: the message, or its thread root for a reply that is
 /// only in the thread (the timeline shows roots).
 export type Jump = { conversation_id: string; ts: string; thread_ts: string | null };
+export type SearchRequest = { prefill: string };
+
+/// The `in:` filter for a conversation: channels by name, DMs by id
+/// (their labels can contain spaces).
+export function scopeFilter(c: Pick<Conversation, "id" | "kind" | "label">): string {
+  return c.kind === "im" || c.kind === "mpim" || /\s/.test(c.label) ? `in:${c.id} ` : `in:#${c.label} `;
+}
 
 const QUICK = 5;
 const FULL = 100;
@@ -34,40 +40,38 @@ const FILTERS = () => [
 export function SearchBar(props: {
   team: string;
   conversations: Conversation[];
+  /// A fresh object per keypress, so the same request focuses again.
+  request: SearchRequest | null;
   onSubmit: (query: string) => void;
   onOpen: (hit: Hit) => void;
 }) {
-  const mac = usesMacShortcuts();
   const [query, setQuery] = createSignal("");
   const [open, setOpen] = createSignal(false);
   const [quick, setQuick] = createSignal<Hit[]>([]);
   let input!: HTMLInputElement;
   let wrap!: HTMLDivElement;
 
-  // ⌘F focuses the field from anywhere (⌘K stays free for a quick switcher).
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (
-        primaryModifier(e, mac) &&
-        !e.shiftKey &&
-        !e.altKey &&
-        !e.isComposing &&
-        e.code === "KeyF"
-      ) {
-        e.preventDefault();
+  // ⌘G focuses the field from anywhere; ⌘F starts with the open conversation
+  // as an `in:` filter, like Slack (the workspace turns both into requests).
+  createEffect(
+    on(
+      () => props.request,
+      (request) => {
+        if (!request) return;
+        if (request.prefill) setQuery(request.prefill);
         input.focus();
-        input.select();
-      }
-    };
+        if (request.prefill) input.setSelectionRange(request.prefill.length, request.prefill.length);
+        else input.select();
+      },
+      { defer: true },
+    ),
+  );
+  onMount(() => {
     const onDown = (e: MouseEvent) => {
       if (!wrap.contains(e.target as Node)) setOpen(false);
     };
-    window.addEventListener("keydown", onKey);
     window.addEventListener("mousedown", onDown);
-    onCleanup(() => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onDown);
-    });
+    onCleanup(() => window.removeEventListener("mousedown", onDown));
   });
 
   // First matches while typing; a half-typed filter (`before:2024-`) is an
@@ -126,7 +130,7 @@ export function SearchBar(props: {
           onKeyDown={onKey}
         />
         <Show when={!open()}>
-          <kbd class="search-kbd">{keyCombo([modKeyLabel(), "F"])}</kbd>
+          <kbd class="search-kbd">{keyCombo([modKeyLabel(), "G"])}</kbd>
         </Show>
       </label>
       <Show when={open()}>

@@ -21,7 +21,8 @@ export type EditAction =
   | "clear"
   | "toolbar"
   | "emoji";
-export const bindings: Record<EditAction, { code: string; key: string; shift?: boolean }> = {
+type Binding = { code: string; key: string; shift?: boolean; alt?: boolean };
+export const bindings: Record<EditAction, Binding> = {
   bold: { code: "KeyB", key: "B" },
   italic: { code: "KeyI", key: "I" },
   underline: { code: "KeyU", key: "U" },
@@ -31,23 +32,40 @@ export const bindings: Record<EditAction, { code: string; key: string; shift?: b
   bullet: { code: "Digit8", key: "8", shift: true },
   quote: { code: "Digit9", key: "9", shift: true },
   code: { code: "KeyC", key: "C", shift: true },
-  pre: { code: "KeyJ", key: "J", shift: true },
+  // Slack's ⌘⌥⇧C; Alt is AltGr off macOS, so there only the older ⌘⇧J works.
+  pre: { code: "KeyC", key: "C", shift: true, alt: true },
   clear: { code: "Backslash", key: "\\" },
   toolbar: { code: "KeyF", key: "F", shift: true },
   emoji: { code: "KeyE", key: "E", shift: true },
 };
+const aliases: Partial<Record<EditAction, Binding>> = {
+  pre: { code: "KeyJ", key: "J", shift: true },
+};
+/// The binding a platform uses: Alt chords only on macOS.
+function binding(action: EditAction, mac: boolean): Binding {
+  const b = bindings[action];
+  return b.alt && !mac ? (aliases[action] ?? b) : b;
+}
 export function primaryModifier(e: ShortcutEvent, mac: boolean) {
   return mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
 }
 export function editShortcut(e: ShortcutEvent, mac: boolean): EditAction | undefined {
-  if (e.isComposing || e.altKey || !primaryModifier(e, mac)) return;
-  return (Object.keys(bindings) as EditAction[]).find((action) => {
-    const b = bindings[action];
-    return e.code === b.code && e.shiftKey === !!b.shift;
-  });
+  if (e.isComposing || (e.altKey && !mac) || !primaryModifier(e, mac)) return;
+  const matches = (b: Binding | undefined) =>
+    !!b && e.code === b.code && e.shiftKey === !!b.shift && e.altKey === !!b.alt;
+  return (Object.keys(bindings) as EditAction[]).find(
+    (action) => matches(binding(action, mac)) || matches(aliases[action]),
+  );
 }
 export function shortcutLabel(action: EditAction, mac: boolean) {
-  const b = bindings[action];
+  const b = binding(action, mac);
   const p: Platform = mac ? "mac" : "windows";
-  return keyCombo([modKeyLabel(p), ...(b.shift ? [shiftKeyLabel(p)] : []), b.key], p);
+  return keyCombo(
+    [modKeyLabel(p), ...(b.alt ? ["⌥"] : []), ...(b.shift ? [shiftKeyLabel(p)] : []), b.key],
+    p,
+  );
+}
+export function ariaShortcut(action: EditAction, mac: boolean) {
+  const b = binding(action, mac);
+  return [mac ? "Meta" : "Control", ...(b.alt ? ["Alt"] : []), ...(b.shift ? ["Shift"] : []), b.key].join("+");
 }

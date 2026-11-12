@@ -3,7 +3,7 @@ import ComposeIcon from "../ComposeIcon";
 import { draftKey, escapeText, readDraft, writeDraft } from "../../models/compose";
 import { blocksText, editorBlocks, restoreEditor, safeLink } from "../../models/rich-compose";
 import {
-bindings,
+ariaShortcut,
 editShortcut,
 usesMacShortcuts,
 primaryModifier,
@@ -313,7 +313,7 @@ export function createComposer(props: ComposerProps) {
       class="compose-tool"
       title={title(name, label)}
       aria-label={label}
-      aria-keyshortcuts={`${mac ? "Meta" : "Control"}+${bindings[name].shift ? "Shift+" : ""}${bindings[name].key}`}
+      aria-keyshortcuts={ariaShortcut(name, mac)}
       aria-pressed={!!active()[command]}
       onPointerDown={(e) => e.preventDefault()}
       onClick={() => action(name)}
