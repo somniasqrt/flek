@@ -30,9 +30,17 @@ pub enum Key {
     ShowAll,
     About,
     SignIn,
+    View,
+    ActualSize,
+    ZoomIn,
+    ZoomOut,
+    FullScreen,
+    Window,
+    Minimize,
+    CloseWindow,
 }
 
-const STRINGS: [[&str; 2]; 27] = [
+const STRINGS: [[&str; 2]; 35] = [
     ["Starting…", "Запуск…"],
     ["Open Flek", "Відкрити Flek"],
     ["Open at Login", "Запускати при вході"],
@@ -66,6 +74,14 @@ const STRINGS: [[&str; 2]; 27] = [
     ["Show All", "Показати всі"],
     ["About Flek", "Про Flek"],
     ["Sign in to Slack", "Увійти в Slack"],
+    ["View", "Вигляд"],
+    ["Actual Size", "Фактичний розмір"],
+    ["Zoom In", "Збільшити"],
+    ["Zoom Out", "Зменшити"],
+    ["Enter Full Screen", "На весь екран"],
+    ["Window", "Вікно"],
+    ["Minimize", "Згорнути"],
+    ["Close Window", "Закрити вікно"],
 ];
 
 pub fn resolve(language: Language, system: &str) -> usize {

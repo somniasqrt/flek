@@ -3,6 +3,7 @@
 //! closed; quitting is done from here.
 
 use crate::i18n::{t, Key};
+use crate::zoom::Zoom;
 use flek_core::sync::live::{ConnectionState, Progress};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -31,13 +32,16 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     rebuild_native(app)?;
-    app.on_menu_event(|app, event| {
-        if event.id().as_ref() == "preferences" {
+    app.on_menu_event(|app, event| match event.id().as_ref() {
+        "preferences" => {
             crate::show_main(app);
             let _ = app.emit("flek://preferences", ());
-        } else if event.id().as_ref() == "quit" {
-            app.exit(0);
         }
+        "quit" => app.exit(0),
+        "zoom_in" => crate::zoom::change(app, Zoom::In),
+        "zoom_out" => crate::zoom::change(app, Zoom::Out),
+        "zoom_reset" => crate::zoom::change(app, Zoom::Reset),
+        _ => {}
     });
     let status = MenuItem::with_id(app, "status", t(lang, Key::Starting), false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", t(lang, Key::Open), true, None::<&str>)?;
@@ -214,6 +218,33 @@ fn rebuild_native(app: &AppHandle) -> tauri::Result<()> {
             &PredefinedMenuItem::select_all(app, Some(t(lang, Key::SelectAll)))?,
         ],
     )?;
-    app.set_menu(Menu::with_items(app, &[&app_menu, &edit])?)?;
+    let zoom = |id: &str, key: Key, accelerator: &str| {
+        MenuItem::with_id(app, id, t(lang, key), true, Some(accelerator))
+    };
+    let view = Submenu::with_items(
+        app,
+        t(lang, Key::View),
+        true,
+        &[
+            &zoom("zoom_reset", Key::ActualSize, "CmdOrCtrl+0")?,
+            &zoom("zoom_in", Key::ZoomIn, "CmdOrCtrl+=")?,
+            &zoom("zoom_out", Key::ZoomOut, "CmdOrCtrl+-")?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::fullscreen(app, Some(t(lang, Key::FullScreen)))?,
+        ],
+    )?;
+    // Close goes through CloseRequested, so it hides to the menu bar like the red button.
+    let window = Submenu::with_items(
+        app,
+        t(lang, Key::Window),
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, Some(t(lang, Key::Minimize)))?,
+            &PredefinedMenuItem::close_window(app, Some(t(lang, Key::CloseWindow)))?,
+        ],
+    )?;
+    #[cfg(target_os = "macos")]
+    window.set_as_windows_menu_for_nsapp()?;
+    app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &view, &window])?)?;
     Ok(())
 }

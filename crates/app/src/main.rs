@@ -14,6 +14,7 @@ mod platform;
 mod state;
 mod tray;
 mod window_size;
+mod zoom;
 
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tracing_subscriber::EnvFilter;
@@ -119,6 +120,7 @@ fn main() {
             let handle = app.handle();
             navigation::create_main(handle)?;
             window_size::restore(handle);
+            zoom::apply(handle);
             tray::create(handle)?;
             state::forward_changes(handle);
             if hidden {

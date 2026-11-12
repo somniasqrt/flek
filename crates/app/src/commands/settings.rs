@@ -25,6 +25,7 @@ pub fn set_settings(
     // Auth state is owned by core, never by a stale UI preferences snapshot.
     settings.desktop_import_on_start = current.desktop_import_on_start;
     settings.webview_cleanup_version = current.webview_cleanup_version;
+    settings.zoom_percent = current.zoom_percent;
     let was_enabled = crate::autostart::is_enabled(&app);
     if settings.launch_at_login != was_enabled {
         crate::autostart::set(&app, settings.launch_at_login)?;

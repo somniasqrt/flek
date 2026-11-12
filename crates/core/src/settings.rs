@@ -64,7 +64,12 @@ pub struct Settings {
     pub max_file_bytes: Option<i64>,
     pub refresh_days: u32,
     pub refresh_hours: u32,
+    /// App-owned page zoom from the View menu, one of `ZOOM_STEPS`.
+    pub zoom_percent: u16,
 }
+
+/// Zoom levels in percent, as in browsers and the Slack desktop app.
+pub const ZOOM_STEPS: [u16; 11] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -86,6 +91,7 @@ impl Default for Settings {
             max_file_bytes: Some(100 * 1024 * 1024),
             refresh_days: 7,
             refresh_hours: 3,
+            zoom_percent: 100,
         }
     }
 }
@@ -95,6 +101,7 @@ impl Settings {
         if self.version != 1
             || self.refresh_days > 30
             || ![1, 3, 12, 24].contains(&self.refresh_hours)
+            || !ZOOM_STEPS.contains(&self.zoom_percent)
             || ![
                 None,
                 Some(0),
@@ -225,6 +232,10 @@ mod tests {
             },
             Settings {
                 max_file_bytes: Some(-1),
+                ..Default::default()
+            },
+            Settings {
+                zoom_percent: 105,
                 ..Default::default()
             },
         ] {
