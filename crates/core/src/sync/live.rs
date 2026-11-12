@@ -173,6 +173,18 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                 } => reaction(c, channel, ts, &name, &user, false)?,
                 Event::Marked { channel, ts } => {
                     directory::set_read_markers(c, &[(channel.clone(), Some(ts))])?;
+                    // Some client just looked at it: Activity reactions up to now are seen.
+                    crate::rail::seen(c, &channel, None, &crate::sync::ts_days_ago(0))?;
+                    Applied::Changed(Change::ReadMarker {
+                        conversation_id: channel,
+                    })
+                }
+                Event::ThreadMarked {
+                    channel,
+                    thread_ts,
+                    ts,
+                } => {
+                    crate::rail::seen(c, &channel, Some(&thread_ts), &ts)?;
                     Applied::Changed(Change::ReadMarker {
                         conversation_id: channel,
                     })

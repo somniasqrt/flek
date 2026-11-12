@@ -80,6 +80,7 @@ fn main() {
             commands::conversation_link,
             commands::direct_messages,
             commands::activity,
+            commands::activity_seen,
             commands::browse_files,
             commands::fetch_file,
             commands::status,

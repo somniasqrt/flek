@@ -335,9 +335,30 @@ future CLI command. Mentions share the indexed candidate query with
 membership is not stored, so group/broadcast mentions are not inferred. DMs
 and threads each contribute one latest message from someone else per
 conversation/thread. Thread participation includes roots and stored replies
-by the viewer. Unread uses the conversation's `last_read`; this approximates
-thread unread state because per-thread read markers are not stored. Unknown
-read markers do not manufacture unread badges.
+by the viewer. Unknown read markers do not manufacture unread badges.
+
+Activity read state (migration 0018) has three local cursors; an item is read
+up to the latest that applies:
+
+- `conversations.last_read`, as before, for every kind.
+- `thread_reads.last_read` for thread replies (threads and mentions in
+  threads). Set by the thread panel when it is open in a focused window, and by
+  the `thread_marked` RTM event from other clients. Slack's thread cursor write
+  (`subscriptions.thread.mark` in the web client) is undocumented and not
+  called, so Slack itself still sees threads read in Flek as unread.
+- `conversations.activity_seen` for reactions and top-level mentions: when a
+  client last looked at the conversation. Set to the receive time of any
+  `channel_marked`/`im_marked`/… event (from any client) and to the item time
+  when an Activity item is opened. A conversation marker never reads threads.
+
+Slack has no documented read state for reactions; reading a conversation on
+another client without moving its marker (no new messages) does not clear them.
+
+`thread_marked` is undocumented. Expected shape, parsed defensively (anything
+else is ignored): `{"type":"thread_marked","subscription":{"type":"thread",
+"channel":"C…","thread_ts":"…","last_read":"…","unread_count":0,…}}`.
+**Not yet confirmed on the real workspace** (DevTools → WS frames, read a
+thread in the browser).
 
 [`reaction_added`](https://docs.slack.dev/reference/events/reaction_added/)
 already identifies the reacting `user`; migration 0015 adds nullable

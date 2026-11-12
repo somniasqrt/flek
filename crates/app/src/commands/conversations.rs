@@ -63,6 +63,26 @@ pub async fn activity(
         .map_err(text)
 }
 
+/// Local Activity read state: an opened Activity item or a viewed thread.
+#[tauri::command]
+pub async fn activity_seen(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    thread_ts: Option<String>,
+    ts: String,
+) -> CmdResult<()> {
+    let id = conversation_id.clone();
+    state
+        .store
+        .call(move |c| flek_core::rail::seen(c, &id, thread_ts.as_deref(), &ts))
+        .await
+        .map_err(text)?;
+    let _ = state
+        .bus
+        .send(flek_core::sync::live::Change::ReadMarker { conversation_id });
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn mark_read(
     state: State<'_, AppState>,

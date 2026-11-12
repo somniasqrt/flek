@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { t } from "../i18n/index";
 import { api, type Change, type Conversation, type Message } from "../api";
@@ -40,9 +40,20 @@ export default function Thread(props: {
     if (id !== props.conversation.id || ts !== props.ts) return;
     setRows(reconcile(list, { key: "ts" }));
     setLoaded(true);
+    seen();
     if (props.jump?.thread_ts === props.ts) reveal();
     else if (stick) requestAnimationFrame(() => (scroller.scrollTop = scroller.scrollHeight));
   };
+
+  // An open thread in a focused window is read: Activity drops its replies.
+  // Slack's own thread cursor API is undocumented, so this stays local.
+  const seen = () => {
+    const last = rows[rows.length - 1]?.ts;
+    if (!last || last === props.ts || !document.hasFocus() || document.hidden) return;
+    api.activitySeen(props.conversation.id, props.ts, last).catch(() => {});
+  };
+  window.addEventListener("focus", seen);
+  onCleanup(() => window.removeEventListener("focus", seen));
 
   createEffect(
     on([() => props.conversation.id, () => props.ts], () => {

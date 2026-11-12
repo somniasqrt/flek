@@ -24,6 +24,7 @@ const COMMANDS: &[&str] = &[
     "conversation_link",
     "direct_messages",
     "activity",
+    "activity_seen",
     "browse_files",
     "fetch_file",
     "status",

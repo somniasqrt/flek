@@ -102,8 +102,11 @@ pub struct ActivityPage {
     pub has_more: bool,
 }
 
-/// Thread read state is approximated by the root conversation's read marker.
-/// Reactions without an observed event time are recent history, always read.
+/// Thread replies are read up to the later of the conversation marker and
+/// the thread's own cursor ([`seen`]). Reactions and top-level mentions are
+/// also read up to when a client last looked at the conversation; replies are
+/// not, since reading a channel does not read its threads. Reactions without
+/// an observed event time are recent history, always read.
 pub fn activity(
     c: &Connection,
     team: &str,
@@ -177,10 +180,17 @@ pub fn activity(
                     FROM me)
                 AND m.deleted = 0), items AS MATERIALIZED (
                 SELECT x.*, COALESCE(x.timed
-                    AND x.event_ts > c.last_read
+                    AND x.event_ts > MAX(c.last_read, COALESCE(tr.last_read, ''), CASE
+                        WHEN x.kind = 'reaction' OR mm.thread_ts IS NULL OR mm.thread_ts = mm.ts
+                        THEN COALESCE(c.activity_seen, '')
+                        ELSE '' END)
                     AND c.notification <> 'muted', 0) AS unread
                 FROM candidates x
                 CROSS JOIN conversations c ON c.id = x.conversation_id
+                CROSS JOIN messages mm ON mm.id = x.id
+                LEFT JOIN thread_reads tr ON tr.conversation_id = x.conversation_id
+                AND tr.thread_ts = mm.thread_ts
+                AND mm.thread_ts <> mm.ts
                 WHERE c.team_id = ?1
                 AND c.is_member = 1
                 AND c.is_archived = 0
@@ -269,4 +279,32 @@ pub fn activity(
         unread_count: count,
         has_more,
     })
+}
+
+/// Moves a local Activity read cursor forward, never back: a thread's cursor
+/// when `thread_ts` names a thread other than `ts` itself, otherwise when the
+/// conversation was last looked at.
+pub fn seen(c: &Connection, conversation: &str, thread_ts: Option<&str>, ts: &str) -> Result<()> {
+    match thread_ts.filter(|root| *root != ts) {
+        Some(root) => c.execute(
+            "
+                INSERT INTO thread_reads (conversation_id, thread_ts, last_read)
+                VALUES (?1, ?2, ?3)
+                ON CONFLICT DO UPDATE SET last_read = excluded.last_read
+                WHERE excluded.last_read > last_read
+            ",
+            params![conversation, root, ts],
+        )?,
+        None => c.execute(
+            "
+                UPDATE conversations
+                SET activity_seen = ?2
+                WHERE id = ?1
+                AND (activity_seen IS NULL
+                    OR activity_seen < ?2)
+            ",
+            params![conversation, ts],
+        )?,
+    };
+    Ok(())
 }

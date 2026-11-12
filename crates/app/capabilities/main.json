@@ -11,6 +11,7 @@
     "allow-team-icon",
     "allow-direct-messages",
     "allow-activity",
+    "allow-activity-seen",
     "allow-browse-files",
     "allow-fetch-file",
     "allow-status",

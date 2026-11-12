@@ -231,6 +231,66 @@ async fn live_reaction_time_survives_sync_and_duplicate_echo_then_removal() {
     .unwrap();
 }
 
+#[tokio::test]
+async fn activity_read_state_for_threads_reactions_and_other_clients() {
+    let db = db();
+    let unread = |c: &rusqlite::Connection| -> Vec<(String, String)> {
+        rail::activity(c, "TFAKE", "all", true, 100, 0)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|r| (r.kind, r.ts))
+            .collect()
+    };
+    let has = |list: &[(String, String)], kind: &str, n: usize| {
+        list.iter().any(|(k, t)| k == kind && *t == ts(n))
+    };
+    // Another client read the thread on root 1 up to reply 9.
+    live::apply(
+        &db,
+        Event::parse(json!({"type":"thread_marked","subscription":{
+            "type":"thread","channel":"C1","thread_ts":ts(1),"last_read":ts(9)}})),
+    )
+    .await
+    .unwrap();
+    live::apply(
+        &db,
+        Event::parse(
+            json!({"type":"reaction_added","user":"UONE","reaction":"eyes",
+        "event_ts":ts(30),"item":{"channel":"C1","ts":ts(6),"type":"message"}}),
+        ),
+    )
+    .await
+    .unwrap();
+    db.with_conn(|c| {
+        let mut reply = row(40, "UTWO", "new reply to my reply");
+        reply.thread_ts = Some(ts(2));
+        messages::upsert_messages(c, "C1", &[reply])?;
+        let list = unread(c);
+        assert!(!has(&list, "thread", 9));
+        assert!(has(&list, "thread", 40));
+        assert!(has(&list, "mention", 7));
+        assert!(has(&list, "reaction", 6));
+        // Opening the reaction (or the channel on any client) sees the
+        // conversation; that does not read its threads.
+        rail::seen(c, "C1", None, &ts(30))?;
+        let list = unread(c);
+        assert!(!has(&list, "reaction", 6));
+        assert!(!has(&list, "mention", 7));
+        assert!(has(&list, "thread", 40));
+        // The thread panel reads the thread; a stale cursor never moves it back.
+        rail::seen(c, "C1", Some(&ts(2)), &ts(40))?;
+        rail::seen(c, "C1", Some(&ts(2)), &ts(15))?;
+        assert!(!has(&unread(c), "thread", 40));
+        let mut later = row(41, "UTWO", "later reply");
+        later.thread_ts = Some(ts(2));
+        messages::upsert_messages(c, "C1", &[later])?;
+        assert!(has(&unread(c), "thread", 41));
+        Ok(())
+    })
+    .unwrap();
+}
+
 #[test]
 fn migration_preserves_reactors_as_read_history() {
     let mut c = rusqlite::Connection::open_in_memory().unwrap();

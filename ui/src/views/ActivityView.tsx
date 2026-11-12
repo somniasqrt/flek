@@ -126,7 +126,17 @@ export default function ActivityView(props: {
                   <button
                     class="activity-row"
                     classList={{ unread: item.unread }}
-                    onClick={() => props.onOpen(item)}
+                    onClick={() => {
+                      if (item.unread)
+                        api
+                          .activitySeen(
+                            item.conversation_id,
+                            item.kind === "reaction" ? null : item.thread_ts,
+                            item.event_ts,
+                          )
+                          .catch((e) => setError(String(e)));
+                      props.onOpen(item);
+                    }}
                   >
                     <Avatar id={item.user_id} name={people()[item.user_id ?? ""] ?? t("Unknown")} />
                     <span class="activity-body">

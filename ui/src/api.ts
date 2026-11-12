@@ -292,6 +292,8 @@ export const api = {
   accountOrigin: () => invoke<string>("account_origin"),
   markRead: (conversationId: string, ts: string) =>
     invoke<void>("mark_read", { conversationId, ts }),
+  activitySeen: (conversationId: string, threadTs: string | null, ts: string) =>
+    invoke<void>("activity_seen", { conversationId, threadTs, ts }),
   conversationPreference: (
     conversationId: string,
     starred: boolean | null,

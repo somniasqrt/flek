@@ -58,6 +58,12 @@ pub enum Event {
         channel: String,
         ts: String,
     },
+    /// Thread read marker moved on some client (`thread_marked`).
+    ThreadMarked {
+        channel: String,
+        thread_ts: String,
+        ts: String,
+    },
     Typing {
         channel: String,
         user: String,
@@ -151,6 +157,19 @@ impl Event {
                 channel: channel(),
                 ts: str_at(&v, "ts").unwrap_or_default(),
             },
+            // Undocumented; see docs/api-notes.md. Anything unexpected is ignored.
+            "thread_marked" => {
+                let sub = v.get("subscription");
+                let field = |key| sub.and_then(|s| str_at(s, key));
+                match (field("channel"), field("thread_ts"), field("last_read")) {
+                    (Some(channel), Some(thread_ts), Some(ts)) => Event::ThreadMarked {
+                        channel,
+                        thread_ts,
+                        ts,
+                    },
+                    _ => Event::Unknown { kind },
+                }
+            }
             "user_typing" => Event::Typing {
                 channel: channel(),
                 user: str_at(&v, "user").unwrap_or_default(),
@@ -290,6 +309,14 @@ mod tests {
         assert!(
             matches!(parse(json!({"type": "im_marked", "channel": "D1", "ts": "3.0"})), Event::Marked { ref ts, .. } if ts == "3.0")
         );
+        assert!(matches!(
+            parse(json!({"type": "thread_marked", "subscription": {"type": "thread", "channel": "C1", "thread_ts": "1.0", "last_read": "4.0", "unread_count": 0}})),
+            Event::ThreadMarked { ref thread_ts, ref ts, .. } if thread_ts == "1.0" && ts == "4.0"
+        ));
+        assert!(matches!(
+            parse(json!({"type": "thread_marked", "subscription": {"channel": "C1"}})),
+            Event::Unknown { .. }
+        ));
         assert!(matches!(
             parse(json!({"type": "channel_rename", "channel": {"id": "C1", "name": "new"}})),
             Event::ConversationsChanged { .. }

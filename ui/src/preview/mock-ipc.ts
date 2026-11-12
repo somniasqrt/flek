@@ -181,6 +181,19 @@ mockIPC(
         return { stage: "conversations", done: 7, total: 28, current: "general", deep: true };
       case "conversations":
         return structuredClone(conversations.filter((c) => !closed.has(c.id)));
+      case "activity_seen": {
+        for (const row of activityRows) {
+          const thread = row.kind === "reaction" ? null : row.thread_ts;
+          if (
+            row.conversation_id === a.conversationId &&
+            (thread ?? null) === (a.threadTs ?? null) &&
+            row.event_ts <= String(a.ts)
+          )
+            row.unread = false;
+        }
+        emit("flek://change", { type: "read_marker", data: { conversation_id: a.conversationId } });
+        return null;
+      }
       case "mark_read": {
         const c = conversations.find((c) => c.id === a.conversationId);
         if (c && (!c.last_read || String(a.ts) > c.last_read)) {
