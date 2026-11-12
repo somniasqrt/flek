@@ -4,6 +4,16 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "No cells in this preview.": "У цьому перегляді немає клітинок.",
+  "This document exceeds the viewer's safety limits. Open it in the default app.": "Цей документ перевищує безпечні межі переглядача. Відкрийте його типовим застосунком.",
+  "Can't show this document here. It may be damaged, encrypted or unsupported.": "Не вдалося показати документ. Він може бути пошкоджений, зашифрований або мати непідтримуваний вміст.",
+  "Loading document…": "Завантаження документа…",
+  "Sheets": "Аркуші",
+  "Row number": "Номер рядка",
+  "True": "Так",
+  "False": "Ні",
+  "This sheet is empty.": "Цей аркуш порожній.",
+  "Preview is limited to the first {rows} rows and {columns} columns. Open the full spreadsheet in the default app.": "Перегляд обмежено першими {rows} рядками й {columns} стовпцями. Відкрийте повну таблицю типовим застосунком.",
   "This message is no longer stored in Flek.": "Цього повідомлення вже немає в локальній історії Flek.",
   "More channel actions": "Інші дії з розмовою",
   "Open in Slack": "Відкрити в Slack",

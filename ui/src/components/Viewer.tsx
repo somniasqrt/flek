@@ -1,11 +1,15 @@
 import FileSafety, { fileActionLabel } from "./FileSafety";
-import { isRasterImage, canOpen, fileName } from "../models/file-presentation";
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { fileName } from "../models/file-presentation";
+import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
 import { t, locale, clock24 } from "../i18n/index";
 import { api, fileUrl, tsDate, type FileRef } from "../api";
 import Avatar from "./Avatar";
+import { documentKind } from "../models/document";
+export { canView } from "../models/document";
 
-// In-app file viewer, over the whole window: images and PDFs from the cache.
+const OfficeDocument = lazy(() => import("./OfficeDocument"));
+
+// In-app file viewer, over the whole window: images, PDFs and Office documents from the cache.
 // Other files still open in their default app.
 
 /// Who shared the file, for the header.
@@ -14,13 +18,6 @@ export type Sender = { user_id: string | null; name: string; ts: string };
 type Viewing = { file: FileRef; from?: Sender };
 
 const [viewing, setViewing] = createSignal<Viewing | null>(null);
-
-const isPdf = (f: FileRef) =>
-  f.mimetype === "application/pdf" || f.filetype?.toLowerCase() === "pdf";
-const isImage = (f: FileRef) => isRasterImage(f.mimetype);
-
-/// Whether the viewer can show `f` (it has to be downloaded).
-export const canView = (f: FileRef) => !!f.local_path && canOpen(f) && (isImage(f) || isPdf(f));
 
 export const isViewing = () => viewing() !== null;
 export const openViewer = (file: FileRef, from?: Sender) => setViewing({ file, from });
@@ -67,6 +64,7 @@ function Overlay(props: { v: Viewing }) {
           </div>
           <button
             class="viewer-btn"
+            aria-label={fileActionLabel(f)}
             title={fileActionLabel(f)}
             onClick={() => api.openFile(f.id).catch(() => {})}
           >
@@ -74,7 +72,7 @@ function Overlay(props: { v: Viewing }) {
               <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
             </svg>
           </button>
-          <button class="viewer-btn" title={t("Close (Esc)")} onClick={close}>
+          <button class="viewer-btn" aria-label={t("Close (Esc)")} title={t("Close (Esc)")} onClick={close}>
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M5 5l10 10M15 5L5 15" />
             </svg>
@@ -83,10 +81,16 @@ function Overlay(props: { v: Viewing }) {
         {/* A click on the empty stage closes, like Slack's viewer. */}
         <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
           <Show
-            when={isPdf(f)}
+            when={documentKind(f) !== null}
             fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}
           >
-            <Pdf file={f} onClose={close} />
+            <Show when={documentKind(f) === "pdf"} fallback={
+              <Suspense fallback={<div class="spinner" role="status" aria-label={t("Loading document…")} />}>
+                <OfficeDocument file={f} kind={documentKind(f) === "xlsx" ? "xlsx" : "docx"} />
+              </Suspense>
+            }>
+              <Pdf file={f} onClose={close} />
+            </Show>
           </Show>
         </div>
       </div>
@@ -120,7 +124,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
         import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
       ]);
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-      const data = await api.pdfData(props.file.id);
+      const data = await api.documentData(props.file.id);
       task = pdfjs.getDocument({ data });
       const doc = await task.promise;
       if (closed) return;
@@ -152,7 +156,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       lazy(stage);
       if (strip) lazy(strip);
     } catch (e) {
-      if (!closed) setFailed(String(e));
+      if (!closed) setFailed(String(e).includes("document_too_large") ? t("This document exceeds the viewer's safety limits. Open it in the default app.") : t("Can't show this PDF here."));
     }
   });
 
@@ -199,8 +203,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
       >
         <Show when={failed()}>
           <div class="viewer-fail">
-            <p>{t("Can't show this PDF here.")}</p>
-            <p class="muted">{failed()}</p>
+            <p>{failed()}</p>
             <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
               {fileActionLabel(props.file)}
             </button>

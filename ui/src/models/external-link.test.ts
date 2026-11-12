@@ -45,6 +45,6 @@ test("UI has no document embeds or submitting form actions; PDF uses IPC canvas"
     assert.doesNotMatch(source, /<(?:iframe|object|base)\b|<form\b[^>]*\baction\s*=/);
   }
   const viewer = readFileSync(new URL("../components/Viewer.tsx", import.meta.url), "utf8");
-  assert.match(viewer, /api\.pdfData/);
+  assert.match(viewer, /api\.documentData/);
   assert.match(viewer, /<canvas/);
 });

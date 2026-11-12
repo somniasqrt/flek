@@ -11,6 +11,7 @@ It talks to Slack with the same session (`xoxc` token + `d` cookie) that the off
 - **history never disappears**: on the Free plan Slack hides everything older than 90 days, Flek keeps showing it from the local archive, seamlessly mixed with live messages;
 - **search is instant** (SQLite FTS5) and covers messages Slack already hid;
 - **reading and sending** work like in the real client: channels, DMs, threads, reactions, files, images.
+- **in-app file viewer** opens cached PDFs, Excel (.xlsx) and Word (.docx) files, with an action to open the full file in the default app.
 
 ## Why
 

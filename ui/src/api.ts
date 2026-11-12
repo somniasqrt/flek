@@ -346,7 +346,7 @@ export const api = {
   /// Fetches the large photo if missing; its cache hash (see linkImageUrl).
   profilePhoto: (userId: string) => invoke<string | null>("profile_photo", { userId }),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
-  pdfData: (fileId: string) => invoke<ArrayBuffer>("pdf_data", { fileId }),
+  documentData: (fileId: string) => invoke<ArrayBuffer>("document_data", { fileId }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),

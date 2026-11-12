@@ -6,6 +6,7 @@ import type { Conversation } from "../api";
 import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
 import { pdf } from "./assets";
+import { spreadsheetFixture, wordFixture } from "./documents";
 
 const w = window as unknown as { __sendDelay: number };
 w.__sendDelay = 700;
@@ -124,7 +125,7 @@ mockIPC(
       case "fetch_file": {
         for (const m of [...messages, ...bigMessages]) for (const f of m.files) {
           if (f.id !== a.fileId) continue;
-          f.local_path = "/synthetic/download.mp4";
+          f.local_path = `/synthetic/${f.name ?? "download"}`;
           emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: m.ts } });
         }
         return;
@@ -248,7 +249,14 @@ mockIPC(
         // The large photo takes a moment, like a real download.
         await new Promise((r) => setTimeout(r, 600));
         return profiles[String(a.userId)]?.has_photo ? "big1" : null;
-      case "pdf_data":
+      case "open_file":
+        (window as unknown as { __openedFile: string }).__openedFile = String(a.fileId);
+        return;
+      case "document_data":
+        if (a.fileId === "FXLSX_LIMIT") throw "document_too_large";
+        if (a.fileId === "FDOCX_BROKEN") return new Uint8Array([1, 2, 3]).buffer;
+        if (a.fileId === "FDOCX" || a.fileId === "FDOCX_REMOTE") return wordFixture();
+        if (a.fileId === "FXLSX" || a.fileId === "FXLSX_LARGE") return spreadsheetFixture(a.fileId === "FXLSX_LARGE");
         return Uint8Array.from(pdf, (c) => c.charCodeAt(0)).buffer;
       // Copies, like real IPC: stores wrap what they get, and __reply below
       // must not mutate it behind their back.

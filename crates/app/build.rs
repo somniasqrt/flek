@@ -45,7 +45,7 @@ const COMMANDS: &[&str] = &[
     "profile",
     "profile_photo",
     "open_file",
-    "pdf_data",
+    "document_data",
     "open_url",
     "search",
     "send_message",

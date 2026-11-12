@@ -1,4 +1,5 @@
 import FileSafety from "./FileSafety";
+import { documentKind } from "../models/document";
 import { isRasterImage, isInlineVideo, fileName } from "../models/file-presentation";
 import { createSignal, For, Show } from "solid-js";
 import { t, errorMessage } from "../i18n/index";
@@ -7,7 +8,7 @@ import { api, fileUrl, type FileRef } from "../api";
 import { canView, openViewer, type Sender } from "./Viewer";
 
 // Files of a message: cached images inline, everything else as a card.
-// Images and PDFs use the viewer; core decides whether other types open or reveal.
+// Images, PDFs and Office documents use the viewer; core decides whether other types open or reveal.
 
 const MAX_W = 480;
 const MAX_H = 360;
@@ -154,7 +155,7 @@ function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => voi
           </span>
         </span>
       </span>
-      {/* Top of the first page of a PDF / a video frame, rendered by Slack. */}
+      {/* Cached document preview / video frame, when Slack already supplied one. */}
       <Show when={preview()}>
         <span class="file-preview">
           <img src={fileUrl(f.id, true)} alt="" loading="lazy" />
@@ -173,6 +174,8 @@ function kind(f: FileRef): string {
   if (m.startsWith("video/")) return "video";
   if (m.startsWith("audio/")) return "audio";
   if (t === "pdf" || m === "application/pdf") return "pdf";
+  if (documentKind(f) === "xlsx") return "sheet";
+  if (documentKind(f) === "docx") return "doc";
   if (/^(zip|rar|7z|gz|tar|gzip)$/.test(t)) return "archive";
   if (/^(xls|xlsx|csv|gsheet|numbers)$/.test(t)) return "sheet";
   if (/^(ppt|pptx|key|gpres)$/.test(t)) return "slides";

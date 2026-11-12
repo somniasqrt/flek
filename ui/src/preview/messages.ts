@@ -346,6 +346,22 @@ messages.push(
   msg(now - 60, "U1", "Unsupported attachment fallback", { unsupported: true }),
   msg(now - 50, "U1", "Canvas fallback", { files: [file({ id: "FCANVAS", name: "Plan.canvas", filetype: "canvas", mimetype: "application/vnd.slack-docs" })] }),
 );
+const officeFiles = [
+  file({ id: "FXLSX", name: "budget.xlsx", filetype: "xlsx", mimetype: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", local_path: "/synthetic/budget.xlsx", can_open: true }),
+  file({ id: "FDOCX", name: "reading.docx", filetype: "docx", mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", local_path: "/synthetic/reading.docx", can_open: true }),
+];
+messages.push(
+  msg(now - 45, "U2", "Office viewer: sheets, numbers, dates and cached formula values", { files: [officeFiles[0]] }),
+  msg(now - 40, "U2", "Word viewer: headings, formatting, list, table and embedded image", { files: [officeFiles[1]] }),
+  msg(now - 35, "U1", "Truncated spreadsheet (row 1001 / column CW)", { files: [file({ ...officeFiles[0], id: "FXLSX_LARGE", name: "large.xlsx" })] }),
+  msg(now - 30, "U1", "Broken Word document (friendly error)", { files: [file({ ...officeFiles[1], id: "FDOCX_BROKEN", name: "broken.docx" })] }),
+  msg(now - 25, "U1", "Document over 50 MiB (friendly fallback)", { files: [file({ ...officeFiles[0], id: "FXLSX_LIMIT", name: "over-limit.xlsx", size: 60 * 1024 * 1024 })] }),
+  msg(now - 20, "U1", "Undownloaded and legacy files keep their existing action", { files: [file({ ...officeFiles[1], id: "FDOCX_REMOTE", name: "remote.docx", local_path: null }), file({ id: "FXLS", name: "legacy.xls", filetype: "xls", mimetype: "application/vnd.ms-excel", local_path: "/synthetic/legacy.xls", can_open: true })] }),
+);
+replies.push(msg(now - 15, "U2", "Office files in a thread", { thread_ts: ROOT, files: officeFiles }));
+const officeRoot = messages.find((m) => m.ts === ROOT)!;
+officeRoot.reply_count = replies.length;
+officeRoot.latest_reply = replies.at(-1)!.ts;
 export const bigMessages = Array.from({ length: 10_000 }, (_, i) => msg(now - (10_000 - i) * 90, `U${i % 3 + 1}`,
   `Synthetic message ${i + 1}. ` + "Variable row height. ".repeat(i % 7),
   i % 200 === 0 ? { files: [file({ id: `FBIG${i}`, name: "image.png", mimetype: "image/png", local_path: "/synthetic/image.png", width: 640, height: 100 + i % 600 })] } : {},

@@ -148,7 +148,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `commands/account.rs` — Boot status, onboarding, account origin and sign-out IPC.
 - `commands/channels.rs` — Stored channel details, explicit directory/preview/join/create IPC.
 - `commands/conversations.rs` — Sidebar/rail reads, read marks, preferences and dismiss IPC.
-- `commands/files.rs` — File browsing, fetch/reveal/open, PDF bytes and URL opener IPC.
+- `commands/files.rs` — File browsing, fetch/reveal/open, bounded document bytes and URL opener IPC.
 - `commands/messages.rs` — Timeline/thread/search reads and explicit send/reaction IPC.
 - `commands/mod.rs` — Stable command re-exports, error text conversion and shared page cap.
 - `commands/presence.rs` — Directory, avatars, profile/status reads and bounded presence actions.
@@ -186,7 +186,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `components/StatusForm.tsx` — Status form rendering; YouMenu retains draft and focus ownership.
 - `components/SyncBar.tsx` — Sync progress and connection status presentation.
 - `components/Unfurls.tsx` — Cached website preview cards.
-- `components/Viewer.tsx` — Image/PDF overlay and lazy PDF pages.
+- `components/Viewer.tsx` — Image/PDF/Office overlay and lazy PDF pages; OfficeDocument.tsx owns sheet tabs, windowed rows and sanitized Word pages.
 - `components/YouMenu.tsx` — Self menu, DND/status actions and dialog/focus state.
 - `components/composer/createComposer.tsx` — Draft/selection/undo commands and effects, invoked under the component owner.
 - `components/icons.tsx` — Shared navigation/action SVG paths.
@@ -275,6 +275,58 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 
 Folders express ownership: views are screens/panels; components are reusable UI; models hold transformations (some draft helpers also touch DOM/localStorage); stores own shared reactive state. `views/preferences/` stays one feature folder. `components/composer/` is private editor machinery; preview/ never enters production. Layout widths use proportional clamp()/min()/max() with pixel floors; icons, fonts, padding and row heights stay in px. Desired panel sizes persist only on user commits; ResizeObserver measures actual size without overwriting preference.
 
+## Document viewer
+
+`document_data` replaces `pdf_data` in the command manifest, UI API and preview. It
+requires a stored file, a downloaded canonical regular file inside the cache,
+and the core's exact resolved filename/MIME agreement for PDF, XLSX or DOCX.
+Metadata and the read stream both enforce `MAX_DOCUMENT_BYTES` (50 MiB). The UI
+shows a localized failure with the existing OS-open action for oversized or
+unsupported documents. Other Office formats retain their OS action.
+
+PDF rendering remains lazy pdf.js canvas. OfficeDocument is a separate lazy UI
+chunk. It starts a disposable worker, with a 15-second deadline and termination on
+close, that dynamically imports read-excel-file (XLSX) or Mammoth (DOCX). No Office
+parser runs in Rust or on the UI thread. A streaming fflate preflight bounds actual
+inflated bytes to 32 MiB total / 8 MiB per entry, 512 entries, 200,000 XML elements
+and nesting depth 128; worksheet grids also have a shared 1,000,000-cell budget; DTD/entity declarations and traversal/duplicate names are
+rejected. Validated entries are repacked without compression so subsequent readers
+cannot allocate from attacker-controlled ZIP length declarations or spawn blob
+workers. SAX filtering removes worksheet rows/columns beyond 1000 × 100 before
+the spreadsheet reader allocates dense arrays, including sparse hostile addresses.
+The read-excel-file parser uses saved values only: it does not evaluate formulas,
+run macros, follow hyperlinks or fetch external references. It does not expose
+merged-cell metadata, so merged ranges display their stored top-left value.
+Sheets use accessible keyboard tabs and fixed-height windowed table rows. Intl
+formats dates (calendar dates in UTC), numbers and localized booleans.
+
+Mammoth disables external file access and embedded style maps. Only raster embedded
+images become data URIs. Its output (at most 2 MiB) passes DOMPurify with a narrow
+tag/attribute allowlist before insertion, capped at 20,000 nodes / depth 64. Links
+are inert text; no href, CSS, event handlers, ids, remote/SVG images or active embeds
+survive. The paper stays white in both themes. The CSP is unchanged. Cached
+`preview_path` thumbnails are reused wherever already present, without new network
+requests. No thumbnail support is inferred from a filename.
+
+Dependency choices (exact versions in ui/package.json, locked transitives):
+
+| Library | License | Reason |
+| --- | --- | --- |
+| read-excel-file 9.3.15 | MIT | A read-only XLSX parser; selected over ExcelJS's broader read/write workbook API and larger distribution. Its universal entry runs inside our worker without creating its own workers. npm xlsx 0.18.x is not used. |
+| Mammoth 1.13.0 | BSD-2-Clause | Semantic HTML and embedded images, easy to sanitize; selected over docx-preview's direct DOM/CSS page rendering. Complex Word pagination/fonts are intentionally not reproduced. |
+| DOMPurify 3.4.17 | Apache-2.0 OR MPL-2.0 | Maintained sanitizer instead of a custom HTML parser/security policy. All generated HTML still has an explicit minimal allowlist. |
+| fflate 0.8.3 / saxen 11.2.0 | MIT / MIT | Bounded streaming ZIP preflight and SAX XML validation/filtering before library allocations. Both are also spreadsheet parser dependencies. |
+| jsdom 29.1.1 (dev only) | MIT | Node DOM environment for sanitizer regression tests, compatible with the installed Node 24.10.0. Never bundled. |
+
+Mammoth explicitly warns that its output is not sanitized; Flek never inserts it
+without DOMPurify. Main bundle impact is about +5 kB; Office code ships only in
+lazy chunks loaded when an Office file is opened.
+
+Regression coverage: app commands/files.rs::document_gate_checks_cache_type_and_size;
+UI models/document.test.ts covers detection, real synthetic archives, sanitization,
+truncation, formatting and decompression/sparse-address limits. Synthetic viewer
+states live in preview/documents.ts, messages.ts and mock-ipc.ts.
+
 ## Database and cache
 
 `store::default_path()` returns `<data_dir>/flek/flek.db`; on macOS this is `~/Library/Application Support/flek/flek.db`. See platforms.md for other OSes. One mutex-protected writer uses WAL, synchronous=NORMAL and a 5-second busy budget by default (startup WAL switching also retries SQLITE_BUSY). Readers are read-only/query_only connections pooled up to four idle handles, each with a 5-second busy timeout. In-memory tests share the writer. Use call/with_conn for writes, read/with_read for reads; do not block the async/UI thread with SQLite. `files::default_cache_dir()` holds files by sanitized id/name and public image hashes in `_links`. Non-secret settings.json is adjacent to the DB; credentials belong in CredentialStore/Keychain, never these files. Native window geometry is separate.
@@ -330,7 +382,7 @@ M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - SQL values use bound parameters; dynamic fragments contain internal expressions only. Agent read/search fixture suites cover quotes/filters; parameter discipline also requires review.
 - Downloaded files receive macOS quarantine after atomic rename; saved copies are explicitly marked. OS actions also protect old cache hits and fail closed on marking errors. tests/files.rs::download_retries_after_429 and files::safety::tests::save_copy_adds_quarantine_even_when_source_has_none guard the attributes; see platforms.md for flags and Windows work.
 - Direct OS open requires the core extension/MIME allowlist using the resolved cached filename. Other types reveal only, with en/uk warnings. files::safety::tests::exact_extension_and_mime_must_agree and tests/files.rs::open_policy_uses_cached_extension_even_with_safe_metadata_name guard the policy; UI consumes core's can_open flag.
-- Every DB path used for open/reveal, scheme or PDF reads must canonicalize to a regular file inside the cache. tests/files.rs::stored_paths_outside_cache_are_refused and cache_containment_resolves_symlinks_and_rejects_directories guard escape rejection. The CLI uses the same core cache lookup.
+- Every DB path used for open/reveal, scheme or document reads must canonicalize to a regular file inside the cache. tests/files.rs::stored_paths_outside_cache_are_refused and cache_containment_resolves_symlinks_and_rejects_directories guard escape rejection. The CLI uses the same core cache lookup.
 - Display the real filename with its extension, never replace it with a sender title or truncate its suffix. Strip bidi controls from display and disk names. tests/files.rs::bidi_controls_cannot_disguise_cached_extension, file_views_preserve_real_name_and_strip_bidi_for_display and UI models/file-presentation.test.ts guard this.
 - Desktop import stores only the selected/first validated team. Sign-out clears every indexed Flek credential plus _teams and persists desktop_import_on_start=false. auth::security_tests and auth::sign_out_tests guard selection, cleanup and signed-out boot resolution with MemoryBackend.
 - Automatic recovery requires desktop_import_on_start=true, a recorded Desktop origin and the same imported team id (including validated identity). Unknown origins stay unknown. Both boot and engine recovery use core's policy. Rejected credentials are deleted before recovery; invalid_auth/token_revoked/account_inactive cannot survive failed recovery. auth::security_tests guard each branch and secret-free errors.
@@ -340,7 +392,7 @@ M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Startup cleanup precedes session boot; sign-in retries a failed migration. The app-owned webview_cleanup_version setting is saved only after removal completes, and cannot be overwritten by UI preferences. Sign-out destroys signin and removes legacy Slack data even if credential deletion reports an error. Capture and sign-out share the maintenance lock. browsing_data.rs tests scope, completion-before-marker, failure and repeat behavior; core settings tests legacy defaults/restart persistence. See platforms.md for exactly what is removed.
 - Main never navigates outside tauri://localhost or http(s)://tauri.localhost (no custom port/userinfo); debug alone also permits the configured dev origin, including its exact port. Native popups are always denied; http(s) popup URLs go through open_url. Config disables automatic window creation so navigation.rs attaches both guards before main loads. Pure URL/config tests guard this; gestures require owner QA.
 - Message/unfurl/profile anchors have no href, cannot drag or expose native link context menus, and open only via open_url. role=link, tab focus, Enter, focus ring and URL titles preserve accessibility. There was no custom copy-link menu on these anchors. models/external-link.test.ts tests interactions and checks integration.
-- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs still use pdf_data IPC and pdf.js canvas; video/PDF thumbnails are PNGs, not embedded documents.
+- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs use document_data IPC and pdf.js canvas; XLSX/DOCX use the same bounded IPC and never flekfile; video/PDF thumbnails are PNGs, not embedded documents.
 - UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. It also enforces object-src/base-uri/form-action/frame-src 'none'; no object/iframe/base or form actions are used (forms handle submit locally). tests/unfurls.rs guards proxy/cache parsing; config and UI source regressions guard directives and the PDF canvas path.
 
 - File session headers go only to HTTPS `slack.com`/`*.slack.com`, `slack-edge.com`/subdomains and `slack-files.com`/subdomains. Imported URLs are untrusted; userinfo is refused. The explicitly configured API base's exact origin is the only HTTP mock exception (host, scheme and effective port). RTM requires WSS `*.slack.com`; its mock exception maps WS/WSS to HTTP/HTTPS and still compares the exact origin. net_policy tests plus tests/network_security.rs and tests/rtm.rs guard rejection before requests and valid local handshakes.

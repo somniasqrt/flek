@@ -3,8 +3,10 @@
 use super::{text, CmdResult};
 use crate::state::AppState;
 use flek_core::store::messages;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 use tauri_plugin_opener::OpenerExt;
+use tokio::io::AsyncReadExt;
 
 /// Opens an allowlisted cached file, or reveals other types. Takes the file id,
 /// so the UI cannot open arbitrary files.
@@ -28,12 +30,51 @@ pub async fn open_file(
     }
 }
 
-/// Bytes of a cached PDF, for the in-app viewer. Goes over IPC rather than
-/// `fetch(flekfile://…)`: reading a custom-scheme response from the page is
-/// a cross-origin request WebKit refuses (images only display, so they can
-/// keep using the scheme).
+/// Maximum compressed/cached document bytes sent to the webview.
+const MAX_DOCUMENT_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Only these documents travel over IPC; flekfile remains media-only.
+fn document_path(cache: &Path, file: &messages::CachedFile) -> CmdResult<PathBuf> {
+    let path = file
+        .local_path
+        .as_deref()
+        .ok_or("the file is not downloaded yet")?;
+    let path = flek_core::files::inside_cache(cache, Path::new(path))
+        .ok_or("the file is outside the cache")?;
+    if !matches!(
+        path.extension()
+            .and_then(|s| s.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("pdf" | "xlsx" | "docx")
+    ) || !flek_core::files::can_open(&path, file.mimetype.as_deref())
+    {
+        return Err("unsupported document type or mismatched filename/MIME".into());
+    }
+    Ok(path)
+}
+
+async fn read_document(path: &Path) -> CmdResult<Vec<u8>> {
+    let file = tokio::fs::File::open(path).await.map_err(text)?;
+    if file.metadata().await.map_err(text)?.len() > MAX_DOCUMENT_BYTES {
+        return Err("document_too_large: viewer limit is 50 MiB; open in the default app".into());
+    }
+    // Bound the read too, in case the file grows after metadata was inspected.
+    let mut bytes = Vec::new();
+    file.take(MAX_DOCUMENT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await
+        .map_err(text)?;
+    if bytes.len() as u64 > MAX_DOCUMENT_BYTES {
+        return Err("document_too_large: viewer limit is 50 MiB; open in the default app".into());
+    }
+    Ok(bytes)
+}
+
+/// Cached PDF/XLSX/DOCX bytes. WebKit refuses fetch of cross-origin custom
+/// scheme responses, so documents use IPC and are parsed only in the webview.
 #[tauri::command]
-pub async fn pdf_data(
+pub async fn document_data(
     state: State<'_, AppState>,
     file_id: String,
 ) -> CmdResult<tauri::ipc::Response> {
@@ -43,14 +84,11 @@ pub async fn pdf_data(
         .await
         .map_err(text)?
         .ok_or("unknown file")?;
-    if file.mimetype.as_deref() != Some("application/pdf") {
-        return Err("not a PDF".into());
-    }
-    let path = file.local_path.ok_or("the file is not downloaded yet")?;
-    let path = crate::files::inside_cache(std::path::Path::new(&path))
-        .ok_or("the file is outside the cache")?;
-    let bytes = tokio::fs::read(path).await.map_err(text)?;
-    Ok(tauri::ipc::Response::new(bytes))
+    let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    let path = document_path(&cache, &file)?;
+    // Keep the app boundary's canonical cache gate as well.
+    let path = crate::files::inside_cache(&path).ok_or("the file is outside the cache")?;
+    Ok(tauri::ipc::Response::new(read_document(&path).await?))
 }
 
 /// Opens a link from a message in the default browser (never in Flek's
@@ -199,6 +237,79 @@ fn slack_channel_link(url: &tauri::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn document_gate_checks_cache_type_and_size() {
+        let cache = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let make = |path: PathBuf, mime: &str| messages::CachedFile {
+            local_path: Some(path.to_string_lossy().into_owned()),
+            preview_path: None,
+            mimetype: Some(mime.into()),
+        };
+        for (ext, mime) in [
+            ("pdf", "application/pdf"),
+            (
+                "xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+            (
+                "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ),
+        ] {
+            let path = cache.path().join(format!("sample.{ext}"));
+            std::fs::write(&path, b"synthetic").unwrap();
+            assert_eq!(
+                document_path(cache.path(), &make(path.clone(), mime)).unwrap(),
+                path.canonicalize().unwrap()
+            );
+            assert_eq!(read_document(&path).await.unwrap(), b"synthetic");
+            assert!(document_path(cache.path(), &make(path, "image/png")).is_err());
+        }
+        for (ext, mime) in [
+            ("xls", "application/vnd.ms-excel"),
+            ("doc", "application/msword"),
+            (
+                "pptx",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ),
+            ("docx", "application/pdf"),
+        ] {
+            let path = cache.path().join(format!("refused.{ext}"));
+            std::fs::write(&path, b"synthetic").unwrap();
+            assert!(document_path(cache.path(), &make(path, mime)).is_err());
+        }
+        let path = outside.path().join("outside.pdf");
+        std::fs::write(&path, b"synthetic").unwrap();
+        assert!(document_path(cache.path(), &make(path, "application/pdf")).is_err());
+        let mut missing = make(cache.path().join("missing.pdf"), "application/pdf");
+        assert!(document_path(cache.path(), &missing).is_err());
+        missing.local_path = None;
+        assert!(document_path(cache.path(), &missing).is_err());
+        let path = cache.path().join("large.pdf");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_DOCUMENT_BYTES).unwrap();
+        assert_eq!(
+            read_document(&path).await.unwrap().len() as u64,
+            MAX_DOCUMENT_BYTES
+        );
+        file.set_len(MAX_DOCUMENT_BYTES + 1).unwrap();
+        assert!(read_document(&path)
+            .await
+            .unwrap_err()
+            .contains("document_too_large"));
+    }
+
+    #[test]
+    fn document_ipc_permission_is_registered_for_main_only() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/main.json")).unwrap();
+        assert_eq!(capability["windows"], serde_json::json!(["main"]));
+        let permissions = capability["permissions"].as_array().unwrap();
+        assert!(permissions.iter().any(|p| p == "allow-document-data"));
+        assert!(!permissions.iter().any(|p| p == "allow-pdf-data"));
+    }
+
     #[test]
     fn native_slack_opener_only_accepts_exact_channel_deep_links() {
         for value in [

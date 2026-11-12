@@ -32,7 +32,7 @@
     "allow-profile",
     "allow-profile-photo",
     "allow-open-file",
-    "allow-pdf-data",
+    "allow-document-data",
     "allow-open-url",
     "allow-search",
     "allow-send-message",

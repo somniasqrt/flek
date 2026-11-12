@@ -102,7 +102,7 @@ fn main() {
             commands::profile,
             commands::profile_photo,
             commands::open_file,
-            commands::pdf_data,
+            commands::document_data,
             commands::open_url,
             commands::search,
             commands::send_message,

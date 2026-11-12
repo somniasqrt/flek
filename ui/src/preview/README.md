@@ -4,6 +4,16 @@ Run `npm run dev` from `ui/`, then open `/preview.html`. This is the synthetic
 IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
 `?lang=uk` switches to Ukrainian.
 
+- The newest **general** messages include XLSX (three sheet tabs including an
+  empty sheet), DOCX (heading, bold/italic/underline, list, table, embedded PNG),
+  a truncated spreadsheet, a broken DOCX and an over-limit fallback. Try each
+  card in the timeline and **Files**, plus the files in the existing thread.
+  Test sheet Left/Right/Home/End keys, scrolling to row 1000, Esc, both languages
+  and themes. The XLSX has a cached formula result, never formula evaluation;
+  the Word hyperlink becomes inert text. `window.__openedFile` records mocked
+  “Open in default app” actions. Fixtures are generated locally in documents.ts;
+  no fixture fetch or real IPC is needed. Native WebKit worker loading, layout
+  and default-app launching remain owner QA.
 - In **general**, the newest messages include all supported read-only Block Kit
   types, a two-second blue MP4, a video download card, a huddle and an unsupported
   attachment. Downloads update the synthetic store and emit a message change.
