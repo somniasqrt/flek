@@ -93,6 +93,9 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
     let column = 0;
     let maxRow = 0;
     let maxColumn = 0;
+    // Grid rules apply inside sheetData only: calcChain.xml also has <c r="…"/>
+    // elements, outside any row. 0 = not inside sheetData.
+    let dataDepth = 0;
     const parser = new Parser();
     parser.on("error", fail);
     parser.on("warn", fail);
@@ -124,7 +127,8 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
         sheetTargets.set(attributes.Id ?? "", path);
       }
       let skip = local === "dimension";
-      if (local === "row") {
+      if (local === "sheetData" && !selfClosing) dataDepth = depth;
+      if (local === "row" && dataDepth) {
         row = attributes.r === undefined ? row + 1 : Number(attributes.r);
         column = 0;
         if (!Number.isSafeInteger(row) || row < 1) fail();
@@ -133,15 +137,18 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
           skip = true;
         }
       }
-      if (local === "c") {
-        const ref = attributes.r?.match(/^([A-Z]{1,3})([1-9][0-9]{0,6})$/);
-        if (!ref) fail();
-        column = [...ref![1]].reduce(
-          (n, c) => n * 26 + c.charCodeAt(0) - 64,
-          0,
-        );
-        const cellRow = Number(ref![2]);
-        if (cellRow !== row) fail();
+      if (local === "c" && dataDepth) {
+        // `r` is optional; without it a cell follows the previous one.
+        if (attributes.r === undefined) column++;
+        else {
+          const ref = attributes.r.match(/^([A-Z]{1,3})([1-9][0-9]{0,6})$/);
+          if (!ref) fail();
+          column = [...ref![1]].reduce(
+            (n, c) => n * 26 + c.charCodeAt(0) - 64,
+            0,
+          );
+          if (Number(ref![2]) !== row) fail();
+        }
         if (column > COLUMN_LIMIT) {
           truncatedPaths.add(name);
           skip = true;
@@ -151,8 +158,8 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
         skipped = 1;
         return;
       }
-      if (local === "row") maxRow = Math.max(maxRow, row);
-      if (local === "c") maxColumn = Math.max(maxColumn, column);
+      if (local === "row" && dataDepth) maxRow = Math.max(maxRow, row);
+      if (local === "c" && dataDepth) maxColumn = Math.max(maxColumn, column);
       output.push(
         `<${tag}${Object.entries(rawAttributes)
           .map(([key, value]) => ` ${key}="${escapeXml(decode(value))}"`)
@@ -160,6 +167,7 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       );
     });
     parser.on("closeTag", (tag, _decode, selfClosing) => {
+      if (depth === dataDepth) dataDepth = 0;
       depth--;
       if (skipped) {
         skipped--;

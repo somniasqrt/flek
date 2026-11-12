@@ -247,6 +247,22 @@ test("sparse hostile cell references cannot cause huge row/column allocations", 
   );
 });
 
+test("Excel's calcChain and cells without r are not grid violations", () => {
+  const files = unzipSync(new Uint8Array(spreadsheetFixture()));
+  // Excel writes the formula chain as bare <c r="…"/> elements outside any row.
+  files["xl/calcChain.xml"] = strToU8(
+    '<calcChain xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><c r="E5" i="1"/><c r="E6"/></calcChain>',
+  );
+  files["xl/worksheets/sheet1.xml"] = strToU8(
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c t="inlineStr"><is><t>a</t></is></c><c><v>2</v></c></row></sheetData></worksheet>',
+  );
+  const result = boundedArchive(zipSync(files).buffer as ArrayBuffer, true);
+  assert.equal(result.truncatedSheets.size, 0);
+  const safe = unzipSync(new Uint8Array(result.data));
+  assert.match(new TextDecoder().decode(safe["xl/calcChain.xml"]), /r="E5"/);
+  assert.match(new TextDecoder().decode(safe["xl/worksheets/sheet1.xml"]), /<v>2<\/v>/);
+});
+
 test("worker client terminates after success, failure, close and deadline", async (context) => {
   const { parseOffice } = await import("./document-client.ts");
   const original = Object.getOwnPropertyDescriptor(globalThis, "Worker");
