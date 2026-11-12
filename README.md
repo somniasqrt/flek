@@ -1,4 +1,8 @@
-# Flek
+<p align="center">
+  <img src="assets/flek-icon.svg" width="128" height="128" alt="Flek icon">
+</p>
+
+<h1 align="center">Flek</h1>
 
 An **ultrafast, safe, local-first desktop client for Slack**, written in Rust.
 
