@@ -285,7 +285,7 @@ tooltips show the platform's shortcut.
 |---|---|
 | Bold / italic / underline | Mod+B / Mod+I / Mod+U |
 | Strikethrough | Mod+Shift+X |
-| Insert link | Mod+K |
+| Insert link | Mod+Shift+U |
 | Numbered / bulleted list | Mod+Shift+7 / Mod+Shift+8 |
 | Quote | Mod+Shift+9 |
 | Inline code / code block | Mod+Shift+C / Mod+Shift+J |
