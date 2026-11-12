@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type JSX } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from "solid-js";
 import { t, locale } from "../i18n/index";
 import { settings } from "../stores/settings";
 import { sortDms } from "../models/settings-model";
@@ -20,6 +20,7 @@ export default function Sidebar(props: {
   onChannelsMenu: (position: { x: number; y: number }) => void;
 }) {
   const [query, setQuery] = createSignal("");
+  createEffect(on(() => props.selected, () => setQuery(""), { defer: true }));
   const live = () => {
     const q = query().trim().toLowerCase();
     return props.conversations.filter(
@@ -53,6 +54,8 @@ export default function Sidebar(props: {
     <li>
       <button
         class="conv"
+        data-conversation-id={p.c.id}
+        aria-current={p.c.id === props.selected ? "page" : undefined}
         classList={{
           active: p.c.id === props.selected,
           unread: hasUnread(p.c),
@@ -113,18 +116,21 @@ export default function Sidebar(props: {
         <Section
           title={t("Starred")}
           items={live().filter((c) => c.starred && c.notification !== "muted")}
+          selected={props.selected}
           item={Item}
         />
         <Section
           title={t("Channels")}
           items={channels()}
+          selected={props.selected}
           item={Item}
           onMenu={props.onChannelsMenu}
         />
-        <Section title={t("Direct messages")} items={direct()} item={Item} />
+        <Section title={t("Direct messages")} items={direct()} selected={props.selected} item={Item} />
         <Section
           title={t("Muted")}
           items={settings().show_muted ? live().filter((c) => c.notification === "muted") : []}
+          selected={props.selected}
           item={Item}
           collapsed
         />
@@ -138,12 +144,15 @@ export default function Sidebar(props: {
 
 function Section(props: {
   title: string;
+  selected: string | null;
   collapsed?: boolean;
   onMenu?: (position: { x: number; y: number }) => void;
   items: Conversation[];
   item: (p: { c: Conversation }) => JSX.Element;
 }) {
   const [open, setOpen] = createSignal(!props.collapsed);
+  const containsSelected = createMemo(() => props.items.some((c) => c.id === props.selected));
+  createEffect(() => { if (containsSelected()) setOpen(true); });
   // A collapsed section still shows what needs attention, like Slack's.
   const shown = () => (open() ? props.items : props.items.filter(hasUnread));
   return (
@@ -159,6 +168,7 @@ function Section(props: {
         <button
           class="section"
           classList={{ open: open() }}
+          aria-expanded={open()}
           onClick={() => setOpen(!open())}
           onKeyDown={(e) => {
             if (!props.onMenu || !isContextKey(e)) return;

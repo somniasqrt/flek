@@ -3,7 +3,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { defaultSettings, type Settings } from "../models/settings-model";
 import { fileType } from "../models/rail-model";
 import type { Conversation } from "../api";
-import { people, conversations, now, msg, ROOT, replies, messages } from "./messages";
+import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
 import { pdf } from "./assets";
 
@@ -27,7 +27,8 @@ async function sendMessage(a: Record<string, unknown>) {
     thread_ts: threadTs,
     subtype: threadTs && a.broadcast ? "thread_broadcast" : null,
   });
-  if (conv !== "C1") elsewhere.push({ ...m, conversation_id: conv });
+  if (conv === "CBIG") bigMessages.push(m);
+  else if (conv !== "C1") elsewhere.push({ ...m, conversation_id: conv });
   else if (threadTs === ROOT) {
     replies.push(m);
     if (a.broadcast) messages.push(m);
@@ -120,7 +121,17 @@ mockIPC(
         });
         return rows.slice(request.offset, request.offset + 100);
       }
-      case "fetch_file":
+      case "fetch_file": {
+        for (const m of [...messages, ...bigMessages]) for (const f of m.files) {
+          if (f.id !== a.fileId) continue;
+          f.local_path = "/synthetic/download.mp4";
+          emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: m.ts } });
+        }
+        return;
+      }
+      case "open_url":
+        // Inspect the last native-opener request without leaving the preview.
+        (window as unknown as { __openedUrl: string }).__openedUrl = String(a.url);
         return;
       case "subscribe_presence":
         return;
@@ -234,17 +245,34 @@ mockIPC(
         );
       case "message":
         return structuredClone(
-          [...messages, ...replies, ...elsewhere].find((m) => m.ts === a.ts) ?? null,
+          [...messages, ...bigMessages, ...replies, ...elsewhere].find((m) => m.ts === a.ts) ?? null,
         );
-      case "messages":
-        if (a.before) return [];
-        return structuredClone(
-          a.conversationId === "C1"
-            ? messages
-            : elsewhere.filter((m) => m.conversation_id === a.conversationId),
-        );
+      case "messages": {
+        const rows = timelineRows(String(a.conversationId));
+        // Explicit stress mode mounts 10k stored rows at once; normal mode pages.
+        if (query.has("stress") && a.conversationId === "CBIG" && !a.before) return structuredClone(rows);
+        return structuredClone(rows.filter((m) => !a.before || m.ts < a.before).slice(-Number(a.limit)));
+      }
+      case "timeline_window": {
+        const rows = timelineRows(String(a.conversationId));
+        const target = String(a.target);
+        const half = Math.floor(Math.min(500, Math.max(2, Number(a.limit))) / 2);
+        const older = rows.filter((m) => m.ts < target);
+        const newer = rows.filter((m) => m.ts >= target);
+        return structuredClone({ rows: [...older.slice(-half), ...newer.slice(0, half)], has_older: older.length > half, has_newer: newer.length > half });
+      }
+      case "timeline_after":
+        return structuredClone(timelineRows(String(a.conversationId)).filter((m) => m.ts > String(a.after)).slice(0, Number(a.limit)));
+      case "timeline_range":
+        return structuredClone(timelineRows(String(a.conversationId)).filter((m) => m.ts >= String(a.start) && m.ts <= String(a.end)));
+      case "date_target": {
+        const rows = timelineRows(String(a.conversationId));
+        if (rows.length && String(a.end) <= rows[0].ts) return { status: "before_archive" };
+        const target = rows.find((m) => m.ts >= String(a.start) && m.ts < String(a.end));
+        return target ? { status: "found", ts: target.ts } : { status: "empty" };
+      }
       case "set_reaction": {
-        const m = [...messages, ...replies, ...elsewhere].find((m) => m.ts === a.ts);
+        const m = [...messages, ...bigMessages, ...replies, ...elsewhere].find((m) => m.ts === a.ts);
         if (!m) throw "message_not_found";
         const name = String(a.name);
         const counts = new Map(
@@ -284,6 +312,12 @@ mockIPC(
   },
   { shouldMockEvents: true },
 );
+
+function timelineRows(id: string) {
+  return (id === "C1" ? messages : id === "CBIG" ? bigMessages : elsewhere.filter((m) => m.conversation_id === id))
+    .filter((m) => !m.thread_ts || m.thread_ts === m.ts || m.subtype === "thread_broadcast")
+    .slice().sort((a, b) => a.ts.localeCompare(b.ts));
+}
 
 // Simulates a live reply from the sync engine: `__reply()` in the console.
 (window as unknown as { __reply: () => void }).__reply = () => {

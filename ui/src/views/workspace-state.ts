@@ -21,6 +21,11 @@ type Progress,
 type Status,
 } from "../api";
 import { setMe } from "../stores/outbox";
+import { adjacentConversation, conversationShortcut } from "../models/switcher";
+import { sidebarOrder } from "../models/sidebar-navigation";
+import { settings } from "../stores/settings";
+import { locale } from "../i18n/index";
+import { isMac } from "../platform";
 import { loadPeople } from "../stores/people";
 import { directoryChanged, refreshPresence, watchPresence, tickPresence } from "../stores/presence-store";
 import { closeProfile, profileUser } from "../stores/profile";
@@ -55,6 +60,7 @@ export function useWorkspace(props: { status: Ready }) {
   const [activityBadge, setActivityBadge] = createSignal(0);
   const [revision, setRevision] = createSignal(0);
   const [fileCategory, setFileCategory] = createSignal("all");
+  const [switcher, setSwitcher] = createSignal(false);
   const [compose, setCompose] = createSignal(false);
   const [readError, setReadError] = createSignal("");
   const [actionError, setActionError] = createSignal("");
@@ -62,7 +68,7 @@ export function useWorkspace(props: { status: Ready }) {
   const [leaving, setLeaving] = createSignal<Conversation | null>(null);
   const [menu, setMenu] = createSignal<ConversationMenuTarget | null>(null);
   const [channelDetails, setChannelDetails] = createSignal<string | null>(null);
-  const menuConversation = () => conversations.find((c) => c.id === menu()?.id);
+  const menuConversation = () => conversations.find((c) => c.id === menu()?.id) ?? (preview()?.id === menu()?.id ? preview() : null);
   const details = (c: Conversation) => {
     if (c.kind === "im" || c.kind === "mpim") {
       const user = c.dm_user_id ?? dms().find((dm) => dm.id === c.id)?.members[0];
@@ -166,6 +172,11 @@ export function useWorkspace(props: { status: Ready }) {
         case "progress":
           setProgress(c.data);
           if (c.data.stage === "idle" || c.data.stage === "conversations") refreshSoon();
+          // File and public-image caches finish after history was announced.
+          // Rehydrate the open view from SQLite once the pass is complete.
+          if (c.data.stage === "idle" && selected()) {
+            setChange({ type: "history", data: { conversation_id: selected()! } });
+          }
           break;
         case "connection":
           setConnection(c.data);
@@ -323,6 +334,30 @@ export function useWorkspace(props: { status: Ready }) {
     onCleanup(() => window.removeEventListener("keydown", onKey));
   });
 
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.keyCode === 229 || isViewing() || switcher()) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+      const editing = !!target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+      const action = conversationShortcut(e, isMac(), editing);
+      if (!action) return;
+      e.preventDefault();
+      if (action === "switcher") { e.stopPropagation(); setSwitcher(true); return; }
+      const rows = sidebarOrder(conversations, settings().dm_sort, locale(), settings().show_muted);
+      const next = adjacentConversation(rows, selected(), action.startsWith("previous") ? -1 : 1, action.endsWith("unread"));
+      if (next) {
+        chooseView("home");
+        select(next.id);
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLElement>(`[data-conversation-id="${CSS.escape(next.id)}"]`)?.focus();
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    onCleanup(() => window.removeEventListener("keydown", onKey, true));
+  });
+
   const SIDEBAR_KEY = "flek.sidebarWidth";
   const DETAIL_KEY = "flek.detailWidth";
   // Widths are kept as fractions of the frame; old pixel values are converted once.
@@ -350,7 +385,7 @@ export function useWorkspace(props: { status: Ready }) {
 
   return {
     conversations, view, icon, dms, activityBadge, revision, fileCategory, setFileCategory,
-    compose, setCompose, readError, actionError, setActionError, channelNotice,
+    switcher, setSwitcher, compose, setCompose, readError, actionError, setActionError, channelNotice,
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,

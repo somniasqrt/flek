@@ -57,7 +57,7 @@ test("wording and key labels per platform", () => {
   );
   assert.equal(keyCombo(["⌘", "⇧", "K"], "mac"), "⌘⇧K");
   assert.equal(keyCombo(["Ctrl", "Shift", "K"], "windows"), "Ctrl+Shift+K");
-  assert.equal(shortcutLabel("link", true), "⌘K");
+  assert.equal(shortcutLabel("link", true), "⌘⇧U");
   assert.equal(shortcutLabel("toolbar", false), "Ctrl+Shift+F");
   setPlatform("linux");
   assert.equal(pick({ mac: 1, windows: 2, linux: 3 }), 3);

@@ -115,6 +115,8 @@ export type Message = {
   reactions: string | null;
   own_reactions?: string[];
   blocks?: unknown;
+  block_images?: Record<string, string>;
+  unsupported?: boolean;
   thread_ts: string | null;
   files: FileRef[];
   unfurls: Unfurl[];
@@ -319,8 +321,16 @@ export const api = {
   status: () => invoke<Status>("status"),
   progress: () => invoke<Progress | null>("progress"),
   conversations: () => invoke<Conversation[]>("conversations"),
-  messages: (conversationId: string, before: string | null, limit: number) =>
-    invoke<Message[]>("messages", { conversationId, before, limit }),
+  messages: (conversationId: string, before: string | null, limit: number, localOnly = false) =>
+    invoke<Message[]>("messages", { conversationId, before, limit, localOnly }),
+  timelineRange: (conversationId: string, start: string, end: string) =>
+    invoke<Message[]>("timeline_range", { conversationId, start, end }),
+  timelineWindow: (conversationId: string, target: string, limit: number) =>
+    invoke<{ rows: Message[]; has_older: boolean; has_newer: boolean }>("timeline_window", { conversationId, target, limit }),
+  timelineAfter: (conversationId: string, after: string, limit: number) =>
+    invoke<Message[]>("timeline_after", { conversationId, after, limit }),
+  dateTarget: (conversationId: string, start: string, end: string) =>
+    invoke<{ status: "before_archive" } | { status: "empty" } | { status: "found"; ts: string }>("date_target", { conversationId, start, end }),
   message: (conversationId: string, ts: string) =>
     invoke<Message | null>("message", { conversationId, ts }),
   thread: (conversationId: string, ts: string) =>

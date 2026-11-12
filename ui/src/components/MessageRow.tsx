@@ -3,6 +3,8 @@ import { t, plural, locale, clock24, errorMessage } from "../i18n/index";
 import { settings } from "../stores/settings";
 import { api, tsDate, type Message } from "../api";
 import { AddReaction, ReplyInThread } from "./icons";
+import { needsSlack } from "../models/slack-link";
+import { openInSlack, storedSlackLink } from "../stores/slack";
 import MessageMenu from "./MessageMenu";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
@@ -134,7 +136,7 @@ export default function MessageRow(props: {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal("");
   const openMenu = (e: MouseEvent, picker = false) => {
-    if (m.pending || props.readOnly) return;
+    if (m.pending) return;
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, picker });
   };
@@ -164,13 +166,16 @@ export default function MessageRow(props: {
   const copyLink = async () => {
     setMenu(null);
     try {
-      const status = await api.status();
-      if (status.phase !== "ready") throw new Error(t("Workspace is not ready"));
-      const link = `slack://channel?team=${encodeURIComponent(status.team_id)}&id=${encodeURIComponent(props.conversationId)}&message=${encodeURIComponent(m.ts)}`;
+      const link = await storedSlackLink(props.conversationId, m.ts);
       await navigator.clipboard.writeText(link);
     } catch {
       setError(t("Could not copy the message link"));
     }
+  };
+  const openSlack = async () => {
+    setMenu(null);
+    try { await openInSlack(props.conversationId, m.ts); }
+    catch (e) { setError(String(e)); }
   };
   const grouped = () =>
     !!props.prev &&
@@ -205,17 +210,17 @@ export default function MessageRow(props: {
         if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
           e.preventDefault();
           const rect = e.currentTarget.getBoundingClientRect();
-          if (!m.pending && !props.readOnly) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
+          if (!m.pending) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
         }
       }}
     >
-      <Show when={!m.pending && !props.readOnly}>
+      <Show when={!m.pending}>
         <div class="message-actions">
           <button
             type="button"
             title={t("Add reaction")}
             aria-label={t("Add reaction")}
-            disabled={busy()}
+            disabled={busy() || props.readOnly}
             onClick={(e) => openMenu(e, true)}
           >
             <AddReaction />
@@ -246,11 +251,13 @@ export default function MessageRow(props: {
             x={pos().x}
             y={pos().y}
             picker={pos().picker}
+            readOnly={props.readOnly}
             own={m.own_reactions ?? []}
             onReaction={react}
             onClose={() => setMenu(null)}
             onCopy={copy}
             onCopyLink={copyLink}
+            onOpenSlack={openSlack}
             onThread={props.onThread ? () => props.onThread?.(m.thread_ts ?? m.ts) : undefined}
           />
         )}
@@ -293,8 +300,11 @@ export default function MessageRow(props: {
             </Show>
           </div>
         </Show>
-        <Show when={m.text.trim()}>
-          <Rich text={m.text} blocks={m.blocks} />
+        <Show when={m.text.trim() || m.blocks}>
+          <Rich text={m.text} blocks={m.blocks} blockImages={m.block_images} />
+        </Show>
+        <Show when={!m.pending && needsSlack(m)}>
+          <button class="open-slack-fallback" onClick={openSlack}>{t("Open in Slack")}</button>
         </Show>
         <Show when={m.edited}>
           <span class="muted edited">{t("(edited)")}</span>

@@ -17,14 +17,76 @@ pub async fn messages(
     conversation_id: String,
     before: Option<String>,
     limit: usize,
+    local_only: Option<bool>,
 ) -> CmdResult<Vec<HistoryRow>> {
-    if before.is_none() {
+    if before.is_none() && !local_only.unwrap_or(false) {
         state.priority.push(&conversation_id);
     }
     let limit = limit.clamp(1, MAX_PAGE);
     state
         .store
         .read(move |c| messages::page(c, &conversation_id, before.as_deref(), limit))
+        .await
+        .map_err(text)
+}
+
+/// Local-only target window, forward pagination and date lookup.
+#[tauri::command]
+pub async fn timeline_window(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    target: String,
+    limit: usize,
+) -> CmdResult<messages::TimelineWindow> {
+    state
+        .store
+        .read(move |c| {
+            messages::timeline_window(c, &conversation_id, &target, limit.clamp(2, MAX_PAGE))
+        })
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn timeline_after(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    after: String,
+    limit: usize,
+) -> CmdResult<Vec<HistoryRow>> {
+    state
+        .store
+        .read(move |c| {
+            messages::timeline_after(c, &conversation_id, &after, limit.clamp(1, MAX_PAGE))
+        })
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn date_target(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    start: String,
+    end: String,
+) -> CmdResult<messages::DateTarget> {
+    state
+        .store
+        .read(move |c| messages::date_target(c, &conversation_id, &start, &end))
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
+pub async fn timeline_range(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    start: String,
+    end: String,
+) -> CmdResult<Vec<HistoryRow>> {
+    state
+        .store
+        .read(move |c| messages::timeline_range(c, &conversation_id, &start, &end))
         .await
         .map_err(text)
 }

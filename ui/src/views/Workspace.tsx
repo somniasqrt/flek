@@ -22,6 +22,7 @@ import Rail from "./Rail";
 import ActivityView from "./ActivityView";
 import DirectMessages from "./DirectMessages";
 import FileBrowser, { FileNav } from "./FileBrowser";
+import QuickSwitcher from "../components/QuickSwitcher";
 import NewMessage from "./NewMessage";
 import { SearchBar, SearchResults } from "./Search";
 import Viewer from "../components/Viewer";
@@ -44,7 +45,7 @@ type Ready = Extract<Status, { phase: "ready" }>;
 export default function Workspace(props: { status: Ready }) {
   const {
     conversations, view, icon, dms, activityBadge, revision, fileCategory, setFileCategory,
-    compose, setCompose, readError, actionError, setActionError, channelNotice,
+    switcher, setSwitcher, compose, setCompose, readError, actionError, setActionError, channelNotice,
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
@@ -194,6 +195,7 @@ export default function Workspace(props: { status: Ready }) {
                       {(c) => (
                         <Timeline
                           conversation={c()}
+                          onMenu={setMenu}
                           onJoin={joinChannel}
                           me={props.status.user_id}
                           members={dms().find((dm) => dm.id === c().id)?.members ?? []}
@@ -279,6 +281,10 @@ export default function Workspace(props: { status: Ready }) {
           onClose={() => setCreatingChannel(false)}
           onCreated={actionCompleted}
         />
+      </Show>
+      <Show when={switcher()}>
+        <QuickSwitcher conversations={conversations} dms={dms()} onClose={() => setSwitcher(false)}
+          onSelect={(id) => { chooseView("home"); select(id); }} />
       </Show>
       <Show when={compose()}>
         <NewMessage

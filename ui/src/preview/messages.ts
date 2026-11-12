@@ -323,3 +323,32 @@ messages.push(
   }),
 );
 
+
+// M3 reading fixtures: no remote URLs are loaded by the preview.
+export const kitImage = "https://files.slack-edge.com/synthetic/block.png";
+messages.push(
+  msg(now - 100, "U1", "Block Kit plain fallback", {
+    block_images: { [kitImage]: "block-image" },
+    blocks: [
+      { type: "header", text: { type: "plain_text", text: "Release preview" } },
+      { type: "section", text: { type: "mrkdwn", text: "*Ready* for <@U2> :wave:" },
+        fields: [{ type: "mrkdwn", text: "*Version*\n3.0" }, { type: "plain_text", text: "Local only" }],
+        accessory: { type: "image", image_url: kitImage, alt_text: "Synthetic accessory" } },
+      { type: "context", elements: [{ type: "plain_text", text: "Preview context" }, { type: "image", image_url: kitImage, alt_text: "Icon" }] },
+      { type: "divider" },
+      { type: "image", image_url: kitImage, alt_text: "Synthetic image", title: { type: "plain_text", text: "Cached image" } },
+      { type: "actions", elements: [{ type: "button", text: { type: "plain_text", text: "Read-only action" }, action_id: "never-invoked" }] },
+    ],
+  }),
+  msg(now - 90, "U2", "Cached video", { files: [file({ id: "FVIDEO", name: "preview.mp4", mimetype: "video/mp4", filetype: "mp4", local_path: "/synthetic/preview.mp4", preview_path: "/synthetic/poster.png", can_open: true })] }),
+  msg(now - 80, "U2", "Video download", { files: [file({ id: "FVIDEO_DOWNLOAD", name: "download.mp4", mimetype: "video/mp4", filetype: "mp4", can_open: true })] }),
+  msg(now - 70, "U1", "Huddle (native client only)", { subtype: "huddle_thread" }),
+  msg(now - 60, "U1", "Unsupported attachment fallback", { unsupported: true }),
+  msg(now - 50, "U1", "Canvas fallback", { files: [file({ id: "FCANVAS", name: "Plan.canvas", filetype: "canvas", mimetype: "application/vnd.slack-docs" })] }),
+);
+export const bigMessages = Array.from({ length: 10_000 }, (_, i) => msg(now - (10_000 - i) * 90, `U${i % 3 + 1}`,
+  `Synthetic message ${i + 1}. ` + "Variable row height. ".repeat(i % 7),
+  i % 200 === 0 ? { files: [file({ id: `FBIG${i}`, name: "image.png", mimetype: "image/png", local_path: "/synthetic/image.png", width: 640, height: 100 + i % 600 })] } : {},
+));
+conversations.push({ ...conversations[0], id: "CBIG", label: "timeline-10000", messages: bigMessages.length, unread: 0, latest_ts: bigMessages.at(-1)!.ts });
+messages.sort((a, b) => a.ts.localeCompare(b.ts));

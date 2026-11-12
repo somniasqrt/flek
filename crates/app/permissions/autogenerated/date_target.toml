@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-date-target"
+description = "Enables the date_target command without any pre-configured scope."
+commands.allow = ["date_target"]
+
+[[permission]]
+identifier = "deny-date-target"
+description = "Denies the date_target command without any pre-configured scope."
+commands.deny = ["date_target"]

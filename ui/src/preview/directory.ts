@@ -1,7 +1,7 @@
 import type { Hit, Profile, Message, DirectMessage, ActivityItem, StoredFile } from "../api";
 import type { Presence } from "../models/presence";
 import { MARK_CLOSE as C, MARK_OPEN as O } from "../models/snippet";
-import { people, conversations, msg, now, ROOT, replies, messages } from "./messages";
+import { people, conversations, msg, now, ROOT, replies, messages, bigMessages } from "./messages";
 
 // Search: a few fake hits, matched terms marked like core does.
 const hit = (
@@ -23,6 +23,7 @@ const hit = (
   ...extra,
 });
 export const hits: Hit[] = [
+  hit("CBIG", "timeline-10000", Number(bigMessages[1234].ts), "U2", `A ${O}practice${C} jump into the virtualized channel`, { ts: bigMessages[1234].ts }),
   hit(
     "C1",
     "general",

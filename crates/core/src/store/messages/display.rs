@@ -1,7 +1,7 @@
 //! Message display operations.
 
 use crate::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 /// A message prepared for display.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -24,6 +24,8 @@ pub struct HistoryRow {
     /// Emoji names the workspace owner reacted with.
     pub own_reactions: Vec<String>,
     pub blocks: Option<serde_json::Value>,
+    pub unsupported: bool,
+    pub block_images: std::collections::HashMap<String, String>,
     pub thread_ts: Option<String>,
     /// Files attached to the message.
     pub files: Vec<FileRef>,
@@ -159,6 +161,146 @@ pub fn page(
     )
 }
 
+/// A bounded local timeline window around a target. No sync priority or network.
+#[derive(Debug, serde::Serialize)]
+pub struct TimelineWindow {
+    pub rows: Vec<HistoryRow>,
+    pub has_older: bool,
+    pub has_newer: bool,
+}
+
+pub fn timeline_window(
+    conn: &Connection,
+    conversation_id: &str,
+    target: &str,
+    limit: usize,
+) -> Result<TimelineWindow> {
+    let half = limit.clamp(2, 500) / 2;
+    let mut rows = page(conn, conversation_id, Some(target), half + 1)?;
+    let has_older = rows.len() > half;
+    if has_older {
+        rows.remove(0);
+    }
+    let mut newer = display_after(conn, conversation_id, target, true, half + 1)?;
+    let has_newer = newer.len() > half;
+    newer.truncate(half);
+    rows.extend(newer);
+    Ok(TimelineWindow {
+        rows,
+        has_older,
+        has_newer,
+    })
+}
+
+/// A forward page from an already loaded historical window.
+pub fn timeline_after(
+    conn: &Connection,
+    conversation_id: &str,
+    after: &str,
+    limit: usize,
+) -> Result<Vec<HistoryRow>> {
+    display_after(conn, conversation_id, after, false, limit)
+}
+
+fn display_after(
+    conn: &Connection,
+    conversation_id: &str,
+    after: &str,
+    inclusive: bool,
+    limit: usize,
+) -> Result<Vec<HistoryRow>> {
+    let comparison = if inclusive { ">=" } else { ">" };
+    let sql = format!(
+        "SELECT {DISPLAY_COLUMNS}
+        WHERE m.conversation_id = ?1
+        AND m.deleted = 0
+        AND m.ts {comparison} ?2
+        AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
+        ORDER BY m.ts
+        LIMIT ?3"
+    );
+    query_display(
+        conn,
+        conversation_id,
+        &sql,
+        params![conversation_id, after, limit as i64],
+    )
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum DateTarget {
+    BeforeArchive,
+    Empty,
+    Found { ts: String },
+}
+
+/// First top-level message in a local calendar day's Unix timestamp bounds.
+/// Replies/deletions do not create navigable timeline targets.
+pub fn date_target(
+    conn: &Connection,
+    conversation_id: &str,
+    start: &str,
+    end: &str,
+) -> Result<DateTarget> {
+    let oldest: Option<String> = conn.query_row(
+        "SELECT MIN(ts)
+        FROM messages
+        WHERE conversation_id = ?1
+        AND deleted = 0
+        AND (thread_ts IS NULL OR thread_ts = ts OR subtype = 'thread_broadcast')",
+        [conversation_id],
+        |r| r.get(0),
+    )?;
+    if oldest.as_deref().is_some_and(|oldest| end <= oldest) {
+        return Ok(DateTarget::BeforeArchive);
+    }
+    let ts = conn
+        .query_row(
+            "SELECT ts
+        FROM messages
+        WHERE conversation_id = ?1
+        AND ts >= ?2
+        AND ts < ?3
+        AND deleted = 0
+        AND (thread_ts IS NULL OR thread_ts = ts OR subtype = 'thread_broadcast')
+        ORDER BY ts
+        LIMIT 1",
+            params![conversation_id, start, end],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match ts {
+        Some(ts) => DateTarget::Found { ts },
+        None => DateTarget::Empty,
+    })
+}
+
+/// Re-read a loaded local interval after a history invalidation, retaining gaps
+/// and deletions exactly as stored. This never requests remote history.
+pub fn timeline_range(
+    conn: &Connection,
+    conversation_id: &str,
+    start: &str,
+    end: &str,
+) -> Result<Vec<HistoryRow>> {
+    let sql = format!(
+        "SELECT {DISPLAY_COLUMNS}
+        WHERE m.conversation_id = ?1
+        AND m.deleted = 0
+        AND m.ts >= ?2
+        AND m.ts <= ?3
+        AND (m.thread_ts IS NULL OR m.thread_ts = m.ts OR m.subtype = 'thread_broadcast')
+        ORDER BY m.ts"
+    );
+    query_display(
+        conn,
+        conversation_id,
+        &sql,
+        params![conversation_id, start, end],
+    )
+}
+
 /// One message for display (live updates), deleted ones excluded.
 pub fn message(conn: &Connection, conversation_id: &str, ts: &str) -> Result<Option<HistoryRow>> {
     let sql = format!(
@@ -209,6 +351,13 @@ fn query_display(
     let mut stmt = conn.prepare(sql)?;
     let rows = stmt
         .query_map(params, |r| {
+            let blocks: Option<serde_json::Value> = r
+                .get::<_, Option<String>>(14)?
+                .and_then(|s| serde_json::from_str(&s).ok());
+            let block_images = blocks
+                .as_ref()
+                .map(|blocks| crate::store::unfurls::cached_block_images(conn, blocks))
+                .unwrap_or_default();
             Ok(HistoryRow {
                 ts: r.get(0)?,
                 user_id: r.get(1)?,
@@ -231,9 +380,12 @@ fn query_display(
                 hidden_by_limit: r.get(7)?,
                 reactions: r.get(8)?,
                 own_reactions: Vec::new(),
-                blocks: r
-                    .get::<_, Option<String>>(14)?
-                    .and_then(|s| serde_json::from_str(&s).ok()),
+                blocks,
+                block_images,
+                unsupported: r
+                    .get::<_, Option<String>>(10)?
+                    .as_deref()
+                    .is_some_and(crate::store::unfurls::unsupported_attachments),
                 thread_ts: r.get(9)?,
                 files: Vec::new(),
                 unfurls: r

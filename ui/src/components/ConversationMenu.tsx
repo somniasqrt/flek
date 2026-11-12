@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { t, errorMessage } from "../i18n/index";
+import { openInSlack } from "../stores/slack";
 import { api, type Conversation } from "../api";
 import { conversationActions, hasUnread } from "../models/conversation-model";
 
@@ -168,6 +169,9 @@ export default function ConversationMenu(props: {
         >
           {actions().details}
           {actions().channel ? " ›" : ""}
+        </button>
+        <button role="menuitem" onMouseEnter={() => setSubmenu(null)} onClick={() => run(() => openInSlack(c().id))}>
+          {t("Open in Slack")}
         </button>
         <div class="menu-separator" role="separator" />
         <button

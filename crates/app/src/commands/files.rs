@@ -152,12 +152,81 @@ pub async fn fetch_file(
 }
 
 fn external_scheme_allowed(url: &tauri::Url) -> bool {
-    matches!(url.scheme(), "http" | "https" | "mailto")
+    matches!(url.scheme(), "http" | "https" | "mailto") || slack_channel_link(url)
+}
+
+/// A narrow OS-only deep link, never an arbitrary Slack command.
+fn slack_channel_link(url: &tauri::Url) -> bool {
+    if url.scheme() != "slack"
+        || url.host_str() != Some("channel")
+        || !url.path().is_empty()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.fragment().is_some()
+    {
+        return false;
+    }
+    let pairs: Vec<_> = url.query_pairs().collect();
+    if !(2..=3).contains(&pairs.len()) {
+        return false;
+    }
+    let id = |value: &str| {
+        !value.is_empty()
+            && value
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    };
+    let exactly_one = |key: &str| pairs.iter().filter(|(k, _)| k == key).count() == 1;
+    exactly_one("team")
+        && exactly_one("id")
+        && pairs.iter().all(|(key, value)| match key.as_ref() {
+            "team" | "id" => id(value),
+            "message" => {
+                let Some((seconds, fraction)) = value.split_once('.') else {
+                    return false;
+                };
+                exactly_one("message")
+                    && !seconds.is_empty()
+                    && !fraction.is_empty()
+                    && seconds.bytes().all(|b| b.is_ascii_digit())
+                    && fraction.bytes().all(|b| b.is_ascii_digit())
+            }
+            _ => false,
+        })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_slack_opener_only_accepts_exact_channel_deep_links() {
+        for value in [
+            "slack://channel?team=T1&id=C1",
+            "slack://channel?team=T1&id=D1&message=1700000000.000001",
+        ] {
+            assert!(
+                external_scheme_allowed(&tauri::Url::parse(value).unwrap()),
+                "{value}"
+            );
+        }
+        for value in [
+            "slack://channel?team=T1&id=C1&command=delete",
+            "slack://channel?team=T1&id=C1&message=bad",
+            "slack://channel?team=T1&id=C1&id=C2",
+            "slack://channel?team=T1&id=C1#other",
+            "slack://channel/path?team=T1&id=C1",
+            "slack://user@channel?team=T1&id=C1",
+            "slack://channel:123?team=T1&id=C1",
+            "slack://channel?team=T1%26other&id=C1",
+            "slack://open?team=T1&id=C1",
+        ] {
+            assert!(
+                !external_scheme_allowed(&tauri::Url::parse(value).unwrap()),
+                "{value}"
+            );
+        }
+    }
     #[test]
     fn external_opener_rejects_non_web_and_non_mail_schemes() {
         for value in [

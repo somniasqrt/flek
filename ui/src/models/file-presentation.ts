@@ -7,3 +7,9 @@ export const fileName = (file: FilePresentation, fallback: string) =>
 // Active image documents (notably SVG) never enter inline previews.
 export const isRasterImage = (mime: string | null | undefined) =>
   /^(image\/(png|jpeg|gif|webp|avif|bmp|x-icon|vnd.microsoft.icon))$/i.test(mime ?? "");
+
+/** Same narrow media types as flekfile; core still gates the resolved cache path. */
+export function isInlineVideo(file: { mimetype: string | null; local_path: string | null; can_open?: boolean; hidden_by_limit: boolean }) {
+  return !file.hidden_by_limit && !!file.local_path && file.can_open === true &&
+    ["video/mp4", "video/x-m4v", "video/quicktime", "video/webm", "video/ogg"].includes(file.mimetype ?? "");
+}

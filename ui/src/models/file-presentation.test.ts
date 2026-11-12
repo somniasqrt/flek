@@ -18,3 +18,11 @@ test("only raster formats can be inline images", () => {
   for (const mime of ["image/png", "image/jpeg", "image/webp"]) assert.equal(isRasterImage(mime), true);
   for (const mime of ["image/svg+xml", "text/html", "text/xml", null]) assert.equal(isRasterImage(mime), false);
 });
+
+test("inline video requires the cache and explicit core launch approval", async () => {
+  const { isInlineVideo } = await import("./file-presentation.ts");
+  const f = { mimetype: "video/mp4", local_path: "/synthetic/video.mp4", can_open: true, hidden_by_limit: false };
+  assert.equal(isInlineVideo(f), true);
+  for (const patch of [{ local_path: null }, { can_open: false }, { can_open: undefined }, { hidden_by_limit: true }, { mimetype: "video/html" }])
+    assert.equal(isInlineVideo({ ...f, ...patch }), false);
+});

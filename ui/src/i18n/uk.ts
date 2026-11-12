@@ -4,6 +4,17 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "This message is no longer stored in Flek.": "Цього повідомлення вже немає в локальній історії Flek.",
+  "More channel actions": "Інші дії з розмовою",
+  "Open in Slack": "Відкрити в Slack",
+  "Downloading…": "Завантаження…",
+  "Download video": "Завантажити відео",
+  "Jump to date": "Перейти до дати",
+  "Date": "Дата",
+  "This date is older than the history stored in Flek.": "Ця дата передує історії, збереженій у Flek.",
+  "No messages are stored for this date.": "За цю дату немає збережених повідомлень.",
+
+  "Quick switcher": "Швидкий перехід",
   "This file type can run code. Flek doesn't open it directly.": "Цей тип файлу може виконувати код. Flek не відкриває його напряму.",
   "Refresh channels": "Оновити канали",
   "Create a channel": "Створити канал",

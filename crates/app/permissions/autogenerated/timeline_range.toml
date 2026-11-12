@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-timeline-range"
+description = "Enables the timeline_range command without any pre-configured scope."
+commands.allow = ["timeline_range"]
+
+[[permission]]
+identifier = "deny-timeline-range"
+description = "Denies the timeline_range command without any pre-configured scope."
+commands.deny = ["timeline_range"]

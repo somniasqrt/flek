@@ -11,11 +11,13 @@ export default function MessageMenu(props: {
   y: number;
   own: string[];
   picker: boolean;
+  readOnly?: boolean;
   onReaction: (name: string) => void;
   onClose: () => void;
   onThread?: () => void;
   onCopy: () => void;
   onCopyLink: () => void;
+  onOpenSlack: () => void;
 }) {
   const [picker, setPicker] = createSignal(props.picker);
   const [position, setPosition] = createSignal({ left: props.x, top: props.y });
@@ -49,7 +51,7 @@ export default function MessageMenu(props: {
     }
     if ((e.target as HTMLElement).tagName !== "INPUT" && !picker()) {
       const key = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey ? e.code : "";
-      if (key === "KeyR") {
+      if (key === "KeyR" && !props.readOnly) {
         e.preventDefault();
         setPicker(true);
         return;
@@ -86,7 +88,7 @@ export default function MessageMenu(props: {
     )
       return;
     e.preventDefault();
-    const buttons = [...panel.querySelectorAll<HTMLButtonElement>("button")];
+    const buttons = [...panel.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     buttons[
       (index + (e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 1) + buttons.length) %
@@ -122,6 +124,7 @@ export default function MessageMenu(props: {
                   class="message-menu-item"
                   role="menuitem"
                   type="button"
+                  disabled={props.readOnly}
                   onClick={() => setPicker(true)}
                 >
                   <AddReaction />
@@ -143,6 +146,9 @@ export default function MessageMenu(props: {
                     <kbd>T</kbd>
                   </button>
                 </Show>
+                <button class="message-menu-item" role="menuitem" type="button" onClick={props.onOpenSlack}>
+                  <MessageLink /><span class="message-menu-label">{t("Open in Slack")}</span>
+                </button>
                 <div class="message-menu-rule" role="separator" />
                 <button
                   class="message-menu-item"

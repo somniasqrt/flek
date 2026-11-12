@@ -182,7 +182,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `components/PresenceIndicator.tsx` — Visual active/away/DND/unknown indicator.
 - `components/ResizeHandle.tsx` — Pointer/keyboard panel resize interaction.
 - `components/Rich.tsx` — Parsed mrkdwn rendering and link actions.
-- `components/RichBlocks.tsx` — Slack rich_text block rendering.
+- `components/RichBlocks.tsx` — Read-only rich_text and Block Kit rendering; unsupported types retain plain-text/native-client fallback.
 - `components/StatusForm.tsx` — Status form rendering; YouMenu retains draft and focus ownership.
 - `components/SyncBar.tsx` — Sync progress and connection status presentation.
 - `components/Unfurls.tsx` — Cached website preview cards.
@@ -213,6 +213,9 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `models/shortcuts.ts` — Physical-key editing shortcuts; preserve IME and AltGr.
 - `models/snippet.ts` — FTS control-marker splitting and readable result summaries.
 - `models/time.ts` — Localized clocks, relative time and day/list labels.
+- `models/virtualizer.ts` — Keyed Fenwick height sums, visible ranges and anchor restoration; local calendar-day bounds.
+- `models/switcher.ts` / `sidebar-navigation.ts` — Local fuzzy ranking, sidebar ordering and keyboard targets.
+- `models/block-kit.ts` / `slack-link.ts` — Defensive read-only block parsing, fallback detection and encoded deep links.
 - `models/unfurl-text.ts` — Website entity decoding into literal render nodes.
 - `platform.ts` — Runtime OS detection and platform key labels; see platforms.md.
 - `preview/assets.ts` — Self-contained image/emoji/PDF bytes and cache URL overrides.
@@ -260,7 +263,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `views/Search.tsx` — SearchBar, search results and message jump conversion.
 - `views/Sidebar.tsx` — Member conversation groups, muted/starred sections and context-menu targets.
 - `views/Thread.tsx` — Thread reads, change reconciliation and reply composer.
-- `views/Timeline.tsx` — One timeline lifecycle: pagination, reveal, focused read tracking and scrolling.
+- `views/Timeline.tsx` — One timeline lifecycle: measured variable-height virtualization, bidirectional local windows, date/reveal navigation, focused read tracking and scrolling.
 - `views/Workspace.tsx` — Workspace DOM composition; state/effects stay in workspace-state.
 - `views/preferences/AccountSection.tsx` — Account origin, storage actions and sign-out preferences.
 - `views/preferences/SyncSection.tsx` — History/file download limits and resync preferences.
@@ -323,7 +326,7 @@ Migration 0007 owns counters and uses NULL-safe IS comparisons. Unread means und
 
 M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Text/names/unfurls are text nodes; rich drafts are sanitized and paste is plain text. models/unfurl-text.test.ts, models/rich-compose.test.ts and i18n.test.ts cover pure pieces; DOM/paste sanitization still needs review.
-- javascript:/file: links never reach the opener: commands/files.rs::open_url permits http/https/mailto; models/rich-compose.test.ts tests editor protocols. commands/files.rs tests the native opener scheme decision without launching anything.
+- javascript:/file: links never reach the opener: commands/files.rs::open_url permits http/https/mailto and narrowly validated slack://channel deep links; models/rich-compose.test.ts tests editor protocols. commands/files.rs tests the native opener scheme decision without launching anything.
 - SQL values use bound parameters; dynamic fragments contain internal expressions only. Agent read/search fixture suites cover quotes/filters; parameter discipline also requires review.
 - Downloaded files receive macOS quarantine after atomic rename; saved copies are explicitly marked. OS actions also protect old cache hits and fail closed on marking errors. tests/files.rs::download_retries_after_429 and files::safety::tests::save_copy_adds_quarantine_even_when_source_has_none guard the attributes; see platforms.md for flags and Windows work.
 - Direct OS open requires the core extension/MIME allowlist using the resolved cached filename. Other types reveal only, with en/uk warnings. files::safety::tests::exact_extension_and_mime_must_agree and tests/files.rs::open_policy_uses_cached_extension_even_with_safe_metadata_name guard the policy; UI consumes core's can_open flag.
@@ -337,7 +340,7 @@ M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Startup cleanup precedes session boot; sign-in retries a failed migration. The app-owned webview_cleanup_version setting is saved only after removal completes, and cannot be overwritten by UI preferences. Sign-out destroys signin and removes legacy Slack data even if credential deletion reports an error. Capture and sign-out share the maintenance lock. browsing_data.rs tests scope, completion-before-marker, failure and repeat behavior; core settings tests legacy defaults/restart persistence. See platforms.md for exactly what is removed.
 - Main never navigates outside tauri://localhost or http(s)://tauri.localhost (no custom port/userinfo); debug alone also permits the configured dev origin, including its exact port. Native popups are always denied; http(s) popup URLs go through open_url. Config disables automatic window creation so navigation.rs attaches both guards before main loads. Pure URL/config tests guard this; gestures require owner QA.
 - Message/unfurl/profile anchors have no href, cannot drag or expose native link context menus, and open only via open_url. role=link, tab focus, Enter, focus ring and URL titles preserve accessibility. There was no custom copy-link menu on these anchors. models/external-link.test.ts tests interactions and checks integration.
-- flekfile only serves allowlisted raster images; all responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs still use pdf_data IPC and pdf.js canvas; video/PDF thumbnails are PNGs, not embedded documents.
+- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs still use pdf_data IPC and pdf.js canvas; video/PDF thumbnails are PNGs, not embedded documents.
 - UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. It also enforces object-src/base-uri/form-action/frame-src 'none'; no object/iframe/base or form actions are used (forms handle submit locally). tests/unfurls.rs guards proxy/cache parsing; config and UI source regressions guard directives and the PDF canvas path.
 
 - File session headers go only to HTTPS `slack.com`/`*.slack.com`, `slack-edge.com`/subdomains and `slack-files.com`/subdomains. Imported URLs are untrusted; userinfo is refused. The explicitly configured API base's exact origin is the only HTTP mock exception (host, scheme and effective port). RTM requires WSS `*.slack.com`; its mock exception maps WS/WSS to HTTP/HTTPS and still compares the exact origin. net_policy tests plus tests/network_security.rs and tests/rtm.rs guard rejection before requests and valid local handshakes.

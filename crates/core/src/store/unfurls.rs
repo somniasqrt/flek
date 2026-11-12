@@ -41,6 +41,46 @@ fn image_urls(a: &Value) -> impl Iterator<Item = &str> {
         .filter(|u| u.starts_with("https://") || u.starts_with("http://"))
 }
 
+/// Documented Block Kit image slots only; no arbitrary recursive URL discovery.
+pub fn block_image_urls(blocks: &Value) -> Vec<&str> {
+    let mut urls = Vec::new();
+    for block in blocks.as_array().into_iter().flatten().take(100) {
+        let slots: Vec<&Value> = match block.get("type").and_then(Value::as_str) {
+            Some("image") => vec![block],
+            Some("section") => block.get("accessory").into_iter().collect(),
+            Some("context") => block
+                .get("elements")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .take(10)
+                .collect(),
+            _ => Vec::new(),
+        };
+        for slot in slots {
+            if slot.get("type").and_then(Value::as_str) == Some("image") {
+                if let Some(url) = slot.get("image_url").and_then(Value::as_str) {
+                    if url.starts_with("https://") {
+                        urls.push(url);
+                    }
+                }
+            }
+        }
+    }
+    urls
+}
+
+pub fn cached_block_images(
+    conn: &Connection,
+    blocks: &Value,
+) -> std::collections::HashMap<String, String> {
+    block_image_urls(blocks)
+        .into_iter()
+        .filter(|url| is_cached(conn, url))
+        .map(|url| (url.to_owned(), url_hash(url)))
+        .collect()
+}
+
 pub fn url_hash(url: &str) -> String {
     Sha1::digest(url.as_bytes())
         .iter()
@@ -120,6 +160,35 @@ pub fn from_raw(raw: &str, cached: &dyn Fn(&str) -> bool) -> Vec<Unfurl> {
         .collect()
 }
 
+/// Attachments requiring actions/embeds, or with no readable legacy content.
+/// Keep their raw evidence in SQLite and expose a native-client fallback.
+pub fn unsupported_attachments(raw: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return false;
+    };
+    value
+        .get("attachments")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|a| {
+            ["blocks", "actions", "video_html"]
+                .iter()
+                .any(|key| a.get(key).is_some())
+                || !["title", "text", "pretext", "image_url", "thumb_url"]
+                    .iter()
+                    .any(|key| {
+                        a.get(key)
+                            .and_then(Value::as_str)
+                            .is_some_and(|s| !s.is_empty())
+                    })
+                    && !a
+                        .get("fields")
+                        .and_then(Value::as_array)
+                        .is_some_and(|fields| !fields.is_empty())
+        })
+}
+
 /// Preview images not tried yet, newest messages first.
 pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
@@ -127,7 +196,7 @@ pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
             SELECT m.raw_json
             FROM messages m
             WHERE m.deleted = 0
-            AND m.raw_json LIKE '%\"attachments\"%'
+            AND (m.raw_json LIKE '%\"attachments\"%' OR m.raw_json LIKE '%\"image_url\"%')
             ORDER BY m.ts DESC
         ",
     )?;
@@ -145,20 +214,25 @@ pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
         let Ok(v) = serde_json::from_str::<Value>(&raw) else {
             continue;
         };
+        let mut urls = Vec::new();
         for a in v
             .get("attachments")
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
         {
-            for url in image_urls(a) {
-                if out.iter().any(|u| u == url) || known.exists([url_hash(url)])? {
-                    continue;
-                }
-                out.push(url.to_owned());
-                if out.len() >= limit {
-                    return Ok(out);
-                }
+            urls.extend(image_urls(a));
+        }
+        if let Some(blocks) = v.get("blocks") {
+            urls.extend(block_image_urls(blocks));
+        }
+        for url in urls {
+            if out.iter().any(|u| u == url) || known.exists([url_hash(url)])? {
+                continue;
+            }
+            out.push(url.to_owned());
+            if out.len() >= limit {
+                return Ok(out);
             }
         }
     }

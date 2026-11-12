@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-timeline-after"
+description = "Enables the timeline_after command without any pre-configured scope."
+commands.allow = ["timeline_after"]
+
+[[permission]]
+identifier = "deny-timeline-after"
+description = "Denies the timeline_after command without any pre-configured scope."
+commands.deny = ["timeline_after"]

@@ -2,7 +2,8 @@ import { externalLink } from "../models/external-link";
 import { For, Match, Show, Switch, type JSX } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import { api } from "../api";
-import RichBlocks, { hasRichBlocks } from "./RichBlocks";
+import RichBlocks from "./RichBlocks";
+import { parseBlockKit } from "../models/block-kit";
 import Emoji from "./EmojiView";
 import { linkInfo, shortUrl, type LinkKind } from "../models/links";
 import { parse, type Block, type Inline } from "../models/mrkdwn";
@@ -11,13 +12,13 @@ import { people } from "../stores/people";
 // Renders a message's mrkdwn text: blocks, inline styles, mentions, emoji
 // and links (meeting / doc / video links get a service badge).
 
-export default function Rich(props: { text: string; blocks?: unknown }) {
+export default function Rich(props: { text: string; blocks?: unknown; blockImages?: Record<string, string> }) {
   return (
     <Show
-      when={hasRichBlocks(props.blocks)}
+      when={parseBlockKit(props.blocks).blocks.length > 0}
       fallback={<div class="rich">{blocks(parse(props.text))}</div>}
     >
-      <RichBlocks blocks={props.blocks} />
+      <RichBlocks blocks={props.blocks} images={props.blockImages} />
     </Show>
   );
 }

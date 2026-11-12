@@ -205,3 +205,16 @@ a.chip .label {
   white-space: nowrap;
 }
 
+
+.block-section { display: flex; gap: 16px; align-items: flex-start; }
+.block-section > div { flex: 1; min-width: 0; }
+.block-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.block-plain { white-space: pre-wrap; overflow-wrap: anywhere; }
+.block-context { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.block-image { display: block; max-width: min(100%, 360px); max-height: 300px; object-fit: contain; }
+.block-section > .block-image { max-width: 25%; max-height: 120px; }
+.block-context .block-image { max-width: 32px; max-height: 32px; }
+.rich-blocks figure { margin: 8px 0; }
+.block-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.block-actions button:disabled { opacity: 0.65; cursor: default; }
+.open-slack-fallback { margin: 8px 0; }

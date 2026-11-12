@@ -39,6 +39,8 @@ const emojiBadge =
     '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect x="4" y="4" width="56" height="56" rx="12" fill="#2f8f5b"/><path d="M18 33l10 10 18-22" stroke="#fff" stroke-width="7" fill="none"/></svg>',
   );
 const cached: Record<string, string> = {
+  "FVIDEO": "/preview-video.mp4",
+  "FVIDEO_DOWNLOAD": "/preview-video.mp4",
   "link/a1": avatar,
   "link/a4": avatar2,
   "link/e1": emojiParty,

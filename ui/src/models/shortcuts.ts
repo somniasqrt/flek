@@ -26,7 +26,7 @@ export const bindings: Record<EditAction, { code: string; key: string; shift?: b
   italic: { code: "KeyI", key: "I" },
   underline: { code: "KeyU", key: "U" },
   strike: { code: "KeyX", key: "X", shift: true },
-  link: { code: "KeyK", key: "K" },
+  link: { code: "KeyU", key: "U", shift: true },
   ordered: { code: "Digit7", key: "7", shift: true },
   bullet: { code: "Digit8", key: "8", shift: true },
   quote: { code: "Digit9", key: "9", shift: true },

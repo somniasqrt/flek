@@ -1,4 +1,15 @@
 export const en = {
+  "This message is no longer stored in Flek.": "This message is no longer stored in Flek.",
+  "More channel actions": "More channel actions",
+  "Open in Slack": "Open in Slack",
+  "Downloading…": "Downloading…",
+  "Download video": "Download video",
+  "Jump to date": "Jump to date",
+  "Date": "Date",
+  "This date is older than the history stored in Flek.": "This date is older than the history stored in Flek.",
+  "No messages are stored for this date.": "No messages are stored for this date.",
+
+  "Quick switcher": "Quick switcher",
   "This file type can run code. Flek doesn't open it directly.": "This file type can run code. Flek doesn't open it directly.",
   "Refresh channels": "Refresh channels",
   "Create a channel": "Create a channel",

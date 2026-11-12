@@ -1,7 +1,7 @@
 import FileSafety from "./FileSafety";
-import { isRasterImage, fileName } from "../models/file-presentation";
-import { For, Show } from "solid-js";
-import { t } from "../i18n/index";
+import { isRasterImage, isInlineVideo, fileName } from "../models/file-presentation";
+import { createSignal, For, Show } from "solid-js";
+import { t, errorMessage } from "../i18n/index";
 import { settings } from "../stores/settings";
 import { api, fileUrl, type FileRef } from "../api";
 import { canView, openViewer, type Sender } from "./Viewer";
@@ -41,7 +41,7 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
       </Show>
       <Show when={others().length > 0}>
         <div class="file-row">
-          <For each={others()}>{(f) => <Card f={f} preview={lone()} onOpen={open} />}</For>
+          <For each={others()}>{(f) => <VideoOrCard f={f} preview={lone()} onOpen={open} />}</For>
         </div>
       </Show>
     </div>
@@ -71,6 +71,56 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
       </button>
       <span class="file-name">{name(props.f)}</span>
       <FileSafety file={props.f} />
+    </div>
+  );
+}
+
+function VideoOrCard(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => void }) {
+  const [failed, setFailed] = createSignal(false);
+  const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal("");
+  const download = async () => {
+    if (busy()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.fetchFile(props.f.id);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div class="video-or-card">
+      <Show when={isInlineVideo(props.f) && !failed()} fallback={<Card {...props} />}>
+        <video
+          class="file-video"
+          controls
+          preload="metadata"
+          playsinline
+          aria-label={name(props.f)}
+          src={fileUrl(props.f.id)}
+          poster={props.f.preview_path ? fileUrl(props.f.id, true) : undefined}
+          onError={() => setFailed(true)}
+        />
+        <span class="file-name">{name(props.f)}</span>
+        <FileSafety file={props.f} />
+      </Show>
+      <Show
+        when={
+          props.f.mimetype?.startsWith("video/") && !props.f.local_path && !props.f.hidden_by_limit
+        }
+      >
+        <button class="download-video" disabled={busy()} onClick={download}>
+          {busy() ? t("Downloading…") : t("Download video")}
+        </button>
+      </Show>
+      <Show when={error()}>
+        <p class="error" role="alert">
+          {error()}
+        </p>
+      </Show>
     </div>
   );
 }

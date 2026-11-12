@@ -44,5 +44,8 @@ test("IME and AltGr never trigger formatting, ordinary copy is untouched", () =>
   assert.equal(editShortcut(event({ metaKey: true, isComposing: true }), true), undefined);
   assert.equal(editShortcut(event({ code: "KeyC", ctrlKey: true }), false), undefined);
   assert.equal(shortcutLabel("bold", true), "⌘B");
+  assert.equal(shortcutLabel("link", true), "⌘⇧U");
+  assert.equal(editShortcut(event({ code: "KeyK", metaKey: true }), true), undefined);
+  assert.equal(editShortcut(event({ code: "KeyU", metaKey: true, shiftKey: true }), true), "link");
   assert.equal(shortcutLabel("pre", false), "Ctrl+Shift+J");
 });
