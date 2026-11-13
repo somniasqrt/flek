@@ -51,8 +51,6 @@ struct Captured {
 
 #[derive(Deserialize)]
 struct CapturedTeam {
-    id: String,
-    name: String,
     token: String,
 }
 
@@ -130,32 +128,17 @@ async fn finish(app: AppHandle, captured: Option<Captured>) {
         let origin = SessionOrigin::new(OriginKind::Webview, captured.user_agent);
         let creds = &app.state::<AppState>().creds;
 
-        let mut first = None;
-        let mut last_err = None;
-        for mut team in captured.teams {
-            team.id = bounded_page_text(&team.id, 128);
-            team.name = bounded_page_text(&team.name, 256);
-            match auth::validate(
-                Secret::new(team.token),
-                cookie.clone(),
-                Some(origin.clone()),
-            )
-            .await
-            {
-                Ok(session) => {
-                    creds
-                        .save(&session.credentials)
-                        .map_err(|e| e.to_string())?;
-                    first.get_or_insert(session);
-                }
-                Err(e) => {
-                    // Do not log metadata supplied by a page (it may contain secrets).
-                    tracing::warn!("sign-in validation failed");
-                    last_err = Some(e.to_string());
-                }
-            }
-        }
-        first.ok_or_else(|| last_err.unwrap_or_else(|| "no workspace signed in".into()))
+        auth::validate_and_save_first(
+            creds,
+            captured
+                .teams
+                .into_iter()
+                .map(|team| Secret::new(team.token)),
+            cookie,
+            Some(origin),
+        )
+        .await
+        .map_err(|e| e.to_string())
     }
     .await;
 

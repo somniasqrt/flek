@@ -26,3 +26,6 @@ pub mod settings;
 
 mod net_policy;
 mod private_fs;
+
+/// Logging policy shared by executable entry points.
+pub mod logging;

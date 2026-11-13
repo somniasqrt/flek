@@ -94,6 +94,41 @@ fn save_imported(
     Ok(())
 }
 
+/// Validate page-captured tokens and retain only the first accepted workspace.
+pub async fn validate_and_save_first(
+    store: &CredentialStore,
+    tokens: impl IntoIterator<Item = crate::Secret>,
+    cookie: crate::Secret,
+    origin: Option<SessionOrigin>,
+) -> Result<Session> {
+    save_first_with(store, tokens, |token| {
+        validate(token, cookie.clone(), origin.clone())
+    })
+    .await
+}
+
+async fn save_first_with<T, F, Fut>(
+    store: &CredentialStore,
+    candidates: impl IntoIterator<Item = T>,
+    mut validate: F,
+) -> Result<Session>
+where
+    F: FnMut(T) -> Fut,
+    Fut: std::future::Future<Output = Result<Session>>,
+{
+    let mut last_error = Error::DesktopNotLoggedIn;
+    for candidate in candidates {
+        match validate(candidate).await {
+            Ok(session) => {
+                store.save(&session.credentials)?;
+                return Ok(session);
+            }
+            Err(error) => last_error = error,
+        }
+    }
+    Err(last_error)
+}
+
 /// Loads the stored session for `team` (or the only/first stored one),
 /// importing from desktop when nothing is stored. When Slack rejects the
 /// stored session it re-imports once before giving up.
@@ -356,20 +391,54 @@ mod tests {
 /// next launch. The local archive and the Slack desktop session are untouched.
 pub fn sign_out(
     credentials: &CredentialStore,
-    _team_id: &str,
+    known_team_ids: &[String],
     settings_path: &std::path::Path,
 ) -> crate::Result<crate::settings::Settings> {
-    let mut settings = crate::settings::Settings::load(settings_path)?;
-    settings.desktop_import_on_start = false;
-    settings.save(settings_path)?;
-    // Keep automatic import disabled even after a partial credential-store failure.
-    credentials.clear()?;
-    Ok(settings)
+    let saved = (|| {
+        let mut settings = crate::settings::Settings::load(settings_path)?;
+        settings.desktop_import_on_start = false;
+        settings.save(settings_path)?;
+        Ok(settings)
+    })();
+    // Both operations must run; settings errors take precedence over purge errors.
+    let cleared = credentials.clear_known(known_team_ids);
+    saved.and_then(|settings| cleared.map(|()| settings))
 }
 
 #[cfg(test)]
 mod sign_out_tests {
     use super::*;
+
+    #[test]
+    fn settings_failure_still_purges_credentials() {
+        for unreadable in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(if unreadable {
+                "settings.json"
+            } else {
+                "missing-settings.json/"
+            });
+            if unreadable {
+                std::fs::write(&path, "malformed settings").unwrap();
+            } else {
+                // Missing file loads defaults, but rename to a trailing slash fails.
+                assert!(crate::settings::Settings::load(&path).is_ok());
+            }
+            let credentials = CredentialStore::with_backend(keychain::MemoryBackend::default());
+            credentials
+                .save(&Credentials {
+                    team_id: "T1".into(),
+                    user_id: "U1".into(),
+                    token: crate::Secret::new("xoxc-fake"),
+                    cookie: crate::Secret::new("xoxd-fake"),
+                    origin: None,
+                })
+                .unwrap();
+            assert!(sign_out(&credentials, &["T1".into()], &path).is_err());
+            assert!(credentials.load("T1").unwrap().is_none());
+            assert!(credentials.list().unwrap().is_empty());
+        }
+    }
 
     #[tokio::test]
     async fn removes_indexed_session_keeps_archive_and_language() {
@@ -395,7 +464,7 @@ mod sign_out_tests {
         let mut other = credentials.load("TFAKE").unwrap().unwrap();
         other.team_id = "TOTHER".into();
         credentials.save(&other).unwrap();
-        let result = sign_out(&credentials, "TFAKE", &path).unwrap();
+        let result = sign_out(&credentials, &["TFAKE".into()], &path).unwrap();
         assert!(credentials.load("TOTHER").unwrap().is_none());
         assert!(!result.desktop_import_on_start);
         assert_eq!(result.language, crate::settings::Language::Uk);

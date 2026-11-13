@@ -131,3 +131,23 @@ async fn rejected_credentials_stay_deleted_when_import_fails() {
         assert!(store.list().unwrap().is_empty());
     }
 }
+
+#[tokio::test]
+async fn webview_saves_only_first_validated_workspace_and_stops_validation() {
+    let store = store();
+    let mut attempted = Vec::new();
+    let selected = save_first_with(&store, ["TBAD", "T1", "T2"], |team| {
+        attempted.push(team);
+        std::future::ready(if team == "TBAD" {
+            Err(Error::DesktopNotLoggedIn)
+        } else {
+            Ok(session(team, OriginKind::Webview))
+        })
+    })
+    .await
+    .unwrap();
+    assert_eq!(selected.credentials.team_id, "T1");
+    assert_eq!(store.list().unwrap(), ["T1"]);
+    assert!(store.load("T2").unwrap().is_none());
+    assert_eq!(attempted, ["TBAD", "T1"]);
+}

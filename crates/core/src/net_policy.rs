@@ -9,6 +9,7 @@ fn domain(host: &str, suffix: &str) -> bool {
 
 pub(crate) fn slack_file(url: &Url) -> bool {
     url.scheme() == "https"
+        && url.port_or_known_default() == Some(443)
         && clean_authority(url)
         && url.host_str().is_some_and(|h| {
             ["slack.com", "slack-edge.com", "slack-files.com"]
@@ -196,6 +197,8 @@ mod tests {
             ("http://127.0.0.1:4321/f", false),
             ("http://files.slack.com/f", false),
             ("https://files.slack.com/f", true),
+            ("https://files.slack.com:443/f", true),
+            ("https://files.slack.com:8443/f", false),
             ("https://a.slack-files.com/f", true),
             ("https://a.slack-edge.com/f", true),
             ("https://slack.com.evil.test/f", false),

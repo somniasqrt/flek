@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::Result;
 use flek_core::auth::CredentialStore;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 
 pub(super) async fn run(cli: Cli) -> Result<()> {
     init_tracing(cli.global.verbose, cli.global.json);
@@ -61,20 +61,19 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
 }
 
 fn init_tracing(verbose: u8, json: bool) {
-    let default = match verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
-    };
-    let filter = if json {
-        EnvFilter::new("off")
+    let directives = std::env::var("RUST_LOG").ok();
+    let default = flek_core::logging::cli_default(verbose);
+    let (default, directives) = if json {
+        ("off", None)
     } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default))
+        (default, directives.as_deref())
     };
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .with_target(false)
+    tracing_subscriber::registry()
+        .with(flek_core::logging::filter(default, directives))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false),
+        )
         .init();
 }

@@ -20,6 +20,7 @@ const MAX_RETRY_WAIT: Duration = Duration::from_secs(120);
 /// Talks to Slack as the user: `xoxc` token plus the `d` cookie.
 pub struct Client {
     http: reqwest::Client,
+    file_http: reqwest::Client,
     base_url: String,
     token: Secret,
     cookie: Secret,
@@ -58,6 +59,22 @@ impl Client {
         let base =
             reqwest::Url::parse(base_url).map_err(|_| Error::File("invalid API URL".into()))?;
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::custom({
+                let base = base.clone();
+                move |attempt| {
+                    if attempt.previous().len() > 5 {
+                        attempt.error("too many redirects")
+                    } else if api_redirect_allowed(attempt.url(), &base) {
+                        attempt.follow()
+                    } else {
+                        attempt.stop()
+                    }
+                }
+            }))
+            .default_headers(session_headers(&cookie, &profile)?)
+            .timeout(Duration::from_secs(30))
+            .build()?;
+        let file_http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::custom(move |attempt| {
                 if attempt.previous().len() > 5 {
                     attempt.error("too many redirects")
@@ -74,6 +91,7 @@ impl Client {
             .build()?;
         Ok(Self {
             http,
+            file_http,
             base_url: base_url.trim_end_matches('/').to_owned(),
             token,
             cookie,
@@ -233,7 +251,7 @@ impl Client {
         let mut attempt = 0;
         let resp = loop {
             let resp = self
-                .http
+                .file_http
                 .get(parsed.clone())
                 .header(AUTHORIZATION, bearer(&self.token)?)
                 .timeout(Duration::from_secs(600))
@@ -320,4 +338,36 @@ fn retry_after(headers: &HeaderMap) -> Duration {
         .map(Duration::from_secs)
         .unwrap_or(Duration::from_secs(1))
         .min(MAX_RETRY_WAIT)
+}
+
+fn api_redirect_allowed(url: &reqwest::Url, base: &reqwest::Url) -> bool {
+    crate::net_policy::same_origin(url, base)
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use super::*;
+
+    #[test]
+    fn api_redirects_require_the_exact_base_origin() {
+        let base = reqwest::Url::parse("https://workspace.slack.com/api").unwrap();
+        for url in [
+            "https://files.slack.com/file",
+            "https://other.slack.com/api",
+            "https://a.slack-edge.com/file",
+            "https://a.slack-files.com/file",
+            "https://workspace.slack.com:8443/api",
+            "http://workspace.slack.com/api",
+            "https://user@workspace.slack.com/api",
+        ] {
+            assert!(
+                !api_redirect_allowed(&reqwest::Url::parse(url).unwrap(), &base),
+                "{url}"
+            );
+        }
+        assert!(api_redirect_allowed(
+            &reqwest::Url::parse("https://workspace.slack.com:443/api/next").unwrap(),
+            &base
+        ));
+    }
 }

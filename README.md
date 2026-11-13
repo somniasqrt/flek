@@ -342,7 +342,7 @@ available from the composer yet.
 
 ## Safety
 
-- Tokens and cookies live only in macOS Keychain, never in files, logs or the database.
+- Flek persists credentials in macOS Keychain and keeps them out of logs, settings and the database. During desktop import, it temporarily copies Slack’s LevelDB (which contains tokens) and cookie database into a private 0700 directory with 0600 files. Normal completion or failure removes the copies; a crash can leave copies for the scoped stale-copy cleanup on a later launch. Removal is not secure erasure.
 - Behaves like a normal client: websocket for live data, no aggressive polling, no mass actions.
 - Uses a session token outside the official app. This is unofficial use and Slack (or your workspace admin) may revoke the session. Use it on your own account only.
 

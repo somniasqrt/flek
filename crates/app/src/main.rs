@@ -17,7 +17,7 @@ mod window_size;
 mod zoom;
 
 use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 
 use state::AppState;
 
@@ -26,11 +26,12 @@ const MAIN: &str = "main";
 const HIDDEN_ARG: &str = "--hidden";
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn,flek=info")),
-        )
-        .with_writer(std::io::stderr)
+    tracing_subscriber::registry()
+        .with(flek_core::logging::filter(
+            "warn,flek=info",
+            std::env::var("RUST_LOG").ok().as_deref(),
+        ))
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init();
 
     let hidden = std::env::args().any(|a| a == HIDDEN_ARG);

@@ -6,8 +6,11 @@
     "main"
   ],
   "permissions": [
-    "core:default",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
+    "core:window:allow-internal-toggle-maximize",
+    "allow-platform",
     "allow-team-icon",
     "allow-direct-messages",
     "allow-activity",

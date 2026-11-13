@@ -48,6 +48,9 @@ async fn refused_file_urls_make_no_request() {
         "http://files.slack.com/x",
         "https://evil.test/x",
         "https://files.slack.com.evil.test/x",
+        "https://files.slack.com:8443/x",
+        "https://a.slack-edge.com:8443/x",
+        "https://a.slack-files.com:8443/x",
     ] {
         let err = client
             .download(url, &dir.path().join("file"), false)
@@ -234,4 +237,57 @@ async fn same_origin_redirects_keep_session_but_stop_after_five_hops() {
         b"ok",
         "failed download preserves previous cache entry"
     );
+}
+
+#[tokio::test]
+async fn api_redirects_never_reach_another_origin() {
+    let source = MockServer::start().await;
+    let target = MockServer::start().await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &source.uri(),
+    )
+    .unwrap();
+    for status in [301, 302, 303, 307, 308] {
+        let method = format!("redirect{status}");
+        Mock::given(path(format!("/{method}")))
+            .respond_with(ResponseTemplate::new(status).insert_header("Location", target.uri()))
+            .expect(1)
+            .mount(&source)
+            .await;
+        assert!(client
+            .call::<serde_json::Value>(&method, &[])
+            .await
+            .is_err());
+    }
+    assert!(target.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn api_same_origin_redirect_retains_cookie() {
+    use wiremock::matchers::{header, method};
+    let server = MockServer::start().await;
+    Mock::given(path("/auth.test"))
+        .and(method("POST"))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", "/redirected"))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/redirected"))
+        .and(header("cookie", "d=xoxd-fake"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap();
+    client
+        .call::<serde_json::Value>("auth.test", &[])
+        .await
+        .unwrap();
 }

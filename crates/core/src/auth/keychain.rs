@@ -143,13 +143,13 @@ impl CredentialStore {
         let json = Secret::new(serde_json::to_string(&stored)?);
         stored.token.zeroize();
         stored.cookie.zeroize();
-        self.backend.set(&creds.team_id, json.expose())?;
-
         let mut ids = self.list()?;
         if !ids.contains(&creds.team_id) {
             ids.push(creds.team_id.clone());
             self.write_index(&ids)?;
         }
+        // An interrupted save may leave a harmless index id, never an orphaned secret.
+        self.backend.set(&creds.team_id, json.expose())?;
         Ok(())
     }
 
@@ -182,17 +182,54 @@ impl CredentialStore {
 
     /// Clear every indexed Flek entry and the index. Keep failed ids indexed for retry.
     pub fn clear(&self) -> Result<()> {
+        self.clear_known(&[])
+    }
+
+    /// Also purge ids known by the caller when the index cannot be read.
+    pub fn clear_known(&self, known_team_ids: &[String]) -> Result<()> {
         let mut failure = None;
-        for id in self.list()? {
-            if let Err(error) = self.delete(&id) {
+        let mut ids = match self.list() {
+            Ok(ids) => ids,
+            Err(error) => {
+                failure = Some(error);
+                // A malformed array can still contain usable team ids.
+                self.backend
+                    .get(INDEX_ACCOUNT)
+                    .ok()
+                    .flatten()
+                    .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+                    .and_then(|value| {
+                        value.as_array().map(|ids| {
+                            ids.iter()
+                                .filter_map(|id| id.as_str().map(str::to_owned))
+                                .collect()
+                        })
+                    })
+                    .unwrap_or_default()
+            }
+        };
+        ids.extend_from_slice(known_team_ids);
+        ids.sort();
+        ids.dedup();
+        let mut retry = Vec::new();
+        for id in ids.iter().filter(|id| id.as_str() != INDEX_ACCOUNT) {
+            if let Err(error) = self.backend.delete(id) {
+                failure.get_or_insert(error);
+                retry.push(id.clone());
+            }
+        }
+        if let Err(error) = self.backend.delete(INDEX_ACCOUNT) {
+            failure.get_or_insert(error);
+        }
+        if !retry.is_empty() {
+            if let Err(error) = self.write_index(&retry) {
                 failure.get_or_insert(error);
             }
         }
-        if let Some(error) = failure {
-            return Err(error);
+        match failure {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
-        self.backend.delete(INDEX_ACCOUNT)?;
-        Ok(())
     }
 
     /// Team ids with stored credentials, in the order they were added.
@@ -267,5 +304,137 @@ mod security_tests {
         for account in ["T1", "T2", INDEX_ACCOUNT] {
             assert!(store.backend.get(account).unwrap().is_none());
         }
+    }
+
+    struct FailingBackend {
+        memory: std::sync::Arc<MemoryBackend>,
+        fail_set: Option<&'static str>,
+        fail_get: Option<&'static str>,
+        fail_delete: Option<&'static str>,
+    }
+
+    impl SecretBackend for FailingBackend {
+        fn get(&self, account: &str) -> Result<Option<String>> {
+            if self.fail_get == Some(account) {
+                return Err(Error::Keychain("synthetic read failure".into()));
+            }
+            self.memory.get(account)
+        }
+        fn set(&self, account: &str, value: &str) -> Result<()> {
+            if self.fail_set == Some(account) {
+                return Err(Error::Keychain("synthetic write failure".into()));
+            }
+            self.memory.set(account, value)
+        }
+        fn delete(&self, account: &str) -> Result<bool> {
+            if self.fail_delete == Some(account) {
+                return Err(Error::Keychain("synthetic delete failure".into()));
+            }
+            self.memory.delete(account)
+        }
+    }
+
+    fn fake_credentials(team: &str) -> Credentials {
+        Credentials {
+            team_id: team.into(),
+            user_id: "UFAKE".into(),
+            token: Secret::new("xoxc-fake"),
+            cookie: Secret::new("xoxd-fake"),
+            origin: None,
+        }
+    }
+
+    #[test]
+    fn index_write_failure_never_creates_an_unindexed_secret() {
+        let memory = std::sync::Arc::new(MemoryBackend::default());
+        let store = CredentialStore::with_backend(FailingBackend {
+            memory: memory.clone(),
+            fail_set: Some(INDEX_ACCOUNT),
+            fail_get: None,
+            fail_delete: None,
+        });
+        assert!(store.save(&fake_credentials("T1")).is_err());
+        assert!(memory.get("T1").unwrap().is_none());
+    }
+
+    #[test]
+    fn failed_entry_write_leaves_an_indexed_id_for_cleanup() {
+        let memory = std::sync::Arc::new(MemoryBackend::default());
+        let store = CredentialStore::with_backend(FailingBackend {
+            memory,
+            fail_set: Some("T1"),
+            fail_get: None,
+            fail_delete: None,
+        });
+        assert!(store.save(&fake_credentials("T1")).is_err());
+        assert_eq!(store.list().unwrap(), ["T1"]);
+        store.clear().unwrap();
+        assert!(store.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn malformed_or_unreadable_index_still_purges_known_ids_and_index() {
+        for unreadable in [false, true] {
+            let memory = std::sync::Arc::new(MemoryBackend::default());
+            memory.set("T1", "synthetic entry").unwrap();
+            memory.set("T2", "synthetic entry").unwrap();
+            memory.set(INDEX_ACCOUNT, r#"["T2", 42]"#).unwrap();
+            let store = CredentialStore::with_backend(FailingBackend {
+                memory: memory.clone(),
+                fail_set: None,
+                fail_get: unreadable.then_some(INDEX_ACCOUNT),
+                fail_delete: None,
+            });
+            let known = if unreadable {
+                vec!["T1".into(), "T2".into()]
+            } else {
+                vec!["T1".into()]
+            };
+            assert!(store.clear_known(&known).is_err());
+            assert!(memory.get("T1").unwrap().is_none());
+            assert!(memory.get("T2").unwrap().is_none());
+            assert!(memory.get(INDEX_ACCOUNT).unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn deletion_failure_does_not_stop_other_deletions_and_remains_retryable() {
+        let memory = std::sync::Arc::new(MemoryBackend::default());
+        let store = CredentialStore::with_backend(FailingBackend {
+            memory: memory.clone(),
+            fail_set: None,
+            fail_get: None,
+            fail_delete: Some("T1"),
+        });
+        store.save(&fake_credentials("T1")).unwrap();
+        store.save(&fake_credentials("T2")).unwrap();
+        assert!(store.clear().is_err());
+        assert!(memory.get("T2").unwrap().is_none());
+        assert_eq!(store.list().unwrap(), ["T1"]);
+    }
+
+    #[test]
+    fn sign_out_saves_policy_despite_purge_failure_and_reports_settings_error_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let memory = std::sync::Arc::new(MemoryBackend::default());
+        let store = CredentialStore::with_backend(FailingBackend {
+            memory,
+            fail_set: None,
+            fail_get: None,
+            fail_delete: Some("T1"),
+        });
+        store.save(&fake_credentials("T1")).unwrap();
+        let error = crate::auth::sign_out(&store, &[], &path).unwrap_err();
+        assert!(matches!(error, Error::Keychain(_)));
+        assert!(
+            !crate::settings::Settings::load(&path)
+                .unwrap()
+                .desktop_import_on_start
+        );
+        std::fs::write(&path, "malformed settings").unwrap();
+        let error = crate::auth::sign_out(&store, &[], &path).unwrap_err();
+        assert!(!matches!(error, Error::Keychain(_)));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "malformed settings");
     }
 }

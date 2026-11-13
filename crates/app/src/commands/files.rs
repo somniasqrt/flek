@@ -307,7 +307,23 @@ mod tests {
         assert_eq!(capability["windows"], serde_json::json!(["main"]));
         let permissions = capability["permissions"].as_array().unwrap();
         assert!(permissions.iter().any(|p| p == "allow-document-data"));
+        assert!(permissions.iter().any(|p| p == "allow-platform"));
+        assert!(include_str!("../../build.rs").contains("\"platform\""));
         assert!(!permissions.iter().any(|p| p == "allow-pdf-data"));
+        let core: Vec<_> = permissions
+            .iter()
+            .filter_map(|p| p.as_str())
+            .filter(|p| p.starts_with("core:"))
+            .collect();
+        assert_eq!(
+            core,
+            [
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+                "core:window:allow-start-dragging",
+                "core:window:allow-internal-toggle-maximize"
+            ]
+        );
     }
 
     #[test]
