@@ -91,6 +91,41 @@ pub async fn follow(
     mut catch_up: impl AsyncFnMut() -> Result<()>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
+    let mut restart = Backoff::new(cfg.backoff_min, cfg.backoff_max);
+    loop {
+        if *shutdown.borrow() || shutdown.has_changed().is_err() {
+            return Ok(());
+        }
+        let follow_shutdown = shutdown.clone();
+        let result = tokio::select! {
+            biased;
+            _ = shutdown.changed() => return Ok(()),
+            result = follow_once(client, store, me, bus, cfg, &mut catch_up, follow_shutdown) => result,
+        };
+        match result {
+            Ok(()) => return Ok(()),
+            Err(e) if e.is_auth_error() => return Err(e),
+            Err(e) => tracing::warn!(error = %e, "sync engine failed; restarting"),
+        }
+        let delay = restart.next_delay();
+        reconnecting(bus, delay);
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            _ = shutdown.changed() => return Ok(()),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn follow_once(
+    client: &Client,
+    store: &Store,
+    me: &AuthTest,
+    bus: &Bus,
+    cfg: &FollowConfig,
+    catch_up: &mut impl AsyncFnMut() -> Result<()>,
+    mut shutdown: watch::Receiver<bool>,
+) -> Result<()> {
     super::presence::stale(store, bus).await?;
     let mut backoff = Backoff::new(cfg.backoff_min, cfg.backoff_max);
     loop {
@@ -108,10 +143,13 @@ pub async fn follow(
                     me,
                     bus,
                     cfg,
-                    &mut catch_up,
+                    catch_up,
                     &mut shutdown,
                 )
                 .await;
+                if end.as_ref().is_err_and(|e| e.is_auth_error()) {
+                    return end.map(|_| ());
+                }
                 super::presence::stale(store, bus).await?;
                 match end {
                     Ok(End::Shutdown) => {
@@ -127,9 +165,7 @@ pub async fn follow(
             Err(e) => tracing::warn!(error = %e, "cannot connect"),
         }
         let delay = backoff.next_delay();
-        let _ = bus.send(Change::Connection(ConnectionState::Reconnecting {
-            in_secs: delay.as_secs(),
-        }));
+        reconnecting(bus, delay);
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}
             _ = shutdown.changed() => {}
@@ -167,7 +203,7 @@ async fn session(
         ids.clone(),
     ));
     let mut snapshot_pending = presence_rx.is_some();
-    let mut catching_up = pin!(catch_up());
+    let mut catching_up = pin!(catch_up_with_retry(catch_up, bus, cfg));
     let mut caught_up = false;
     let mut ticker = interval(cfg.ping_every);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -190,8 +226,7 @@ async fn session(
                 match r {
                     Ok(()) => tracing::info!("caught up"),
                     Err(e) if e.is_auth_error() => return Err(e),
-                    // The stream still works; the next reconnect retries.
-                    Err(e) => tracing::warn!(error = %e, "catch-up failed"),
+                    Err(e) => return Err(e),
                 }
             }
             result = &mut snapshot, if snapshot_pending => {
@@ -267,6 +302,41 @@ async fn session(
                 }
             }
         }
+    }
+}
+
+fn reconnecting(bus: &Bus, delay: Duration) {
+    let _ = bus.send(Change::Connection(ConnectionState::Reconnecting {
+        in_secs: delay.as_secs(),
+    }));
+}
+
+/// Kept inside the session's select so events and heartbeats continue during
+/// a failed pass and its backoff. Dropping the session cancels the retry.
+async fn catch_up_with_retry(
+    catch_up: &mut impl AsyncFnMut() -> Result<()>,
+    bus: &Bus,
+    cfg: &FollowConfig,
+) -> Result<()> {
+    // A conversation may keep failing for hours; each retry is a whole pass
+    // (directory included), so it backs off far beyond the reconnect delays.
+    let mut retry = Backoff::new(cfg.backoff_max, cfg.backoff_max * 30);
+    let mut failed = false;
+    loop {
+        match catch_up().await {
+            Ok(()) => {
+                if failed {
+                    let _ = bus.send(Change::Connection(ConnectionState::Connected));
+                }
+                return Ok(());
+            }
+            Err(e) if e.is_auth_error() => return Err(e),
+            Err(e) => tracing::warn!(error = %e, "catch-up failed; retrying"),
+        }
+        failed = true;
+        let delay = retry.next_delay();
+        reconnecting(bus, delay);
+        tokio::time::sleep(delay).await;
     }
 }
 

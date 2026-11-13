@@ -8,7 +8,7 @@
 //!    are skipped without a request;
 //! 3. files into the cache;
 //! 4. deep pass: older history and stale threads, slowly, in the background;
-//! 5. on the first pass after start, at most every `refresh_every`: the
+//! 5. after start or reconnect, at most every `refresh_every`: the
 //!    refresh window (edits, reactions, deletions made while we were
 //!    offline), quietly, without progress events.
 //!
@@ -37,10 +37,12 @@ use crate::{Error, Result};
 pub struct EngineOptions {
     /// Desktop preferences, reloaded at the start of each pass.
     pub settings_path: Option<PathBuf>,
+    /// Last valid preferences, shared across reconnects and cloned options.
+    pub settings_cache: Arc<Mutex<crate::settings::Settings>>,
     pub skip_files_first_pass: bool,
-    /// Refresh window on the first pass (days, 0 = off).
+    /// Refresh window after start/reconnect (days, 0 = off).
     pub refresh_days: u32,
-    /// Re-read the refresh window no more often than this (zero = every start).
+    /// Minimum refresh interval (zero = every start; live retries use dead_after).
     pub refresh_every: std::time::Duration,
     pub full: bool,
     /// Download files: cache directory and size cap in bytes.
@@ -60,6 +62,7 @@ impl Default for EngineOptions {
     fn default() -> Self {
         Self {
             settings_path: None,
+            settings_cache: Arc::new(Mutex::new(crate::settings::Settings::safe_defaults())),
             skip_files_first_pass: false,
             refresh_days: 7,
             refresh_every: std::time::Duration::ZERO,
@@ -80,7 +83,11 @@ impl EngineOptions {
     pub fn reload_settings(&self) -> Result<Self> {
         let mut options = self.clone();
         if let Some(path) = &options.settings_path {
-            let settings = crate::settings::Settings::load(path)?;
+            let mut settings = self
+                .settings_cache
+                .lock()
+                .map_err(|_| Error::Store("settings lock poisoned".into()))?;
+            settings.reload(path);
             if let Some((cache, _)) = options.files.clone() {
                 settings.apply_sync(&mut options, cache);
             } else {
@@ -162,6 +169,9 @@ impl Engine {
             async || {
                 passes += 1;
                 let stats = self.pass(&mut limiter, passes == 1).await?;
+                if stats.failed > 0 {
+                    return Err(Error::Store("sync pass incomplete".into()));
+                }
                 if let Ok(mut f) = first.lock() {
                     f.get_or_insert(stats);
                 }
@@ -173,10 +183,19 @@ impl Engine {
         Ok(first.into_inner().ok().flatten().unwrap_or_default())
     }
 
-    /// Directory, fast pass, files, deep pass; `first` may add the refresh window.
+    /// Directory, fast pass, files, deep pass and a throttled refresh window.
     pub async fn pass(&self, limiter: &mut RateLimiter, first: bool) -> Result<PassStats> {
         let options = self.options.reload_settings()?;
         let o = &options;
+        if o.settings_path.is_some() {
+            let error = o
+                .settings_cache
+                .lock()
+                .map_err(|_| Error::Store("settings lock poisoned".into()))?
+                .load_error
+                .clone();
+            let _ = self.bus.send(Change::SettingsError { error });
+        }
         self.progress(Progress::Directory);
         sync_directory(&self.client, &self.store, &self.me).await?;
         // Custom emoji change rarely: once per start, then daily.
@@ -271,7 +290,12 @@ impl Engine {
             .await?;
         self.progress(Progress::Idle);
 
-        if first && o.refresh_days > 0 && self.refresh_due(o.refresh_every).await? {
+        let refresh_every = if !first && o.refresh_every.is_zero() {
+            o.follow_config.dead_after
+        } else {
+            o.refresh_every
+        };
+        if o.refresh_days > 0 && self.refresh_due(refresh_every).await? {
             let refresh = SyncOptions {
                 catch_up_only: true,
                 ..SyncOptions::refresh_days(o.refresh_days)
@@ -282,7 +306,7 @@ impl Engine {
             stats.messages += quiet.messages;
             stats.deleted += quiet.deleted;
             stats.failed += quiet.failed;
-            // A partial refresh is retried on the next start.
+            // A partial refresh is retried by follow without advancing its marker.
             if quiet.failed == 0 {
                 let team = self.me.team_id.clone();
                 self.store

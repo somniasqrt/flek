@@ -43,7 +43,7 @@ pub enum Status {
 pub struct AppState {
     pub maintenance: tokio::sync::Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
-    pub settings: Mutex<flek_core::settings::Settings>,
+    pub settings: Arc<Mutex<flek_core::settings::Settings>>,
     pub session: Mutex<Option<Session>>,
     engine_done: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     pub store: Store,
@@ -64,14 +64,11 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(store: Store) -> Self {
+        let settings = startup_settings(flek_core::settings::default_path());
         Self {
             maintenance: tokio::sync::Mutex::new(()),
             generation: std::sync::atomic::AtomicU64::new(0),
-            settings: Mutex::new(
-                flek_core::settings::default_path()
-                    .and_then(|p| flek_core::settings::Settings::load(&p))
-                    .unwrap_or_default(),
-            ),
+            settings: Arc::new(Mutex::new(settings)),
             session: Mutex::new(None),
             engine_done: Mutex::new(None),
             store,
@@ -156,6 +153,18 @@ impl AppState {
     }
 }
 
+fn startup_settings(path: flek_core::Result<std::path::PathBuf>) -> flek_core::settings::Settings {
+    let mut settings = flek_core::settings::Settings::safe_defaults();
+    match path {
+        Ok(path) => settings.reload(&path),
+        Err(e) => {
+            tracing::warn!(error = %e, "cannot locate settings; desktop auto-import disabled");
+            settings.load_error = Some("settings_unavailable".into());
+        }
+    }
+    settings
+}
+
 pub fn set_status(app: &AppHandle, status: Status) {
     let state = app.state::<AppState>();
     if let Ok(mut s) = state.status.lock() {
@@ -191,6 +200,16 @@ pub fn forward_changes(app: &AppHandle) {
                         *slot = Some(*c);
                     }
                     crate::tray::refresh(&app);
+                }
+                Change::SettingsError { error } => {
+                    let state = app.state::<AppState>();
+                    if let Ok(mut settings) = state.settings.lock() {
+                        settings.load_error = error.clone();
+                        if error.is_some() {
+                            settings.desktop_import_on_start = false;
+                        }
+                        let _ = app.emit("flek://settings", settings.clone());
+                    };
                 }
                 _ => {}
             }
@@ -342,6 +361,7 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
             full,
             skip_files_first_pass: skip_files,
             settings_path: flek_core::settings::default_path().ok(),
+            settings_cache: Arc::clone(&state.settings),
             follow_config: flek_core::sync::follow::FollowConfig {
                 presence: Some(state.presence.subscribe()),
                 ..Default::default()
@@ -426,5 +446,26 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
         });
     if let Err(e) = spawned {
         tracing::error!("cannot start the sync thread: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn broken_startup_settings_disable_import_and_preserve_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, b"{broken").unwrap();
+        let settings = startup_settings(Ok(path.clone()));
+        assert!(!settings.desktop_import_on_start);
+        assert_eq!(settings.load_error.as_deref(), Some("settings_unavailable"));
+        assert!(settings.save(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
+        assert!(
+            !startup_settings(Err(flek_core::Error::Store("no path".into())))
+                .desktop_import_on_start
+        );
     }
 }

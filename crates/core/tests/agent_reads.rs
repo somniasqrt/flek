@@ -463,7 +463,10 @@ async fn fresh_unread_catches_changed_remote_activity_even_without_local_unreads
     .without_pacing();
     for (endpoint, payload) in [
         ("users.list", json!({"members":[]})),
-        ("users.conversations", json!({"channels":[]})),
+        (
+            "users.conversations",
+            json!({"channels":[{"id":"CFAKE","name":"general"},{"id":"COTHER","name":"random"},{"id":"CUNKNOWN","name":"unknown"},{"id":"DFAKE","is_im":true,"user":"UONE"}]}),
+        ),
         (
             "client.counts",
             json!({"channels":[{"id":"CFAKE","last_read":ts(99),"latest":ts(100)},{"id":"COTHER","last_read":ts(99),"latest":ts(99)},{"id":"CUNKNOWN","last_read":ts(99),"latest":ts(99)}],"ims":[{"id":"DFAKE","last_read":ts(99),"latest":ts(99)}]}),
@@ -704,7 +707,10 @@ async fn unread_refresh_with_error(
     .without_pacing();
     for (endpoint, payload) in [
         ("users.list", json!({"members": []})),
-        ("users.conversations", json!({"channels": []})),
+        (
+            "users.conversations",
+            json!({"channels":[{"id":"CFAKE","name":"general"},{"id":"COTHER","name":"random"},{"id":"CUNKNOWN","name":"unknown"},{"id":"DFAKE","is_im":true,"user":"UONE"}]}),
+        ),
         (
             "client.counts",
             json!({
@@ -876,6 +882,19 @@ async fn channel_details_database_failure_rolls_back_messages_and_entire_snapsho
             [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )?;
         assert_eq!((marker, files, pinned_at), (123, 0, 123));
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn unread_excludes_left_conversations_without_panicking() {
+    let db = seed();
+    db.with_conn(|c| {
+        c.execute_batch("UPDATE conversations SET is_member=0 WHERE id='CFAKE';")?;
+        let (known, unknown) = reads::unread(c, "TFAKE", 3)?;
+        assert!(known.iter().all(|r| r.conversation.id != "CFAKE"));
+        assert!(unknown.iter().all(|r| r.id != "CFAKE"));
         Ok(())
     })
     .unwrap();

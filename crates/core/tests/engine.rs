@@ -1,5 +1,6 @@
 //! Sync engine: fast pass first, priority, deep backfill after.
 
+mod common;
 mod support;
 use support::{field, has_field};
 
@@ -345,4 +346,167 @@ async fn new_messages_or_unknown_latest_are_fetched() {
     let before = history_requests(&server).await;
     start(&engine(&server, &store, &bus, 3600)).await;
     assert_eq!(history_requests(&server).await, before + 1);
+}
+
+#[tokio::test]
+async fn reconnect_pass_refreshes_only_when_due() {
+    let latest = ago(3600);
+    let server = quiet_slack(ok(json!({"channels":[{"id":"C1","latest":latest}]}))).await;
+    let store = Store::open_in_memory().unwrap();
+    let e = engine(&server, &store, &bus(), 3600);
+    start(&e).await;
+    let initial = history_requests(&server).await;
+    let mut limiter = flek_core::sync::backfill::RateLimiter::new(std::time::Duration::ZERO);
+    e.pass(&mut limiter, false).await.unwrap();
+    assert_eq!(
+        history_requests(&server).await,
+        initial,
+        "quick reconnect must be free"
+    );
+    store
+        .with_conn(|c| {
+            c.execute("UPDATE refresh_runs SET refreshed_at=0", [])?;
+            Ok(())
+        })
+        .unwrap();
+    e.pass(&mut limiter, false).await.unwrap();
+    assert_eq!(
+        history_requests(&server).await,
+        initial + 1,
+        "reconnect after refresh interval must revisit edits"
+    );
+}
+
+#[tokio::test]
+async fn broken_settings_keep_sync_running_and_last_good_options() {
+    let server = quiet_slack(ok(json!({"channels":[]}))).await;
+    let store = Store::open_in_memory().unwrap();
+    let events = bus();
+    let mut changes = events.subscribe();
+    let mut e = engine(&server, &store, &events, 3600);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let good = flek_core::settings::Settings {
+        refresh_days: 0,
+        max_file_bytes: Some(0),
+        ..Default::default()
+    };
+    good.save(&path).unwrap();
+    e.options.settings_path = Some(path.clone());
+    e.options.files = Some((dir.path().join("cache"), None));
+    let resolved = e.options.reload_settings().unwrap();
+    assert_eq!(resolved.refresh_days, 0);
+    std::fs::write(&path, b"{broken").unwrap();
+    let resolved = e.options.reload_settings().unwrap();
+    assert_eq!(resolved.refresh_days, 0);
+    assert_eq!(resolved.files.unwrap().1, Some(0));
+    start(&e).await;
+    assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
+    assert!(std::iter::from_fn(|| changes.try_recv().ok())
+        .any(|c| matches!(c, Change::SettingsError { error: Some(_) })));
+    good.save(&path)
+        .expect_err("broken file must be preserved until repaired");
+    std::fs::remove_file(&path).unwrap();
+    good.save(&path).unwrap();
+    start(&e).await;
+    assert!(std::iter::from_fn(|| changes.try_recv().ok())
+        .any(|c| matches!(c, Change::SettingsError { error: None })));
+}
+
+#[tokio::test]
+async fn live_pass_with_zero_refresh_interval_does_not_refresh_on_quick_retry() {
+    let server = quiet_slack(ok(json!({"channels":[{"id":"C1","latest":ago(3600)}]}))).await;
+    let store = Store::open_in_memory().unwrap();
+    let e = engine(&server, &store, &bus(), 0);
+    start(&e).await;
+    let initial = history_requests(&server).await;
+    let mut limiter = flek_core::sync::backfill::RateLimiter::new(std::time::Duration::ZERO);
+    e.pass(&mut limiter, false).await.unwrap();
+    assert_eq!(history_requests(&server).await, initial);
+}
+
+#[tokio::test]
+async fn engine_retries_partial_pass_without_reconnecting_socket() {
+    use flek_core::sync::live::ConnectionState;
+    use futures_util::{SinkExt, StreamExt};
+    use std::time::Duration;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}/ws", listener.local_addr().unwrap());
+    let connections = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = connections.clone();
+    let socket = tokio::spawn(async move {
+        loop {
+            let (tcp, _) = listener.accept().await.unwrap();
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::spawn(async move {
+                let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
+                ws.send(tokio_tungstenite::tungstenite::Message::text(
+                    json!({"type":"hello"}).to_string(),
+                ))
+                .await
+                .unwrap();
+                while ws.next().await.is_some() {}
+            });
+        }
+    });
+    let server = MockServer::start().await;
+    for (method, payload) in [
+        ("users.list", json!({"members":[]})),
+        (
+            "users.conversations",
+            json!({"channels":[{"id":"C1","name":"one"}]}),
+        ),
+        ("client.counts", json!({"channels":[]})),
+    ] {
+        Mock::given(path(format!("/{method}")))
+            .respond_with(ok(payload))
+            .mount(&server)
+            .await;
+    }
+    Mock::given(path("/conversations.history"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"fatal_error"})),
+        )
+        .with_priority(1)
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/conversations.history"))
+        .respond_with(ok(json!({"messages":[],"has_more":false})))
+        .with_priority(2)
+        .mount(&server)
+        .await;
+    let store = Store::open_in_memory().unwrap();
+    let events = bus();
+    let mut changes = events.subscribe();
+    let mut e = engine(&server, &store, &events, 3600);
+    e.client = common::websocket_client(&server, &url)
+        .await
+        .without_pacing();
+    e.options.follow = true;
+    e.options.refresh_days = 0;
+    e.options.follow_config.backoff_min = Duration::from_millis(10);
+    e.options.follow_config.backoff_max = Duration::from_millis(40);
+    let (stop, rx) = tokio::sync::watch::channel(false);
+    let watch = async {
+        let mut failed = false;
+        loop {
+            match changes.recv().await.unwrap() {
+                Change::Connection(ConnectionState::Reconnecting { .. }) => failed = true,
+                Change::Connection(ConnectionState::Connected) if failed => {
+                    stop.send(true).unwrap();
+                    break;
+                }
+                _ => {}
+            }
+        }
+    };
+    let (result, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::join!(e.run(rx), watch)
+    })
+    .await
+    .unwrap();
+    result.unwrap();
+    assert_eq!(connections.load(std::sync::atomic::Ordering::SeqCst), 1);
+    socket.abort();
 }

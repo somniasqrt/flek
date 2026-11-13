@@ -6,6 +6,14 @@ use serde_json::Value;
 use super::Client;
 use crate::Result;
 
+pub(super) fn null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 const PAGE_SIZE: &str = "200";
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -17,7 +25,7 @@ pub struct Edited {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Reaction {
     pub name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub users: Vec<String>,
     #[serde(default)]
     pub count: i64,
@@ -34,13 +42,13 @@ pub struct Message {
     pub bot_id: Option<String>,
     #[serde(default)]
     pub subtype: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub text: String,
     #[serde(default)]
     pub blocks: Option<Value>,
     #[serde(default)]
     pub attachments: Option<Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub files: Vec<Value>,
     #[serde(default)]
     pub reply_count: i64,
@@ -49,7 +57,7 @@ pub struct Message {
     pub latest_reply: Option<String>,
     #[serde(default)]
     pub edited: Option<Edited>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub reactions: Vec<Reaction>,
     #[serde(skip)]
     pub raw: Value,
@@ -162,6 +170,8 @@ fn parse_page(raw: Value) -> Result<HistoryPage> {
     }
 
     let raw: Raw = serde_json::from_value(raw)?;
+    // Until deletion reconciliation understands incomplete pages, a decode
+    // failure must abort the page rather than look like a missing message.
     let messages = raw
         .messages
         .into_iter()
@@ -185,6 +195,35 @@ fn parse_page(raw: Value) -> Result<HistoryPage> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn null_stubs_preserve_content_and_malformed_pages_fail_closed() {
+        let page = parse_page(json!({"messages": [
+            {"ts": "1.0", "text": null, "files": null, "reactions": null},
+            {"ts": "2.0", "text": "valid", "files": null, "reactions": null}
+        ], "has_more": true, "response_metadata": {"next_cursor": "next"}}))
+        .unwrap();
+        assert_eq!(page.messages.len(), 2);
+        assert!(page.has_more);
+        assert_eq!(page.next_cursor.as_deref(), Some("next"));
+        assert!(page.messages[0].is_hidden_by_limit());
+        assert!(!page.messages[1].is_hidden_by_limit());
+        assert!(parse_page(json!({"messages":[{"ts":"3.0","text":42}]})).is_err());
+        let store = crate::store::Store::open_in_memory().unwrap();
+        store.with_conn(|c| {
+            c.execute_batch("INSERT INTO teams(id,name) VALUES('T1','Fake');
+                INSERT INTO conversations(id,team_id,kind) VALUES('C1','T1','public_channel');")?;
+            let full: Message = serde_json::from_value(json!({"ts":"1.0", "text":"saved", "reactions":[{"name":"wave","users":["U1"]}],"files":[{"id":"F1","name":"saved.txt"}]}))?;
+            crate::store::messages::upsert_messages(c,"C1", &[crate::sync::backfill::to_row(&full)])?;
+            crate::store::messages::upsert_messages(c,"C1", &[crate::sync::backfill::to_row(&page.messages[0])])?;
+            assert_eq!(crate::store::messages::recent(c,"C1",10)?[0].text,"saved");
+            let count: i64 = c.query_row("SELECT COUNT(*) FROM reactions",[],|r| r.get(0))?;
+            assert_eq!(count,1);
+            let files: i64 = c.query_row("SELECT COUNT(*) FROM message_files",[],|r| r.get(0))?;
+            assert_eq!(files,1);
+            Ok(())
+        }).unwrap();
+    }
 
     fn hidden(v: Value) -> bool {
         serde_json::from_value::<Message>(v)

@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::Client;
-use crate::Result;
+use crate::{Error, Result};
 
 const PAGE_SIZE: &str = "200";
 
@@ -43,6 +43,16 @@ impl Client {
                 p.push(("cursor", &cursor));
             }
             let mut page: Value = self.call(method, &p).await?;
+            // Membership reconciliation requires a complete, well-formed list;
+            // a malformed success envelope must never look like an empty list.
+            if method == "users.conversations"
+                && (!page.get(key).is_some_and(Value::is_array)
+                    || page.get("response_metadata").is_some_and(|meta| {
+                        !meta.is_object() || meta.get("next_cursor").is_some_and(|c| !c.is_string())
+                    }))
+            {
+                return Err(Error::Store("invalid users.conversations page".into()));
+            }
             if let Some(Value::Array(batch)) = page.get_mut(key).map(Value::take) {
                 items.extend(batch);
             }

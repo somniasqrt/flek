@@ -11,15 +11,25 @@ pub async fn upgrade(app: &AppHandle) -> Result<(), String> {
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
         // Read current preferences after cleanup; a concurrent preferences edit
         // must not be overwritten by the pre-cleanup snapshot.
-        let mut updated = settings.clone();
-        updated.webview_cleanup_version = CLEANUP_VERSION;
-        updated
-            .save(&flek_core::settings::default_path().map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-        *settings = updated;
-        Ok(())
+        mark_cleanup(
+            &mut settings,
+            &flek_core::settings::default_path().map_err(|e| e.to_string())?,
+        )
     })
     .await
+}
+
+fn mark_cleanup(
+    settings: &mut flek_core::settings::Settings,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    let mut updated = settings.clone();
+    updated.webview_cleanup_version = CLEANUP_VERSION;
+    if settings.load_error.is_none() {
+        updated.save(path).map_err(|e| e.to_string())?;
+    }
+    *settings = updated;
+    Ok(())
 }
 
 async fn run_upgrade(
@@ -158,6 +168,20 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[test]
+    fn broken_preferences_do_not_block_completed_cleanup_or_get_overwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, b"{broken").unwrap();
+        let mut settings = flek_core::settings::Settings::safe_defaults();
+        settings.reload(&path);
+        mark_cleanup(&mut settings, &path).unwrap();
+        assert_eq!(settings.webview_cleanup_version, CLEANUP_VERSION);
+        assert!(settings.load_error.is_some());
+        assert!(!settings.desktop_import_on_start);
+        assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
     }
 
     #[test]

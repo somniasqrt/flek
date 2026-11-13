@@ -47,6 +47,10 @@ pub enum Change {
     Directory,
     Presence,
     Connection(ConnectionState),
+    /// Preferences failed to load (or have recovered); no file content.
+    SettingsError {
+        error: Option<String>,
+    },
     /// Background sync progress, for a "Syncing messages" bar.
     Progress(Progress),
 }

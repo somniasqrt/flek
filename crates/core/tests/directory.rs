@@ -251,3 +251,143 @@ async fn profiles_come_from_the_stored_directory() {
         .unwrap()
         .is_none());
 }
+
+#[tokio::test]
+async fn null_profiles_and_bad_users_do_not_abort_directory() {
+    let server = MockServer::start().await;
+    Mock::given(path("/users.list")).respond_with(ResponseTemplate::new(200).set_body_json(json!({
+        "ok":true,"members":[{"id":"U1","name":"one","profile":null},{"id":false},{"id":"U2","profile":{"display_name":null,"real_name":null}}]
+    }))).mount(&server).await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap()
+    .without_pacing();
+    let users = client.users_list().await.unwrap();
+    assert_eq!(users.len(), 2);
+    assert_eq!(users[0].label(), "one");
+}
+
+#[tokio::test]
+async fn only_complete_membership_listing_clears_missing_conversations() {
+    let server = MockServer::start().await;
+    mock(&server).await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap()
+    .without_pacing();
+    let store = Store::open_in_memory().unwrap();
+    sync_directory(&client, &store, &me()).await.unwrap();
+    store.with_conn(|c| {
+        c.execute_batch("UPDATE conversations SET unread_count=7;
+            UPDATE conversations SET closed_at='9.0', starred=1 WHERE id='D0BOB';
+            INSERT INTO conversations(id,team_id,kind,is_member,unread_count)
+                SELECT 'C0LEFT',team_id,'public_channel',1,7 FROM conversations WHERE id='C0GEN';
+            INSERT INTO teams(id,name) VALUES('TOTHER','Other');
+            INSERT INTO conversations(id,team_id,kind,is_member,unread_count) VALUES('COTHER','TOTHER','public_channel',1,9);")?;
+        Ok(())
+    }).unwrap();
+    // A first page succeeds, but its second page fails: retain every membership.
+    let first = Mock::given(path("/users.conversations")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channels":[{"id":"C0GEN"}],"response_metadata":{"next_cursor":"broken"}}))).with_priority(2).mount_as_scoped(&server).await;
+    let second = Mock::given(path("/users.conversations"))
+        .and(field("cursor", "broken"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"fatal_error"})),
+        )
+        .with_priority(1)
+        .mount_as_scoped(&server)
+        .await;
+    assert!(sync_directory(&client, &store, &me()).await.is_err());
+    store
+        .with_conn(|c| {
+            assert_eq!(
+                c.query_row(
+                    "SELECT is_member FROM conversations WHERE id='G0SEC'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )?,
+                1
+            );
+            Ok(())
+        })
+        .unwrap();
+    drop(second);
+    drop(first);
+    // Complete two-page result keeps an archived channel and a locally closed DM.
+    let _first = Mock::given(path("/users.conversations")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channels":[{"id":"C0GEN"}],"response_metadata":{"next_cursor":"done"}}))).with_priority(2).mount_as_scoped(&server).await;
+    let _second = Mock::given(path("/users.conversations")).and(field("cursor","done")).respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channels":[{"id":"G0SEC","is_private":true,"is_archived":true},{"id":"D0BOB","is_im":true,"user":"U0BOB"}]}))).with_priority(1).mount_as_scoped(&server).await;
+    sync_directory(&client, &store, &me()).await.unwrap();
+    store
+        .with_conn(|c| {
+            // Only channels lose membership; unlisted DMs and group DMs stay.
+            for (id, expected) in [
+                ("C0LEFT", (0, 0)),
+                ("G0MP", (1, 7)),
+                ("D0GONE", (1, 7)),
+                ("D0SYS", (1, 7)),
+            ] {
+                let state: (i64, i64) = c.query_row(
+                    "SELECT is_member,unread_count FROM conversations WHERE id=?1",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )?;
+                assert_eq!(state, expected, "{id}");
+            }
+            assert_eq!(
+                c.query_row(
+                    "SELECT closed_at FROM conversations WHERE id='D0BOB'",
+                    [],
+                    |r| r.get::<_, String>(0)
+                )?,
+                "9.0"
+            );
+            assert_eq!(
+                c.query_row(
+                    "SELECT is_member FROM conversations WHERE id='COTHER'",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )?,
+                1
+            );
+            assert!(directory::list_conversations(c, "T0FAKE")?
+                .iter()
+                .any(|r| r.id == "G0SEC" && r.is_archived));
+            assert!(!directory::list_conversations(c, "T0FAKE")?
+                .iter()
+                .any(|r| r.id == "D0BOB"));
+            Ok(())
+        })
+        .unwrap();
+}
+
+#[tokio::test]
+async fn malformed_listing_never_clears_membership() {
+    let server = MockServer::start().await;
+    mock(&server).await;
+    let client = Client::with_base_url(
+        Secret::new("xoxc-fake"),
+        Secret::new("xoxd-fake"),
+        &server.uri(),
+    )
+    .unwrap()
+    .without_pacing();
+    let store = Store::open_in_memory().unwrap();
+    sync_directory(&client, &store, &me()).await.unwrap();
+    let _bad = Mock::given(path("/users.conversations"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok":true,"channels":null})))
+        .with_priority(1)
+        .mount_as_scoped(&server)
+        .await;
+    assert!(sync_directory(&client, &store, &me()).await.is_err());
+    store
+        .with_conn(|c| {
+            assert_eq!(directory::list_conversations(c, "T0FAKE")?.len(), 6);
+            Ok(())
+        })
+        .unwrap();
+}

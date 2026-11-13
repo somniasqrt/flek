@@ -1,6 +1,7 @@
 // Preferences are persisted by core; per-view layout and drafts remain local.
 export type Settings = {
   version: number;
+  load_error?: string | null;
   language: "system" | "en" | "uk";
   theme: "system" | "light" | "dark";
   text_size: "small" | "default" | "large";

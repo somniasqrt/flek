@@ -234,4 +234,162 @@ mod follow {
         let rows = store.with_conn(|c| messages::recent(c, "C1", 10)).unwrap();
         assert_eq!(rows[0].text, "live!");
     }
+    #[tokio::test]
+    async fn catch_up_retries_without_dropping_a_healthy_socket() {
+        let (url, connections) = scripted_server(vec![]).await;
+        let api = MockServer::start().await;
+        let client = crate::common::websocket_client(&api, &url).await;
+        let store = Store::open_in_memory().unwrap();
+        let bus = bus();
+        let (stop, rx) = tokio::sync::watch::channel(false);
+        let attempts = AtomicUsize::new(0);
+        let cfg = FollowConfig {
+            backoff_min: Duration::from_millis(10),
+            backoff_max: Duration::from_millis(40),
+            ..Default::default()
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            follow(
+                &client,
+                &store,
+                &me(),
+                &bus,
+                &cfg,
+                async || {
+                    if attempts.fetch_add(1, Ordering::SeqCst) < 2 {
+                        return Err(flek_core::Error::Store("temporary failure".into()));
+                    }
+                    stop.send(true).unwrap();
+                    Ok(())
+                },
+                rx,
+            ),
+        )
+        .await
+        .expect("catch-up was never retried");
+        result.unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 3);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn stale_presence_failure_restarts_follow_and_exposes_reconnecting() {
+        let (url, _) = scripted_server(vec![]).await;
+        let api = MockServer::start().await;
+        let client = crate::common::websocket_client(&api, &url).await;
+        let store = Store::open_in_memory().unwrap();
+        store.with_conn(|c| {c.execute_batch("INSERT INTO presence(user_id) VALUES('U1'); CREATE TRIGGER fail_stale BEFORE UPDATE ON presence BEGIN SELECT RAISE(ABORT,'temporary failure'); END;")?;Ok(())}).unwrap();
+        let bus = bus();
+        let mut events = bus.subscribe();
+        let (stop, rx) = tokio::sync::watch::channel(false);
+        let cfg = FollowConfig {
+            backoff_min: Duration::from_millis(10),
+            backoff_max: Duration::from_millis(40),
+            ..Default::default()
+        };
+        let identity = me();
+        let runner = follow(
+            &client,
+            &store,
+            &identity,
+            &bus,
+            &cfg,
+            async || {
+                stop.send(true).unwrap();
+                Ok(())
+            },
+            rx,
+        );
+        let repair = async {
+            loop {
+                if matches!(
+                    events.recv().await.unwrap(),
+                    Change::Connection(ConnectionState::Reconnecting { .. })
+                ) {
+                    break;
+                }
+            }
+            store
+                .call(|c| {
+                    c.execute_batch("DROP TRIGGER fail_stale")?;
+                    Ok(())
+                })
+                .await
+                .unwrap();
+        };
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(runner, repair)
+        })
+        .await
+        .expect("engine never recovered");
+        result.unwrap();
+    }
+    #[tokio::test]
+    async fn catch_up_auth_failure_is_not_retried_or_masked_by_presence_failure() {
+        let (url, connections) = scripted_server(vec![]).await;
+        let api = MockServer::start().await;
+        let client = crate::common::websocket_client(&api, &url).await;
+        let store = Store::open_in_memory().unwrap();
+        let attempts = AtomicUsize::new(0);
+        let (_stop, rx) = tokio::sync::watch::channel(false);
+        let result = follow(&client,&store,&me(),&bus(),&FollowConfig::default(),async || {
+            attempts.fetch_add(1,Ordering::SeqCst);
+            store.with_conn(|c| {
+                c.execute_batch("INSERT INTO presence(user_id) VALUES('U1'); CREATE TRIGGER fail_stale BEFORE UPDATE ON presence BEGIN SELECT RAISE(ABORT,'temporary failure'); END;")?;
+                Ok(())
+            })?;
+            Err(flek_core::Error::Slack {code:"invalid_auth".into(),needed:None})
+        },rx).await;
+        assert!(result.unwrap_err().is_auth_error());
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn shutdown_cancels_engine_restart_backoff() {
+        let api = MockServer::start().await;
+        let client = flek_core::api::Client::with_base_url(
+            flek_core::Secret::new("xoxc-fake"),
+            flek_core::Secret::new("xoxd-fake"),
+            &api.uri(),
+        )
+        .unwrap();
+        let store = Store::open_in_memory().unwrap();
+        store.with_conn(|c| {c.execute_batch("INSERT INTO presence(user_id) VALUES('U1'); CREATE TRIGGER fail_stale BEFORE UPDATE ON presence BEGIN SELECT RAISE(ABORT,'temporary failure'); END;")?; Ok(())}).unwrap();
+        let events = bus();
+        let mut changes = events.subscribe();
+        let (stop, rx) = tokio::sync::watch::channel(false);
+        let cfg = FollowConfig {
+            backoff_min: Duration::from_secs(60),
+            ..Default::default()
+        };
+        let identity = me();
+        let runner = follow(
+            &client,
+            &store,
+            &identity,
+            &events,
+            &cfg,
+            async || panic!("must not connect"),
+            rx,
+        );
+        let cancel = async {
+            loop {
+                if matches!(
+                    changes.recv().await.unwrap(),
+                    Change::Connection(ConnectionState::Reconnecting { .. })
+                ) {
+                    stop.send(true).unwrap();
+                    break;
+                }
+            }
+        };
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(runner, cancel)
+        })
+        .await
+        .unwrap();
+        result.unwrap();
+    }
 }

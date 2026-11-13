@@ -12,10 +12,21 @@ pub fn upsert_conversations(
     self_user: &str,
     convs: &[Conversation],
 ) -> Result<()> {
-    let users = user_labels(conn)?;
     let tx = conn.transaction()?;
+    upsert_rows(&tx, team_id, self_user, convs)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn upsert_rows(
+    conn: &Connection,
+    team_id: &str,
+    self_user: &str,
+    convs: &[Conversation],
+) -> Result<()> {
+    let users = user_labels(conn)?;
     {
-        let mut upsert = tx.prepare(
+        let mut upsert = conn.prepare(
             "
                 INSERT INTO conversations(id, team_id, kind, name, label, dm_user_id, topic, purpose,
                         is_archived, is_member, created, raw_json)
@@ -42,6 +53,45 @@ pub fn upsert_conversations(
                 c.created,
                 c.raw.to_string()
             ])?;
+        }
+    }
+    Ok(())
+}
+
+/// Reconcile only a complete users.conversations result. The outer transaction
+/// also rolls back upserts if membership reconciliation fails. Only channels
+/// lose membership: whether Slack lists every DM here is unverified, and a DM
+/// dropped by mistake would leave the sidebar.
+pub fn replace_memberships(
+    conn: &mut Connection,
+    team_id: &str,
+    self_user: &str,
+    convs: &[Conversation],
+) -> Result<()> {
+    let tx = conn.transaction()?;
+    upsert_rows(&tx, team_id, self_user, convs)?;
+    let ids: std::collections::HashSet<_> = convs.iter().map(|c| c.id.as_str()).collect();
+    let stored: Vec<String> = {
+        let mut stmt = tx.prepare(
+            "
+                SELECT id
+                FROM conversations
+                WHERE team_id = ?1
+                AND is_member = 1
+                AND kind IN ('public_channel', 'private_channel')
+            ",
+        )?;
+        let rows = stmt
+            .query_map([team_id], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        rows
+    };
+    for id in stored {
+        if !ids.contains(id.as_str()) {
+            tx.execute(
+                "UPDATE conversations SET is_member = 0, unread_count = 0 WHERE id = ?1",
+                [id],
+            )?;
         }
     }
     tx.commit()?;

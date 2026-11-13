@@ -54,7 +54,7 @@ pub async fn sync_directory(
     store
         .call(move |c| {
             directory::upsert_users(c, &team_id, &users)?;
-            directory::upsert_conversations(c, &team_id, &self_user, &convs)
+            directory::replace_memberships(c, &team_id, &self_user, &convs)
         })
         .await?;
     // Undocumented; unread counts just stay unknown if it fails.

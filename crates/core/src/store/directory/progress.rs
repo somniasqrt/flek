@@ -13,6 +13,7 @@ pub fn set_read_markers(conn: &mut Connection, markers: &[(String, Option<String
                 UPDATE conversations
                 SET last_read = ?2
                 WHERE id = ?1
+                AND is_member = 1
             ",
         )?;
         for (id, last_read) in markers {

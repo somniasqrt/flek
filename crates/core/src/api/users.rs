@@ -3,14 +3,14 @@
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::Client;
+use super::{history::null_default, Client};
 use crate::Result;
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Profile {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub display_name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub real_name: String,
 }
 
@@ -19,11 +19,11 @@ pub struct User {
     pub id: String,
     #[serde(default)]
     pub team_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub name: String,
     #[serde(default)]
     pub real_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub profile: Profile,
     #[serde(default)]
     pub is_bot: bool,
@@ -50,14 +50,21 @@ impl User {
 impl Client {
     /// Every user in the workspace, including deleted ones and bots.
     pub async fn users_list(&self) -> Result<Vec<User>> {
-        self.paginate("users.list", &[], "members")
-            .await?
-            .into_iter()
-            .map(|raw| {
-                let mut user: User = serde_json::from_value(raw.clone())?;
-                user.raw = raw;
-                Ok(user)
-            })
-            .collect()
+        let raw = self.paginate("users.list", &[], "members").await?;
+        let mut users = Vec::new();
+        let mut skipped = 0usize;
+        for raw in raw {
+            match serde_json::from_value::<User>(raw.clone()) {
+                Ok(mut user) => {
+                    user.raw = raw;
+                    users.push(user);
+                }
+                Err(_) => skipped += 1,
+            }
+        }
+        if skipped > 0 {
+            tracing::warn!(skipped, "skipped unparseable users.list items");
+        }
+        Ok(users)
     }
 }

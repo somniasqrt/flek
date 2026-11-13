@@ -41,6 +41,7 @@ pub fn unread(
                 JOIN teams t ON t.id = c.team_id
                 WHERE messages_fts MATCH ?2
                 AND c.team_id = ?1
+                AND c.is_member = 1
                 AND c.unread_count > 0
                 AND m.deleted = 0
                 AND m.ts > c.last_read
@@ -66,6 +67,7 @@ pub fn unread(
             JOIN teams t ON t.id = c.team_id
             LEFT JOIN mention_counts mc ON mc.conversation_id = c.id
             WHERE c.team_id = ?1
+            AND c.is_member = 1
             AND c.unread_count > 0
             ORDER BY CASE
             WHEN c.kind IN ('im', 'mpim') THEN 0
@@ -104,6 +106,7 @@ pub fn unread(
                     ORDER BY m2.ts
                     LIMIT ?2)
                 WHERE c.team_id = ?1
+                AND c.is_member = 1
                 AND c.unread_count > 0
                 ORDER BY c.id, m.ts
             ",
@@ -123,17 +126,19 @@ pub fn unread(
     let by_id: std::collections::BTreeMap<_, _> = all.iter().map(|c| (c.id.as_str(), c)).collect();
     let known = rows
         .into_iter()
-        .map(|(id, mentions, first_unread_ts)| Unread {
-            conversation: by_id[id.as_str()].clone(),
-            mentions,
-            first_unread_ts,
-            messages: attached.remove(&id).unwrap_or_default(),
+        .filter_map(|(id, mentions, first_unread_ts)| {
+            Some(Unread {
+                conversation: (*by_id.get(id.as_str())?).clone(),
+                mentions,
+                first_unread_ts,
+                messages: attached.remove(&id).unwrap_or_default(),
+            })
         })
         .collect();
     Ok((
         known,
         all.into_iter()
-            .filter(|x| x.unread_count.is_none())
+            .filter(|x| x.is_member && x.unread_count.is_none())
             .collect(),
     ))
 }

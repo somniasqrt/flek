@@ -79,7 +79,7 @@ pub async fn dismiss(client: &Client, store: &Store, bus: &Bus, id: &str) -> Res
                 c.execute(
                     "
                         UPDATE conversations
-                        SET is_member = 0
+                        SET is_member = 0, unread_count = 0
                         WHERE id = ?1
                     ",
                     [id],

@@ -45,6 +45,9 @@ pub enum DmSort {
 #[serde(default)]
 pub struct Settings {
     pub version: u32,
+    /// Runtime diagnostic for IPC; never accepted from or persisted to disk.
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub load_error: Option<String>,
     /// App-owned migration marker; never supplied by page input.
     pub webview_cleanup_version: u32,
     pub language: Language,
@@ -75,6 +78,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             version: 1,
+            load_error: None,
             webview_cleanup_version: 0,
             language: Language::System,
             theme: Theme::System,
@@ -97,6 +101,29 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Used when preferences cannot be read; never silently import a session.
+    pub fn safe_defaults() -> Self {
+        Self {
+            desktop_import_on_start: false,
+            ..Self::default()
+        }
+    }
+
+    /// Retains the last good sync preferences and reports an error once per
+    /// failure episode. A successful reload clears the diagnostic.
+    pub fn reload(&mut self, path: &Path) {
+        match Self::load(path) {
+            Ok(settings) => *self = settings,
+            Err(e) => {
+                if self.load_error.is_none() {
+                    tracing::warn!(error = %e, "cannot read settings; retaining safe preferences");
+                }
+                self.desktop_import_on_start = false;
+                self.load_error = Some("settings_unavailable".into());
+            }
+        }
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.version != 1
             || self.refresh_days > 30
@@ -136,13 +163,20 @@ impl Settings {
     /// if a write fails. No credentials belong in this file.
     pub fn save(&self, path: &Path) -> Result<()> {
         self.validate()?;
+        // Refuse to replace unreadable/invalid preferences, including writes
+        // from startup migrations and stale in-memory UI snapshots.
+        if path.try_exists()? {
+            Self::load(path)?;
+        }
         let parent = path
             .parent()
             .ok_or_else(|| Error::Store("invalid settings path".into()))?;
         crate::private_fs::dir(parent)?;
         let mut temp = tempfile::NamedTempFile::new_in(parent)?;
         crate::private_fs::mode(temp.path(), 0o600)?;
-        temp.write_all(&serde_json::to_vec_pretty(self)?)?;
+        let mut persisted = self.clone();
+        persisted.load_error = None;
+        temp.write_all(&serde_json::to_vec_pretty(&persisted)?)?;
         temp.as_file().sync_all()?;
         temp.persist(path).map_err(|e| Error::Io(e.error))?;
         std::fs::File::open(parent)?.sync_all()?;
@@ -164,6 +198,102 @@ pub fn default_path() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_warning_is_once_per_failure_episode() {
+        #[derive(Clone)]
+        struct Output(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Output {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let output = Output(std::sync::Arc::default());
+        let writer = output.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut settings = Settings::safe_defaults();
+        std::fs::write(&path, b"{broken").unwrap();
+        settings.reload(&path);
+        settings.reload(&path);
+        let warnings = || {
+            String::from_utf8(output.0.lock().unwrap().clone())
+                .unwrap()
+                .matches("cannot read settings;")
+                .count()
+        };
+        assert_eq!(warnings(), 1);
+        std::fs::remove_file(&path).unwrap();
+        Settings::default().save(&path).unwrap();
+        settings.reload(&path);
+        std::fs::write(&path, b"broken again").unwrap();
+        settings.reload(&path);
+        assert_eq!(warnings(), 2);
+    }
+
+    #[test]
+    fn fallback_disables_import_retains_preferences_and_recovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut cached = Settings::safe_defaults();
+        for bytes in [
+            b"{broken".as_slice(),
+            br#"{"version":9}"#,
+            br#"{"max_file_bytes":-1}"#,
+        ] {
+            std::fs::write(&path, bytes).unwrap();
+            cached.reload(&path);
+            assert!(!cached.desktop_import_on_start);
+            assert!(cached.load_error.is_some());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+        std::fs::remove_file(&path).unwrap();
+        let good = Settings {
+            refresh_days: 3,
+            theme: Theme::Dark,
+            ..Default::default()
+        };
+        good.save(&path).unwrap();
+        cached.reload(&path);
+        assert_eq!(cached, good);
+        std::fs::write(&path, b"invalid").unwrap();
+        cached.reload(&path);
+        assert_eq!(cached.refresh_days, 3);
+        assert_eq!(cached.theme, Theme::Dark);
+        assert!(!cached.desktop_import_on_start);
+        // A read error, distinct from a JSON/validation error.
+        let parent = dir.path().join("not-a-directory");
+        std::fs::write(&parent, b"file").unwrap();
+        cached.reload(&parent.join("settings.json"));
+        assert!(cached.load_error.is_some());
+        assert_eq!(cached.refresh_days, 3);
+    }
+
+    #[test]
+    fn broken_settings_block_automatic_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        for bytes in [
+            b"{broken".as_slice(),
+            br#"{"version":2}"#,
+            br#"{"refresh_hours":2}"#,
+        ] {
+            std::fs::write(&path, bytes).unwrap();
+            assert!(Settings::load(&path).is_err());
+            assert!(Settings::default().save(&path).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
 
     #[test]
     fn defaults_roundtrip_unknown_fields_and_atomic_replacement() {

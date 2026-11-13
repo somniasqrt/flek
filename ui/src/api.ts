@@ -42,6 +42,7 @@ export type Change =
   | { type: "directory" }
   | { type: "presence" }
   | { type: "connection"; data: ConnectionState }
+  | { type: "settings_error"; data: { error: string | null } }
   | { type: "progress"; data: Progress };
 
 export type Conversation = {
