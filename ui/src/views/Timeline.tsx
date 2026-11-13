@@ -141,15 +141,24 @@ export default function Timeline(props: {
     }
     return latest;
   };
+  // The newest message seen but not yet marked: the debounce and the request
+  // both lag behind scrolling, so leaving the conversation sends it at once.
+  let unmarked: { id: string; ts: string } | null = null;
+  const flushRead = () => {
+    const seen = unmarked;
+    unmarked = null;
+    if (seen) void api.markRead(seen.id, seen.ts).catch(() => {});
+  };
   const scheduleRead = () => {
     if (!alive) return;
     if (props.conversation.is_member === false) return;
-    if (readTimer !== undefined || marking) return;
     const ts = seenTs();
     const stored = props.conversation.last_read;
     const last = acknowledged && (!stored || acknowledged > stored) ? acknowledged : stored;
     if (!ts || (last && ts <= last)) return;
     const id = props.conversation.id;
+    if (!unmarked || unmarked.id !== id || ts > unmarked.ts) unmarked = { id, ts };
+    if (readTimer !== undefined || marking) return;
     const gen = generation;
     readTimer = window.setTimeout(async () => {
       readTimer = undefined;
@@ -162,6 +171,7 @@ export default function Timeline(props: {
         if (gen === generation) {
           acknowledged = latest;
           setReadError("");
+          if (unmarked && unmarked.id === id && unmarked.ts <= latest) unmarked = null;
         }
       } catch (e) {
         if (gen === generation) setReadError(String(e));
@@ -178,6 +188,7 @@ export default function Timeline(props: {
   onCleanup(() => {
     alive = false;
     generation++;
+    flushRead();
     window.clearTimeout(readTimer);
     window.removeEventListener("focus", focusRead);
     document.removeEventListener("visibilitychange", focusRead);
@@ -215,6 +226,7 @@ export default function Timeline(props: {
           return;
         }
         const gen = ++generation;
+        flushRead();
         window.clearTimeout(readTimer);
         readTimer = undefined;
         acknowledged = null;
