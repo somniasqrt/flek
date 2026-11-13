@@ -41,8 +41,8 @@ fn main() {
     if let Err(error) =
         flek_core::files::default_cache_dir().and_then(|p| flek_core::files::prepare_cache(&p))
     {
-        eprintln!("cannot protect Flek cache: {error}");
-        return;
+        // Cache operations refuse this path too; the local archive can still open.
+        eprintln!("Flek cache is unavailable; cached files are disabled: {error}");
     }
     let store = flek_core::store::default_path()
         .and_then(|p| flek_core::store::Store::open(&p))

@@ -81,16 +81,18 @@ pub async fn sync_thread(
     let mut cursor: Option<String> = None;
     let mut latest = root.to_owned();
     let mut seen = HashSet::new();
+    let mut incomplete = false;
     loop {
         limiter.wait().await;
         let page = client
             .conversations_replies(conversation_id, root, cursor.as_deref())
             .await?;
-        if let Some(max) = page.messages.iter().map(|m| m.ts.as_str()).max() {
+        if let Some(max) = page.present_ts().max() {
             latest = latest.max(max.to_owned());
         }
         stats.replies += page.messages.iter().filter(|m| m.ts != root).count();
-        seen.extend(page.messages.iter().map(|m| m.ts.clone()));
+        seen.extend(page.present_ts().map(str::to_owned));
+        incomplete |= page.incomplete;
         save_page(store, conversation_id, &page.messages, None).await?;
         if !page.has_more {
             break;
@@ -106,7 +108,9 @@ pub async fn sync_thread(
         .call(move |c| {
             let gone: Vec<String> = messages::thread_replies(c, &id, &root_ts)?
                 .into_iter()
-                .filter(|ts| seen.contains(&root_ts) && *ts > cutoff && !seen.contains(ts))
+                .filter(|ts| {
+                    !incomplete && seen.contains(&root_ts) && *ts > cutoff && !seen.contains(ts)
+                })
                 .collect();
             messages::mark_thread_synced(c, &id, &root_ts, &latest)?;
             messages::mark_deleted(c, &id, &gone)

@@ -10,12 +10,19 @@ pub mod search;
 pub mod unfurls;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Once};
 use std::time::Duration;
 
 use rusqlite::{Connection, OpenFlags};
 
 use crate::{Error, Result};
+
+fn repair_permissions(path: &Path) {
+    static WARNING: Once = Once::new();
+    if let Err(error) = crate::private_fs::database(path) {
+        WARNING.call_once(|| tracing::warn!(%error, "database permission repair failed"));
+    }
+}
 
 fn open_reader(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
@@ -151,7 +158,7 @@ impl Store {
                 .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
             let result = f(&mut guard);
             if let Some(path) = &path {
-                crate::private_fs::database(path)?;
+                repair_permissions(path);
             }
             result
         })
@@ -167,7 +174,7 @@ impl Store {
             .map_err(|_| Error::Store("connection mutex poisoned".into()))?;
         let result = f(&mut guard);
         if let Some(path) = &self.path {
-            crate::private_fs::database(path)?;
+            repair_permissions(path);
         }
         result
     }

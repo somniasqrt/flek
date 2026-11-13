@@ -89,6 +89,7 @@ pub async fn backfill_conversation(
             _ => newest.clone(),
         };
         let mut seen = HashSet::new();
+        let mut incomplete = false;
         let mut cursor: Option<String> = None;
         let mut top = newest.clone();
         loop {
@@ -104,10 +105,11 @@ pub async fn backfill_conversation(
                     },
                 )
                 .await?;
-            if let Some(max) = page.messages.iter().map(|m| m.ts.as_str()).max() {
+            if let Some(max) = page.present_ts().max() {
                 top = top.max(max.to_owned());
             }
-            seen.extend(page.messages.iter().map(|m| m.ts.clone()));
+            seen.extend(page.present_ts().map(str::to_owned));
+            incomplete |= page.incomplete;
             save_page(store, conversation_id, &page.messages, None).await?;
             stats.pages += 1;
             stats.messages += page.messages.len();
@@ -120,7 +122,7 @@ pub async fn backfill_conversation(
             cursor = Some(next);
         }
         let deletion_lower = lower.max(deletion_cutoff());
-        if deletion_lower < newest {
+        if !incomplete && deletion_lower < newest {
             let (id, lo, hi) = (conversation_id.to_owned(), deletion_lower, newest.clone());
             stats.deleted = store
                 .call(move |c| {
@@ -150,27 +152,37 @@ pub async fn backfill_conversation(
     } else {
         usize::MAX
     };
+    let mut cursor = None;
+    let mut latest = state.oldest_ts.clone();
     while !state.complete && pages_left > 0 {
         pages_left -= 1;
+        if cursor.is_none() {
+            latest.clone_from(&state.oldest_ts);
+        }
         limiter.wait().await;
         let page = client
             .conversations_history(
                 conversation_id,
                 HistoryQuery {
-                    latest: state.oldest_ts.as_deref(),
+                    latest: latest.as_deref(),
+                    cursor: cursor.as_deref(),
                     ..Default::default()
                 },
             )
             .await?;
-        if let Some(min) = page.messages.iter().map(|m| m.ts.as_str()).min() {
+        if let Some(min) = page.present_ts().min() {
             state.oldest_ts = Some(min.to_owned());
         }
         if state.newest_ts.is_none() {
-            state.newest_ts = page.messages.iter().map(|m| m.ts.clone()).max();
+            state.newest_ts = page.present_ts().map(str::to_owned).max();
         }
         // An empty page means nothing older is left, whatever has_more says.
         // Nothing is marked deleted on this path, so ending here loses nothing.
-        state.complete = !page.has_more || page.messages.is_empty();
+        let no_identity = page.present_ts().next().is_none();
+        cursor = page.next_cursor.clone();
+        // Cursor pagination still advances past pages with no readable ts.
+        // Without either a cursor or an identity there is no safe next bound.
+        state.complete = !page.has_more || (no_identity && (!page.incomplete || cursor.is_none()));
         stats.pages += 1;
         stats.messages += page.messages.len();
         save_page(store, conversation_id, &page.messages, Some(&state)).await?;

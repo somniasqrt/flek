@@ -326,6 +326,9 @@ export default function MessageRow(props: {
             </button>
           </div>
         </Show>
+        <Show when={m.pending === "sent"}>
+          <div class="send-reason">{t("Sent to Slack; local copy will sync later.")}</div>
+        </Show>
         <Show when={m.pending === "failed" && m.client_msg_id}>
           {(id) => (
             <div

@@ -2,7 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { defaultSettings, type Settings } from "../models/settings-model";
 import { fileType } from "../models/rail-model";
-import type { Conversation } from "../api";
+import type { Conversation, Status } from "../api";
 import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
 import { pdf } from "./assets";
@@ -38,13 +38,34 @@ async function sendMessage(a: Record<string, unknown>) {
     root.latest_reply = ts;
   } else messages.push(m);
   emit("flek://change", { type: "message", data: { conversation_id: conv, ts } });
-  return { conversation_id: conv, ts, client_msg_id: m.client_msg_id };
+  return { conversation_id: conv, ts, client_msg_id: m.client_msg_id, not_stored_locally: false };
 }
 
 export const query = new URLSearchParams(window.location.search);
 let previewSettings: Settings = {
   ...defaultSettings,
   language: query.get("lang") === "uk" ? "uk" : "en",
+  load_error: query.has("settingsError") ? "settings_unavailable" : null,
+  desktop_import_on_start: !query.has("settingsError"),
+};
+const readyStatus: Status = {
+  phase: "ready", team_id: "T1", team: "Demo Team", user_id: "U3", user: "me",
+};
+let previewStatus: Status = query.has("signin")
+  ? { phase: "sign_in", desktop: true, reason: "token_revoked" }
+  : readyStatus;
+
+function setPreviewStatus(status: Status) {
+  previewStatus = status;
+  emit("flek://status", status);
+}
+
+// Exercise failure and recovery through the same events as the native forwarder.
+(window as unknown as { __settingsError: (failed: boolean) => void }).__settingsError = (failed) => {
+  previewSettings.load_error = failed ? "settings_unavailable" : null;
+  if (failed) previewSettings.desktop_import_on_start = false;
+  emit("flek://change", { type: "settings_error", data: { error: previewSettings.load_error } });
+  emit("flek://settings", { ...previewSettings });
 };
 
 mockIPC(
@@ -54,6 +75,7 @@ mockIPC(
       case "get_settings":
         return { ...previewSettings };
       case "set_settings": {
+        if (previewSettings.load_error) throw "settings_unavailable";
         previewSettings = JSON.parse(JSON.stringify((args as { settings: Settings }).settings));
         emit("flek://settings", previewSettings);
         return { ...previewSettings };
@@ -76,7 +98,19 @@ mockIPC(
         emit("flek://change", { type: "progress", data: { stage: "idle" } });
         return;
       case "sign_out":
-        emit("flek://status", { phase: "sign_in", desktop: false, reason: null });
+        previewSettings.desktop_import_on_start = false;
+        emit("flek://settings", { ...previewSettings });
+        setPreviewStatus({ phase: "sign_in", desktop: true, reason: null });
+        return;
+      case "import_desktop":
+        if (!previewSettings.load_error) {
+          previewSettings.desktop_import_on_start = true;
+          emit("flek://settings", { ...previewSettings });
+        }
+        setPreviewStatus(readyStatus);
+        return;
+      case "sign_in":
+        setPreviewStatus(readyStatus);
         return;
       case "team_icon":
         return "a1";
@@ -177,7 +211,7 @@ mockIPC(
         return;
       }
       case "status":
-        return { phase: "ready", team_id: "T1", team: "Demo Team", user_id: "U3", user: "me" };
+        return previewStatus;
       case "progress":
         return { stage: "conversations", done: 7, total: 28, current: "general", deep: true };
       case "conversations":
@@ -351,3 +385,10 @@ function timelineRows(id: string) {
   emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: `${ts}.000000` } });
 };
 
+
+// Synthetic connection status: __syncIncomplete(true|false) in the console.
+(window as unknown as { __syncIncomplete: (incomplete: boolean) => void }).__syncIncomplete = (incomplete) => {
+  emit("flek://change", { type: "connection", data: incomplete
+    ? { state: "sync_incomplete", in_secs: 60 }
+    : { state: "connected" } });
+};

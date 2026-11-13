@@ -29,7 +29,7 @@ export type Progress =
   | { stage: "files"; done: number; total: number }
   | { stage: "idle" };
 
-export type ConnectionState = { state: "connected" } | { state: "reconnecting"; in_secs: number };
+export type ConnectionState = { state: "connected" } | { state: "sync_incomplete"; in_secs: number } | { state: "reconnecting"; in_secs: number };
 
 type Ref = { conversation_id: string; ts: string };
 export type Change =
@@ -124,13 +124,14 @@ export type Message = {
   /// Id the sending client chose (matches an optimistic copy).
   client_msg_id?: string | null;
   /// UI only: an optimistic copy not stored yet (see outbox.ts).
-  pending?: "sending" | "failed";
+  pending?: "sending" | "failed" | "sent";
   /// UI only: why a pending copy failed.
   error?: string;
 };
 
-/// A message Slack accepted and Flek stored (core `sync::send::Sent`).
+/// A message Slack accepted (core `sync::send::Sent`).
 export type Sent = {
+  not_stored_locally: boolean;
   conversation_id: string;
   ts: string;
   client_msg_id: string;

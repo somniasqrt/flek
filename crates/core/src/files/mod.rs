@@ -27,6 +27,11 @@ pub fn cache_path(cache_dir: &Path, id: &str, name: Option<&str>) -> PathBuf {
         .map(sanitize)
         .filter(|n| !n.is_empty())
         .unwrap_or_else(|| dir.clone());
+    let name = if name.eq_ignore_ascii_case(PREVIEW_NAME) {
+        format!("attachment{name}")
+    } else {
+        name
+    };
     cache_dir.join(dir).join(name)
 }
 
@@ -35,11 +40,19 @@ pub fn cache_path(cache_dir: &Path, id: &str, name: Option<&str>) -> PathBuf {
 /// leave the cache nor share a directory with another file.
 fn id_component(id: &str) -> String {
     let clean = sanitize(id);
-    if !clean.is_empty() {
+    if !clean.is_empty()
+        && !clean.eq_ignore_ascii_case("_links")
+        && !clean.to_ascii_lowercase().starts_with("_id_")
+    {
         return clean;
     }
     let hex: String = id.bytes().map(|b| format!("{b:02x}")).collect();
-    format!("_{hex}")
+    format!("_id_{hex}")
+}
+
+/// Reserved preview slot; attachment names never resolve here.
+pub fn preview_path(cache_dir: &Path, id: &str) -> PathBuf {
+    cache_dir.join(id_component(id)).join(PREVIEW_NAME)
 }
 
 fn sanitize(name: &str) -> String {
@@ -78,8 +91,35 @@ pub async fn fetch_bounded(
     f: &PendingDownload,
     max_bytes: Option<i64>,
 ) -> Result<(PathBuf, bool)> {
-    crate::private_fs::dir(cache_dir)?;
     let dest = cache_path(cache_dir, &f.id, f.name.as_deref());
+    fetch_to(client, cache_dir, f, max_bytes, dest).await
+}
+
+pub(crate) async fn fetch_preview(
+    client: &Client,
+    cache_dir: &Path,
+    f: &PendingDownload,
+    max_bytes: Option<i64>,
+) -> Result<(PathBuf, bool)> {
+    fetch_to(
+        client,
+        cache_dir,
+        f,
+        max_bytes,
+        preview_path(cache_dir, &f.id),
+    )
+    .await
+}
+
+async fn fetch_to(
+    client: &Client,
+    cache_dir: &Path,
+    f: &PendingDownload,
+    max_bytes: Option<i64>,
+    dest: PathBuf,
+) -> Result<(PathBuf, bool)> {
+    crate::private_fs::dir(cache_dir)?;
+    crate::private_fs::dir(dest.parent().expect("cache file has parent"))?;
     if dest.is_file() {
         return Ok((dest, false));
     }
@@ -136,7 +176,9 @@ pub async fn fetch_link_image(
     cache_dir: &Path,
     url: &str,
 ) -> Result<PathBuf> {
+    crate::private_fs::dir(cache_dir)?;
     let dest = link_image_path(cache_dir, url);
+    crate::private_fs::dir(dest.parent().expect("image cache has parent"))?;
     if dest.is_file() {
         return Ok(dest);
     }
@@ -211,6 +253,7 @@ pub(crate) async fn write_response(
     }
     tokio::io::AsyncWriteExt::flush(&mut out).await?;
     drop(out);
+    quarantine(&path)?;
     path.persist(dest).map_err(|e| Error::Io(e.error))?;
     Ok(written)
 }
@@ -226,7 +269,19 @@ pub fn prepare_cache(cache_dir: &Path) -> Result<()> {
             crate::private_fs::dir(parent)?;
         }
     }
-    crate::private_fs::tree(cache_dir)
+    crate::private_fs::dir(cache_dir)?;
+    static REPAIRED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    let mut repaired = REPAIRED
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|_| Error::File("cache repair lock poisoned".into()))?;
+    let key = cache_dir.canonicalize()?;
+    if !repaired.contains(&key) {
+        crate::private_fs::tree(cache_dir)?;
+        repaired.insert(key);
+    }
+    Ok(())
 }
 
 /// Find a stored file in either its recorded path or the standard cache layout.
@@ -300,13 +355,25 @@ pub async fn fetch_stored(
     let pending = store
         .read(move |c| crate::reads::pending_file(c, &file_id))
         .await?;
-    let settings = store
-        .path()
-        .and_then(|p| p.parent())
-        .map(|p| crate::settings::Settings::load(&p.join("settings.json")))
-        .transpose()?
-        .unwrap_or_default();
-    let (path, _) = fetch_bounded(client, cache_dir, &pending, settings.max_file_bytes).await?;
+    // A user action bypasses automatic eligibility/backoff and settings limits.
+    // Known sizes retain the declared-size + slack bound in fetch_bounded.
+    let max = if pending.size.is_some_and(|n| n >= 0) {
+        None
+    } else {
+        crate::settings::Settings::default().max_file_bytes
+    };
+    let result = fetch_bounded(client, cache_dir, &pending, max).await;
+    let (path, _) = match result {
+        Ok(result) => result,
+        Err(error) => {
+            let file_id = id.to_owned();
+            let permanent = permanent_file_failure(&error);
+            store
+                .call(move |c| crate::store::files::record_failure(c, &file_id, false, permanent))
+                .await?;
+            return Err(error);
+        }
+    };
     let path = inside_cache(cache_dir, &path)
         .ok_or_else(|| Error::File("the file is outside the cache".into()))?;
     let (file_id, local_path) = (id.to_owned(), path.to_string_lossy().into_owned());
@@ -314,6 +381,40 @@ pub async fn fetch_stored(
         .call(move |c| crate::store::files::set_local_path(c, &file_id, &local_path))
         .await?;
     Ok(path)
+}
+
+/// Only definitive server refusals stop automatic attachment retries.
+pub fn permanent_file_failure(error: &Error) -> bool {
+    matches!(error, Error::HttpStatus(403 | 404 | 410))
+}
+
+/// Policy/format/size refusals are definitive; I/O and transport errors are not.
+pub fn permanent_image_failure(error: &Error) -> bool {
+    match error {
+        Error::HttpStatus(300..=399 | 404 | 410) => true,
+        Error::File(message) => matches!(
+            message.as_str(),
+            "bad proxy URL"
+                | "bad image URL"
+                | "public image requires a public HTTPS address"
+                | "link preview is not an image"
+                | "download exceeds byte limit (Content-Length)"
+                | "download exceeds byte limit while streaming"
+        ),
+        // The checked resolver refuses mixed/private DNS answers before connecting.
+        Error::Http(error) => {
+            use std::error::Error as _;
+            let mut source = error.source();
+            while let Some(cause) = source {
+                if cause.to_string() == "CDN resolved to a non-public address" {
+                    return true;
+                }
+                source = cause.source();
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 pub mod storage;

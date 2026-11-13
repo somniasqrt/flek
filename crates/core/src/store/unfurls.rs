@@ -189,96 +189,283 @@ pub fn unsupported_attachments(raw: &str) -> bool {
         })
 }
 
-/// Preview images not tried yet, newest messages first.
+/// Pending images, newest messages first, including a read-only overlay of
+/// changes not yet persisted by sync. Duplicate URLs retain their newest use.
 pub fn images_to_fetch(conn: &Connection, limit: usize) -> Result<Vec<String>> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
     let mut stmt = conn.prepare(
         "
-            SELECT m.raw_json
-            FROM messages m
-            WHERE m.deleted = 0
-            AND (m.raw_json LIKE '%\"attachments\"%' OR m.raw_json LIKE '%\"image_url\"%')
-            ORDER BY m.ts DESC
+            SELECT m.ts, m.id, i.url
+            FROM media_images i
+            JOIN messages m ON m.id = i.message_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM media_message_changes d WHERE d.message_id = i.message_id)
         ",
     )?;
-    let mut known = conn.prepare_cached(
-        "
-            SELECT 1
-            FROM link_images
-            WHERE HASH = ?1
-        ",
-    )?;
-    let mut out: Vec<String> = Vec::new();
-    let mut rows = stmt.query([])?;
-    while let Some(r) = rows.next()? {
-        let raw: String = r.get(0)?;
-        let Ok(v) = serde_json::from_str::<Value>(&raw) else {
-            continue;
-        };
-        let mut urls = Vec::new();
-        for a in v
-            .get("attachments")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            urls.extend(image_urls(a));
+    let mut candidates = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for message in scan_media_ordered(conn, i64::MAX, true)? {
+        for url in message.images {
+            candidates.push((message.ts.clone(), message.id, url));
         }
-        if let Some(blocks) = v.get("blocks") {
-            urls.extend(block_image_urls(blocks));
-        }
-        for url in urls {
-            if out.iter().any(|u| u == url) || known.exists([url_hash(url)])? {
-                continue;
-            }
-            out.push(url.to_owned());
+    }
+    candidates.sort_unstable_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| a.2.cmp(&b.2))
+    });
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (_, _, url) in candidates {
+        if seen.insert(url.clone()) && image_pending(conn, &url)? {
+            out.push(url);
             if out.len() >= limit {
-                return Ok(out);
+                break;
             }
         }
     }
     Ok(out)
 }
 
-/// Records a fetched image (`Some(path)`) or a failed one (`None`, not retried).
+/// Parsed on a reader, then installed with a short writer transaction.
+pub struct MediaMessage {
+    position: i64,
+    id: i64,
+    ts: String,
+    pub(crate) team: String,
+    pub(crate) images: std::collections::BTreeSet<String>,
+    pub(crate) emoji: std::collections::BTreeSet<String>,
+}
+
+pub fn scan_media(conn: &Connection) -> Result<Vec<MediaMessage>> {
+    scan_media_through(conn, i64::MAX)
+}
+
+/// Scan only positions present at the start of a refresh. Edits receive newer
+/// positions, so continuously changing rows cannot keep that refresh alive.
+pub fn scan_media_through(conn: &Connection, through: i64) -> Result<Vec<MediaMessage>> {
+    scan_media_ordered(conn, through, false)
+}
+
+fn scan_media_ordered(
+    conn: &Connection,
+    through: i64,
+    newest_first: bool,
+) -> Result<Vec<MediaMessage>> {
+    // Fixed SQL fragments only: queue scans use the position index; the bounded
+    // image overlay needs the newest queued messages, regardless of enqueue order.
+    let order = if newest_first {
+        "m.ts DESC, m.id DESC"
+    } else {
+        "d.position"
+    };
+    let mut stmt = conn.prepare(&format!(
+        "
+            SELECT d.position, m.id, c.team_id, COALESCE(m.text, ''),
+                COALESCE(m.raw_json, '{{}}'), m.deleted, m.ts
+            FROM media_message_changes d
+            JOIN messages m ON m.id = d.message_id
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE d.position <= ?1
+            ORDER BY {order}
+            LIMIT 1000
+        ",
+    ))?;
+    let mut rows = stmt.query([through])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        let mut message = MediaMessage {
+            position: row.get(0)?,
+            id: row.get(1)?,
+            ts: row.get(6)?,
+            team: row.get(2)?,
+            images: Default::default(),
+            emoji: Default::default(),
+        };
+        if !row.get::<_, bool>(5)? {
+            let text: String = row.get(3)?;
+            message
+                .emoji
+                .extend(crate::store::emoji::names_in(&text).map(str::to_owned));
+            let raw: String = row.get(4)?;
+            if let Ok(value) = serde_json::from_str::<Value>(&raw) {
+                for a in value
+                    .get("attachments")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    message.images.extend(image_urls(a).map(str::to_owned));
+                }
+                if let Some(blocks) = value.get("blocks") {
+                    message
+                        .images
+                        .extend(block_image_urls(blocks).into_iter().map(str::to_owned));
+                }
+            }
+        }
+        out.push(message);
+    }
+    Ok(out)
+}
+
+pub fn save_media_scan(conn: &mut Connection, messages: Vec<MediaMessage>) -> Result<()> {
+    let tx = conn.transaction()?;
+    for message in messages {
+        // A concurrent edit/newer scan must not be replaced with an old snapshot.
+        if !tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM media_message_changes WHERE position = ?1 AND message_id = ?2)",
+            params![message.position, message.id], |r| r.get::<_, bool>(0),
+        )? { continue; }
+        tx.execute(
+            "DELETE FROM media_images WHERE message_id = ?1",
+            [message.id],
+        )?;
+        tx.execute(
+            "DELETE FROM media_emoji WHERE message_id = ?1",
+            [message.id],
+        )?;
+        for url in message.images {
+            tx.execute(
+                "INSERT INTO media_images(message_id, url) VALUES (?1, ?2)",
+                params![message.id, url],
+            )?;
+        }
+        for name in message.emoji {
+            tx.execute(
+                "INSERT INTO media_emoji(message_id, name) VALUES (?1, ?2)",
+                params![message.id, name],
+            )?;
+        }
+        tx.execute(
+            "DELETE FROM media_message_changes WHERE position = ?1",
+            [message.position],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// No filesystem work here: missing files are reconciled at startup/read time.
+pub fn image_pending(conn: &Connection, url: &str) -> Result<bool> {
+    Ok(!conn.query_row(
+        "
+            SELECT EXISTS (SELECT 1 FROM link_images
+                WHERE hash = ?1
+                AND (local_path IS NOT NULL OR failed = 1 OR retry_after > unixepoch()))
+        ",
+        [url_hash(url)],
+        |r| r.get::<_, bool>(0),
+    )?)
+}
+
+/// Records success, or a definitive refusal for compatibility with offline callers.
 pub fn set_image(conn: &Connection, url: &str, path: Option<&str>) -> Result<()> {
     conn.execute(
         "
-            INSERT INTO link_images(HASH, url, local_path, failed, fetched_at)
-            VALUES (?1, ?2, ?3, ?4, unixepoch())
+            INSERT INTO link_images(HASH, url, local_path, failed, fetched_at, failure_count,
+                last_failure_at, retry_after)
+            VALUES (?1, ?2, ?3, ?4, unixepoch(), ?4, CASE WHEN ?4 THEN unixepoch() END, 0)
             ON CONFLICT (HASH) DO UPDATE
             SET local_path = excluded.local_path, failed = excluded.failed, fetched_at =
-                excluded.fetched_at
+                excluded.fetched_at, failure_count = excluded.failure_count,
+                last_failure_at = excluded.last_failure_at, retry_after = 0
         ",
         params![url_hash(url), url, path, path.is_none()],
     )?;
     Ok(())
 }
 
+/// Transient errors wait one minute, doubling up to one day. `failed` means permanent.
+pub fn record_image_failure(conn: &Connection, url: &str, permanent: bool) -> Result<()> {
+    conn.execute(
+        "
+            INSERT INTO link_images(hash, url, local_path, failed, fetched_at,
+                failure_count, last_failure_at, retry_after)
+            VALUES (?1, ?2, NULL, ?3, unixepoch(), 1, unixepoch(), unixepoch() + 60)
+            ON CONFLICT (hash) DO UPDATE
+            SET local_path = NULL, failed = ?3, fetched_at = unixepoch(),
+                failure_count = MIN(failure_count + 1, 31), last_failure_at = unixepoch(),
+                retry_after = unixepoch() + MIN(86400, 60 * (1 << MIN(failure_count, 11)))
+        ",
+        params![url_hash(url), url, permanent],
+    )?;
+    Ok(())
+}
+
+// Read-only connections cannot invalidate a missing path. Queue exact stale
+// values, then drain them on the next sync writer call (never clear a newer path).
+type MissingImages = std::collections::HashSet<(String, String, String)>;
+fn missing_images() -> &'static std::sync::Mutex<MissingImages> {
+    static MISSING: std::sync::OnceLock<std::sync::Mutex<MissingImages>> =
+        std::sync::OnceLock::new();
+    MISSING.get_or_init(Default::default)
+}
+
 pub fn image_path(conn: &Connection, hash: &str) -> Result<Option<String>> {
-    Ok(conn
+    let path: Option<String> = conn
         .query_row(
-            "
-                SELECT local_path
-                FROM link_images
-                WHERE HASH = ?1
-            ",
+            "SELECT local_path FROM link_images WHERE hash = ?1",
             [hash],
             |r| r.get(0),
         )
         .optional()?
-        .flatten())
+        .flatten();
+    Ok(path.filter(|path| {
+        let exists = std::path::Path::new(path).is_file();
+        if !exists {
+            if let Ok(mut missing) = missing_images().lock() {
+                missing.insert((
+                    conn.path().unwrap_or_default().to_owned(),
+                    hash.to_owned(),
+                    path.clone(),
+                ));
+            }
+        }
+        exists
+    }))
 }
 
-/// Whether `url` is cached (for [`from_raw`]).
+/// Whether `url` has an existing file (only checked on the display/read path).
 pub fn is_cached(conn: &Connection, url: &str) -> bool {
-    conn.prepare_cached(
-        "
-            SELECT 1
-            FROM link_images
-            WHERE HASH = ?1
-            AND local_path IS NOT NULL
-        ",
-    )
-    .and_then(|mut s| s.exists([url_hash(url)]))
-    .unwrap_or(false)
+    image_path(conn, &url_hash(url)).ok().flatten().is_some()
+}
+
+pub fn invalidate_missing(conn: &Connection, missing: &[(String, String)]) -> Result<()> {
+    for (hash, path) in missing {
+        conn.execute(
+            "UPDATE link_images SET local_path = NULL WHERE hash = ?1 AND local_path = ?2",
+            params![hash, path],
+        )?;
+        if let Ok(mut hints) = missing_images().lock() {
+            hints.remove(&(
+                conn.path().unwrap_or_default().to_owned(),
+                hash.clone(),
+                path.clone(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Hints are scoped to the database and carry the exact stale path.
+pub fn missing_image_hints(conn: &Connection) -> Vec<(String, String)> {
+    missing_images()
+        .lock()
+        .map(|m| {
+            m.iter()
+                .filter(|(db, _, _)| db == conn.path().unwrap_or_default())
+                .map(|(_, hash, path)| (hash.clone(), path.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
 }

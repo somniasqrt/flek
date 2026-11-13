@@ -1,4 +1,11 @@
 export const en = {
+  // Session lifecycle (M9.16.8).
+  "Clear saved session": "Clear saved session",
+  "Clear saved session?": "Clear saved session?",
+  "This removes saved sessions and message drafts from Flek. The local archive is kept.":
+    "This removes saved sessions and message drafts from Flek. The local archive is kept.",
+  "Could not read settings. Using safe preferences; automatic desktop import is off. Repair or remove settings.json to save changes.":
+    "Could not read settings. Using safe preferences; automatic desktop import is off. Repair or remove settings.json to save changes.",
   "No cells in this preview.": "No cells in this preview.",
   "This file is too large to preview (over 50 MB). Open it in the default app.": "This file is too large to preview (over 50 MB). Open it in the default app.",
   "This document is too large or complex to preview here. Open it in the default app.": "This document is too large or complex to preview here. Open it in the default app.",
@@ -325,6 +332,8 @@ export const en = {
   Channels: "Channels",
   Muted: "Muted",
   "No conversations match": "No conversations match",
+  "Connected; sync incomplete, retrying…": "Connected; sync incomplete, retrying…",
+  "Sent to Slack; local copy will sync later.": "Sent to Slack; local copy will sync later.",
   "Offline, reconnecting…": "Offline, reconnecting…",
   "Up to date": "Up to date",
   "Syncing channels and people…": "Syncing channels and people…",

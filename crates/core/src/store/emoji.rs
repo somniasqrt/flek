@@ -130,7 +130,7 @@ pub fn custom_emoji(conn: &Connection, team_id: &str) -> Result<CustomEmoji> {
 }
 
 /// `:name:` candidates in a message text.
-fn names_in(text: &str) -> impl Iterator<Item = &str> {
+pub(crate) fn names_in(text: &str) -> impl Iterator<Item = &str> {
     let parts: Vec<&str> = text.split(':').collect();
     let inner = parts.len().saturating_sub(1);
     parts
@@ -144,16 +144,9 @@ fn names_in(text: &str) -> impl Iterator<Item = &str> {
 /// were not tried yet, at most `limit`. Unused emoji are never fetched.
 pub fn to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Result<Vec<String>> {
     let (urls, _) = resolved(conn, team_id)?;
-    let mut known = conn.prepare_cached(
-        "
-            SELECT 1
-            FROM link_images
-            WHERE HASH = ?1
-        ",
-    )?;
     let mut pending: HashMap<&str, &str> = HashMap::new();
     for (name, url) in &urls {
-        if !known.exists([unfurls::url_hash(url)])? {
+        if unfurls::image_pending(conn, url)? {
             pending.insert(name.as_str(), url.as_str());
         }
     }
@@ -182,18 +175,26 @@ pub fn to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Result<Vec<St
     }
     let mut texts = conn.prepare(
         "
-            SELECT m.text
-            FROM messages m
+            SELECT DISTINCT e.name
+            FROM media_emoji e
+            JOIN messages m ON m.id = e.message_id
             JOIN conversations c ON c.id = m.conversation_id
             WHERE c.team_id = ?1
-            AND m.deleted = 0
-            AND m.text LIKE '%:%:%'
+            AND NOT EXISTS (
+                SELECT 1 FROM media_message_changes d WHERE d.message_id = m.id)
         ",
     )?;
     let mut rows = texts.query([team_id])?;
     while let Some(r) = rows.next()? {
-        let text: String = r.get(0)?;
-        names_in(&text).for_each(&mut add);
+        add(&r.get::<_, String>(0)?);
+    }
+    for message in unfurls::scan_media(conn)?
+        .into_iter()
+        .filter(|m| m.team == team_id)
+    {
+        for name in message.emoji {
+            add(&name);
+        }
     }
     Ok(used.into_iter().take(limit).collect())
 }

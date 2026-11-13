@@ -23,6 +23,9 @@ pub enum Error {
     #[error("Slack desktop is installed but not signed in to any workspace")]
     DesktopNotLoggedIn,
 
+    #[error("automatic Slack desktop import is disabled; run `flek auth import` to import explicitly and re-enable it (repair or remove settings.json first if it is unreadable)")]
+    DesktopImportDisabled,
+
     #[error("unexpected Slack desktop data: {0}")]
     DesktopData(String),
 
@@ -127,6 +130,7 @@ impl Error {
             Self::NoCredentials
             | Self::DesktopNotFound { .. }
             | Self::DesktopNotLoggedIn
+            | Self::DesktopImportDisabled
             | Self::Keychain(_)
             | Self::CookieDecrypt(_) => ErrorKind::Auth,
             Self::Slack { code, .. } if code == "ratelimited" || code == "rate_limited" => {

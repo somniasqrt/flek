@@ -55,16 +55,23 @@ pub(super) async fn send(
         anyhow::Error::new(e).context(description)
     })
     .with_context(|| format!("sending to {}", conv.label))?;
+    // Remote acceptance is final even if persistence or this local read fails.
+    let message = if sent.not_stored_locally {
+        None
+    } else {
+        db.with_read(|c| views::message(c, &conv.id, &sent.ts))
+            .ok()
+            .flatten()
+    };
+    let not_stored_locally = sent.not_stored_locally || message.is_none();
+    if not_stored_locally {
+        eprintln!(
+            "warning: message sent to Slack (ts {}); local copy unavailable, sync will recover it",
+            sent.ts
+        );
+    }
     if g.json {
-        let message = db
-            .with_read(|c| views::message(c, &conv.id, &sent.ts))?
-            .ok_or_else(|| {
-                flek_core::Error::NotFound(format!(
-                    "no stored message {} in conversation {}",
-                    sent.ts, conv.id
-                ))
-            })?;
-        emit(json!({"message":message}));
+        emit(json!({"message":message, "ts":sent.ts, "not_stored_locally":not_stored_locally}));
     } else {
         println!("sent to {} (ts {})", conv.label, sent.ts);
     }

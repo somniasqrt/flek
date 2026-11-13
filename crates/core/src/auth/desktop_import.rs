@@ -115,8 +115,10 @@ pub fn locate(home: &Path) -> Result<DesktopPaths> {
 /// Reads `localConfig_v2` and returns the workspaces with their tokens.
 pub fn read_teams(leveldb_dir: &Path) -> Result<Vec<TeamSession>> {
     let copy = chromium::copy_leveldb(leveldb_dir)?;
-    let raw = chromium::find_local_storage_value(copy.path(), SLACK_ORIGIN, LOCAL_CONFIG_KEY)?
-        .ok_or(Error::DesktopNotLoggedIn)?;
+    let raw = chromium::find_local_storage_value(copy.path(), SLACK_ORIGIN, LOCAL_CONFIG_KEY);
+    // No token-bearing copy survives decoding, cookie/Keychain prompts or validation.
+    copy.close()?;
+    let raw = raw?.ok_or(Error::DesktopNotLoggedIn)?;
     let json = chromium::decode_storage_string(&raw)?;
     parse_teams(&json)
 }

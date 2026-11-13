@@ -187,7 +187,6 @@ pub fn pending_file(c: &Connection, id: &str) -> Result<crate::store::files::Pen
                 local_path
             FROM files
             WHERE id = ?1
-            AND hidden_by_limit = 0
             AND is_external = 0
             AND COALESCE(url_private_download, url_private) IS NOT NULL
         ",

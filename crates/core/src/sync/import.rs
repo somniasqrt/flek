@@ -93,10 +93,15 @@ fn import_simple(
             .map(str::to_owned)
             .or_else(|| file.file_stem().map(|s| s.to_string_lossy().into_owned()))
             .unwrap_or_default();
-        let Some(conv) = directory::find_conversation(conn, team_id, &name)? else {
-            tracing::warn!(channel = %name, file = %file.display(), "no such conversation; run `flek sync` first or pass --channel");
-            stats.unknown_channels.push(name);
-            continue;
+        let resolution =
+            crate::references::resolve(conn, team_id, &name, crate::references::Match::Exact)?;
+        let conv = match resolution {
+            crate::references::Resolution::NotFound => {
+                tracing::warn!(channel = %name, file = %file.display(), "no such conversation; run `flek sync` first or pass --channel");
+                stats.unknown_channels.push(name);
+                continue;
+            }
+            other => other.required(&name)?,
         };
         let items: Vec<Value> = serde_json::from_slice(&fs::read(&file)?).map_err(|e| {
             Error::DesktopData(format!(
@@ -316,7 +321,14 @@ fn import_export_users(conn: &mut Connection, team_id: &str, path: &Path) -> Res
         let Ok(u) = serde_json::from_value::<User>(v.clone()) else {
             continue;
         };
-        let team = u.team_id.as_deref().unwrap_or(team_id);
+        let team = u
+            .team_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .unwrap_or(team_id);
+        if team.is_empty() {
+            continue;
+        }
         tx.execute(
             "
                 INSERT OR IGNORE INTO teams(id, name)

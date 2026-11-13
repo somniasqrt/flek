@@ -9,6 +9,7 @@ export default function SyncBar(props: {
 }) {
   const text = () => {
     if (props.connection?.state === "reconnecting") return t("Offline, reconnecting…");
+    if (props.connection?.state === "sync_incomplete") return t("Connected; sync incomplete, retrying…");
     const p = props.progress;
     if (!p || p.stage === "idle") return t("Up to date");
     switch (p.stage) {

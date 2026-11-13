@@ -25,9 +25,9 @@ use tokio::sync::watch;
 use crate::api::{AuthTest, Client};
 use crate::store::{directory, messages, Store};
 use crate::sync::backfill::{backfill_conversation, RateLimiter, HISTORY_INTERVAL};
-use crate::sync::directory::{sync_custom_emoji, sync_directory, EMOJI_MAX_AGE};
+use crate::sync::directory::{sync_custom_emoji, sync_directory, DirectoryRefresh, EMOJI_MAX_AGE};
 use crate::sync::files::download_files;
-use crate::sync::follow::{follow, FollowConfig};
+use crate::sync::follow::{follow_with_directory, FollowConfig};
 use crate::sync::live::{Bus, Change, Progress};
 use crate::sync::threads::sync_threads;
 use crate::sync::SyncOptions;
@@ -160,15 +160,19 @@ impl Engine {
         }
         let first = Mutex::new(None);
         let mut passes = 0u32;
-        follow(
+        let directory_refresh = DirectoryRefresh::default();
+        follow_with_directory(
             &self.client,
             &self.store,
             &self.me,
             &self.bus,
             &self.options.follow_config,
+            &directory_refresh,
             async || {
                 passes += 1;
-                let stats = self.pass(&mut limiter, passes == 1).await?;
+                let stats = self
+                    .pass_with_directory(&mut limiter, passes == 1, Some(&directory_refresh))
+                    .await?;
                 if stats.failed > 0 {
                     return Err(Error::Store("sync pass incomplete".into()));
                 }
@@ -185,6 +189,15 @@ impl Engine {
 
     /// Directory, fast pass, files, deep pass and a throttled refresh window.
     pub async fn pass(&self, limiter: &mut RateLimiter, first: bool) -> Result<PassStats> {
+        self.pass_with_directory(limiter, first, None).await
+    }
+
+    async fn pass_with_directory(
+        &self,
+        limiter: &mut RateLimiter,
+        first: bool,
+        directory_refresh: Option<&DirectoryRefresh>,
+    ) -> Result<PassStats> {
         let options = self.options.reload_settings()?;
         let o = &options;
         if o.settings_path.is_some() {
@@ -197,7 +210,13 @@ impl Engine {
             let _ = self.bus.send(Change::SettingsError { error });
         }
         self.progress(Progress::Directory);
-        sync_directory(&self.client, &self.store, &self.me).await?;
+        if let Some(refresh) = directory_refresh {
+            refresh
+                .refresh(&self.client, &self.store, &self.me, false)
+                .await?;
+        } else {
+            sync_directory(&self.client, &self.store, &self.me).await?;
+        }
         // Custom emoji change rarely: once per start, then daily.
         let max_age = if first {
             std::time::Duration::ZERO

@@ -17,6 +17,7 @@ pub fn directory_size(path: &Path) -> Result<u64> {
     if !path.exists() {
         return Ok(0);
     }
+    crate::private_fs::dir(path)?;
     let mut total = 0;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -56,6 +57,7 @@ pub fn info(store: &Store, cache: &Path) -> Result<StorageInfo> {
 /// in `_links`; invalidate every downloaded file and its rendered preview.
 pub async fn clear(store: &Store, cache: &Path) -> Result<Vec<String>> {
     if cache.exists() {
+        crate::private_fs::dir(cache)?;
         for entry in std::fs::read_dir(cache)? {
             let entry = entry?;
             if entry.file_name() == "_links" {
@@ -83,7 +85,7 @@ pub async fn clear(store: &Store, cache: &Path) -> Result<Vec<String>> {
             c.execute(
                 "
                     UPDATE files
-                    SET local_path = NULL, preview_path = NULL
+                    SET local_path = NULL, preview_path = NULL, auto_download_paused = 1
                 ",
                 [],
             )?;

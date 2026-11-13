@@ -159,6 +159,17 @@ impl Settings {
         Ok(value)
     }
 
+    /// An explicit desktop import opts back into automatic session recovery.
+    /// Loading first preserves invalid/unreadable preferences without replacing them.
+    pub fn enable_desktop_import(path: &Path) -> Result<Self> {
+        let mut settings = Self::load(path)?;
+        if !settings.desktop_import_on_start {
+            settings.desktop_import_on_start = true;
+            settings.save(path)?;
+        }
+        Ok(settings)
+    }
+
     /// A unique temporary file, fsync, and rename preserve the last valid file
     /// if a write fails. No credentials belong in this file.
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -220,6 +231,10 @@ mod tests {
             .with_writer(move || writer.clone())
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
+        // With a single dispatcher, tracing asks the thread that reaches the
+        // callsite first; a parallel test without a subscriber would disable it.
+        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+        tracing::callsite::rebuild_interest_cache();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
         let mut settings = Settings::safe_defaults();

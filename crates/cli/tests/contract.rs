@@ -535,3 +535,59 @@ fn agent_search_context_cursor_filters_and_non_member_channels() {
         .unwrap()
         .contains("discovered"));
 }
+
+#[test]
+fn stale_copy_cleanup_failure_is_a_warning_not_a_failed_command() {
+    // M9.13.3: an unreadable temp dir must not stop an offline command.
+    let (dir, path) = fixture();
+    let not_a_dir = dir.path().join("tmp-is-a-file");
+    std::fs::write(&not_a_dir, b"").unwrap();
+    let result = command(&path)
+        .arg("channels")
+        .env("TMPDIR", &not_a_dir)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.starts_with("warning: could not remove stale session copies"),
+        "{stderr}"
+    );
+    let value: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(value["conversations"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn stub_teams_of_shared_channels_do_not_force_the_team_flag() {
+    // M9.14.4: only a workspace the user is signed in to can be the default.
+    let (_dir, path) = fixture();
+    let db = Store::open(&path).unwrap();
+    db.with_conn(|c| {
+        c.execute_batch(
+            "INSERT INTO teams (id, name) VALUES ('T0OTHER', ''), ('T0EXPORT', '');
+             INSERT INTO teams (id, name, self_user_id) VALUES ('T0BLANK', '', '');",
+        )?;
+        Ok(())
+    })
+    .unwrap();
+    let flek = || {
+        let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("flek"));
+        cmd.arg("--db").arg(&path).arg("--json");
+        cmd
+    };
+    let output = flek()
+        .arg("channels")
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["conversations"].as_array().unwrap().len(), 3);
+
+    // Two real workspaces still need an explicit choice.
+    db.with_conn(|c| directory::upsert_team(c, "T2", "Second", "https://second.slack.com/", "U2"))
+        .unwrap();
+    flek().arg("channels").assert().failure();
+    flek().args(["--team", "T1", "channels"]).assert().success();
+}

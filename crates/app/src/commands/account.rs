@@ -3,7 +3,7 @@
 use super::{text, CmdResult};
 use crate::state::{self, AppState, Status};
 use flek_core::sync::live::Progress;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
 pub fn status(state: State<'_, AppState>) -> Status {
@@ -48,13 +48,14 @@ pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> CmdResult<(
         if let Ok(settings) = &signed_out {
             *current = settings.clone();
         }
+        let _ = app.emit("flek://settings", current.clone());
     }
     state.forget_session();
     let cleanup = crate::browsing_data::clear(&app).await;
     state::set_status(
         &app,
         Status::SignIn {
-            desktop: false,
+            desktop: state::desktop_installed(),
             reason: None,
         },
     );

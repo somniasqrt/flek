@@ -283,12 +283,7 @@ impl Client {
             ));
         }
 
-        let written = crate::files::write_response(resp, dest, limit).await?;
-        if let Err(error) = crate::files::quarantine(dest) {
-            let _ = std::fs::remove_file(dest);
-            return Err(error);
-        }
-        Ok(written)
+        crate::files::write_response(resp, dest, limit).await
     }
 }
 

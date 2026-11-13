@@ -74,6 +74,7 @@ fn loaded_interval_re_read_includes_bounds_and_excludes_deleted_and_reply_only_r
 fn block_images_share_the_existing_cache_and_unsupported_attachments_are_flagged() {
     use flek_core::store::unfurls;
     let store = fixture();
+    let image = tempfile::NamedTempFile::new().unwrap();
     store.with_conn(|c| {
         let blocks = serde_json::json!([
             {"type":"section", "text":{"type":"plain_text", "text":"fixture"}, "accessory":{"type":"image", "image_url":"https://files.slack-edge.com/fixture.png", "alt_text":"image"}},
@@ -84,7 +85,7 @@ fn block_images_share_the_existing_cache_and_unsupported_attachments_are_flagged
         c.execute("UPDATE messages SET raw_json = ?1, blocks_json = ?2 WHERE conversation_id = 'C1' AND ts = '1700000000.000000'", rusqlite::params![raw, blocks.to_string()])?;
         assert_eq!(unfurls::images_to_fetch(c, 10)?.len(), 2);
         assert_eq!(unfurls::images_to_fetch(c, 1)?.len(), 1);
-        unfurls::set_image(c, "https://files.slack-edge.com/fixture.png", Some("/synthetic/cache/fixture.png"))?;
+        unfurls::set_image(c, "https://files.slack-edge.com/fixture.png", image.path().to_str())?;
         let row = messages::message(c, "C1", "1700000000.000000")?.unwrap();
         assert_eq!(row.block_images.len(), 1);
         assert!(row.unsupported);

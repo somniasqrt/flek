@@ -20,6 +20,7 @@ type Entry = {
   /// Slack's ts, once accepted.
   sent_ts?: string;
   sent_at?: number;
+  not_stored_locally?: boolean;
   error?: string;
 };
 
@@ -28,6 +29,11 @@ let me: string | null = null;
 
 /// The signed-in user: the author of optimistic copies.
 export const setMe = (id: string) => (me = id);
+
+export function clearOutbox() {
+  setEntries([]);
+  me = null;
+}
 
 /// Accepted entries are kept this long at most, waiting for their stored copy.
 const SENT_TTL_MS = 120_000;
@@ -67,12 +73,13 @@ async function deliver(id: string) {
     x.error = undefined;
   });
   try {
-    // The same client id on a retry, so it stays one message.
+    // Keep the optimistic identity across attempts.
     const sent = await api.sendMessage(e.conversation_id, e.text, e.thread_ts, e.broadcast, id, e.blocks);
     update(id, (x) => {
       x.state = "sent";
       x.sent_ts = sent.ts;
       x.sent_at = Date.now();
+      x.not_stored_locally = sent.not_stored_locally;
     });
   } catch (err) {
     update(id, (x) => {
@@ -82,7 +89,9 @@ async function deliver(id: string) {
   }
 }
 
-export const retry = (id: string) => deliver(id);
+export const retry = (id: string) => {
+  if (entries.find((e) => e.client_msg_id === id)?.state === "failed") return deliver(id);
+};
 
 export const discard = (id: string) =>
   setEntries((list) => list.filter((e) => e.client_msg_id !== id));
@@ -117,7 +126,7 @@ export function pendingFor(conversationId: string, threadTs: string | null, stor
       unfurls: [],
       client_msg_id: e.client_msg_id,
       // Accepted but not in the list yet: still shown as sending.
-      pending: e.state === "failed" ? "failed" : "sending",
+      pending: e.state === "failed" ? "failed" : e.not_stored_locally ? "sent" : "sending",
       error: e.error,
     });
   }

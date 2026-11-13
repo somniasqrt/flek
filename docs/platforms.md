@@ -125,8 +125,9 @@ fetch all available website-data types, and remove only records whose displayNam
 is `slack.com` or a subdomain (case-insensitive, dot-boundary match). This covers
 WebKit-managed cookies, local/session storage, caches, databases and service-worker
 records for that domain, including old persistent signin data shared with main.
-It does not delete directories, touch Slack desktop or Keychain, or clear app-origin
-drafts/layout. WebKit owns the physical WebKit/HTTPStorages backing files; removal
+It does not delete directories or touch Slack desktop or Keychain. Separately, UI
+sign-out clears app-origin message drafts and the in-memory outbox, preserving layout
+and convenience preferences. WebKit owns the physical WebKit/HTTPStorages backing files; removal
 is logical website-data removal, not a forensic secure erase of filesystem blocks.
 The completion callback must fire before saving webview_cleanup_version=1 in
 settings.json; failure/timeout leaves the marker pending and blocks session boot.
@@ -163,10 +164,16 @@ directories. Current Windows safety depends on the user's profile/temp ACLs.
 
 Temporary Chromium copies are RAII TempDirs with prefix `flek-chromium-v1-`,
 created 0700 on Unix with 0600 copied files. Normal success, errors and unwinding
-remove them. Startup cleanup only removes same-owner, non-symlink prefixed
-directories at least 24 hours old. A recent crash copy remains private until a
-later startup; the age threshold reduces interference with another importer.
-It is not a process-liveness lock. Old unprefixed `.tmp*` directories cannot be
+remove them. LevelDB is explicitly deleted immediately after reading localConfig_v2,
+before parsing, cookie decryption/Keychain prompts or network validation. Startup
+cleanup only removes same-owner, non-symlink prefixed directories at least five
+minutes old. Each new copy holds an OS file lock on `.flek-import.lock`; cleanup
+uses a nonblocking lock and skips an active importer even beyond the age threshold.
+SIGKILL releases the lock. Five minutes leaves ample grace for local directory/lock
+creation while reducing crash-copy exposure from 24 hours; cleanup still requires
+a later startup. Older unleased copies are protected only by the age threshold.
+CLI cleanup errors are warnings and do not prevent other commands from running.
+Old unprefixed `.tmp*` directories cannot be
 safely distinguished from other applications' files and are not deleted.
 Deletion is logical removal, not secure erasure of disk blocks.
 

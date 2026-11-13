@@ -79,6 +79,10 @@ pub enum Progress {
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum ConnectionState {
     Connected,
+    /// Socket is alive, but catch-up has failed and will be retried.
+    SyncIncomplete {
+        in_secs: u64,
+    },
     /// Lost; retrying after the given delay in seconds.
     Reconnecting {
         in_secs: u64,
@@ -95,8 +99,8 @@ pub fn bus() -> Bus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Applied {
     Changed(Change),
-    /// The event names a conversation we do not know yet (new DM, channel
-    /// just joined): refresh the directory and apply it again.
+    /// The event names a conversation or user whose directory identity is
+    /// unknown: refresh the directory and apply it again.
     NeedsDirectory,
     /// The event refers to a conversation change; refresh the directory.
     DirectoryStale,
@@ -247,7 +251,7 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                 Event::ManualPresenceChanged { user: None, .. }
                 | Event::DndUpdated { user: None, .. } => Applied::Ignored,
                 Event::UserChanged { user } => {
-                    let team = match user.team_id.clone() {
+                    let team = match user.team_id.clone().filter(|id| !id.is_empty()) {
                         Some(team) => team,
                         None => c
                             .query_row(
@@ -261,6 +265,9 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                             )
                             .unwrap_or_default(),
                     };
+                    if team.is_empty() {
+                        return Ok(Applied::NeedsDirectory);
+                    }
                     directory::upsert_user_change(c, &team, &user)?;
                     Applied::Changed(Change::Directory)
                 }

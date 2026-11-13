@@ -125,7 +125,7 @@ async fn stores_metadata_and_downloads_files() {
         (1, 0, 2, 1)
     );
     assert_eq!(calls, 4);
-    let preview = files::cache_path(cache.path(), "F1", Some(files::PREVIEW_NAME));
+    let preview = files::preview_path(cache.path(), "F1");
     assert_eq!(std::fs::read(&preview).unwrap(), b"\x89PNG");
     let page = store
         .with_read(|c| flek_core::store::messages::page(c, "C1", None, 10))

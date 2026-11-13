@@ -263,11 +263,17 @@ pub async fn boot(app: AppHandle) {
         );
         return;
     }
-    import_desktop(app).await;
+    import_desktop_with_policy(app, false).await;
 }
 
 /// Imports the Slack desktop session, or falls back to the sign-in screen.
 pub async fn import_desktop(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let _maintenance = state.maintenance.lock().await;
+    import_desktop_with_policy(app.clone(), true).await;
+}
+
+async fn import_desktop_with_policy(app: AppHandle, explicit: bool) {
     if !desktop_installed() {
         set_status(
             &app,
@@ -280,7 +286,24 @@ pub async fn import_desktop(app: AppHandle) {
     }
     set_status(&app, Status::Importing);
     let state = app.state::<AppState>();
-    let reason = match auth::import_and_save(&state.creds, None).await {
+    let imported = if explicit {
+        match flek_core::settings::default_path() {
+            Ok(path) => {
+                let imported = auth::import_explicit_and_save(&state.creds, None, &path).await;
+                let settings = {
+                    let mut settings = state.settings.lock().expect("settings lock");
+                    settings.reload(&path);
+                    settings.clone()
+                };
+                let _ = app.emit("flek://settings", settings);
+                imported
+            }
+            Err(error) => Err(error),
+        }
+    } else {
+        auth::import_and_save(&state.creds, None).await
+    };
+    let reason = match imported {
         Ok(teams) => {
             let mut last_err = None;
             for t in teams {
@@ -302,7 +325,7 @@ pub async fn import_desktop(app: AppHandle) {
     );
 }
 
-fn desktop_installed() -> bool {
+pub(crate) fn desktop_installed() -> bool {
     // Where import is not implemented, sign-in is the only path.
     auth::desktop_import::IMPORT_SUPPORTED
         && dirs::home_dir().is_some_and(|home| {
@@ -320,7 +343,23 @@ pub fn start(app: &AppHandle, session: Session) {
 pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_files: bool) {
     let state = app.state::<AppState>();
     state.stop_engine();
+    let (client, write_client) = match session_clients(&session) {
+        Ok(clients) => clients,
+        Err(e) => {
+            tracing::error!("cannot build the Slack client: {e}");
+            state.forget_session();
+            set_status(
+                app,
+                Status::SignIn {
+                    desktop: desktop_installed(),
+                    reason: Some(e.to_string()),
+                },
+            );
+            return;
+        }
+    };
     *state.session.lock().expect("session lock") = Some(session.clone());
+    *state.client.lock().expect("client lock") = Some(write_client);
     let me = session.identity.clone();
     state.presence.send_replace(vec![me.user_id.clone()]);
     set_status(
@@ -333,18 +372,8 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
         },
     );
 
-    let client = match session.client() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("cannot build the Slack client: {e}");
-            return;
-        }
-    };
     if let Ok(mut ua) = state.user_agent.lock() {
         *ua = Some(client.profile().user_agent.clone());
-    }
-    if let (Ok(mut slot), Ok(c)) = (state.client.lock(), session.client()) {
-        *slot = Some(Arc::new(c));
     }
     let files = flek_core::files::default_cache_dir()
         .ok()
@@ -447,6 +476,10 @@ pub fn start_with_options(app: &AppHandle, session: Session, full: bool, skip_fi
     if let Err(e) = spawned {
         tracing::error!("cannot start the sync thread: {e}");
     }
+}
+
+fn session_clients(session: &Session) -> flek_core::Result<(Client, Arc<Client>)> {
+    Ok((session.client()?, Arc::new(session.client()?)))
 }
 
 #[cfg(test)]

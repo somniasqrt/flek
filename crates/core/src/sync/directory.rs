@@ -1,5 +1,7 @@
 //! Users and conversations into the database.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use crate::api::{AuthTest, Client};
 use crate::store::{directory, Store};
 use crate::Result;
@@ -10,19 +12,107 @@ pub struct DirectoryStats {
     pub conversations: usize,
 }
 
+/// Shared by reconnect passes and live invalidations for one engine/session.
+/// Successful people refreshes are cached; live invalidations have a shorter
+/// spacing for conversations-only requests. Concurrent successes coalesce.
+#[derive(Debug)]
+pub struct DirectoryRefresh {
+    state: tokio::sync::Mutex<RefreshState>,
+    completed: AtomicU64,
+    minimum_interval: std::time::Duration,
+}
+
+#[derive(Debug, Default)]
+struct RefreshState {
+    users_synced: Option<tokio::time::Instant>,
+    live_started: Option<tokio::time::Instant>,
+}
+
+impl Default for DirectoryRefresh {
+    fn default() -> Self {
+        Self::new(std::time::Duration::from_secs(5 * 60))
+    }
+}
+
+impl DirectoryRefresh {
+    pub fn new(minimum_interval: std::time::Duration) -> Self {
+        Self {
+            state: Default::default(),
+            completed: AtomicU64::new(0),
+            minimum_interval,
+        }
+    }
+
+    /// Passes retry failed people refreshes immediately. Live invalidations
+    /// reuse recent people and space conversation refreshes at least 10 s apart.
+    pub async fn refresh(
+        &self,
+        client: &Client,
+        store: &Store,
+        me: &AuthTest,
+        live: bool,
+    ) -> Result<bool> {
+        let completed = self.completed.load(Ordering::Relaxed);
+        loop {
+            let mut state = self.state.lock().await;
+            if self.completed.load(Ordering::Relaxed) != completed {
+                return Ok(false);
+            }
+            if live {
+                if let Some(next) = state
+                    .live_started
+                    .map(|t| t + std::time::Duration::from_secs(10))
+                    .filter(|t| *t > tokio::time::Instant::now())
+                {
+                    drop(state);
+                    tokio::time::sleep_until(next).await;
+                    continue;
+                }
+                state.live_started = Some(tokio::time::Instant::now());
+            }
+            let full_due = state
+                .users_synced
+                .is_none_or(|t| t.elapsed() >= self.minimum_interval);
+            let result = if full_due {
+                match sync_users(client, store, me).await {
+                    Ok(_) => {
+                        // A later conversation failure must not discard a
+                        // successful people refresh or fetch that list again.
+                        state.users_synced = Some(tokio::time::Instant::now());
+                        sync_conversations(client, store, me).await
+                    }
+                    Err(error) => Err(error),
+                }
+            } else {
+                sync_conversations(client, store, me).await
+            };
+            if result.is_ok() {
+                self.completed.fetch_add(1, Ordering::Relaxed);
+            }
+            return result.map(|_| true);
+        }
+    }
+}
+
 /// Fetches the team's users and the user's conversations and stores them.
 pub async fn sync_directory(
     client: &Client,
     store: &Store,
     me: &AuthTest,
 ) -> Result<DirectoryStats> {
-    let (team_id, team, url, self_user) = (
+    let users = sync_users(client, store, me).await?;
+    let mut stats = sync_conversations(client, store, me).await?;
+    stats.users = users;
+    Ok(stats)
+}
+
+async fn sync_users(client: &Client, store: &Store, me: &AuthTest) -> Result<usize> {
+    let (team_id, team, url, me_id) = (
         me.team_id.clone(),
         me.team.clone(),
         me.url.clone(),
         me.user_id.clone(),
     );
-    let me_id = self_user.clone();
     store
         .call(move |c| directory::upsert_team(c, &team_id, &team, &url, &me_id))
         .await?;
@@ -43,19 +133,30 @@ pub async fn sync_directory(
 
     let users = client.users_list().await?;
     tracing::info!(count = users.len(), "fetched users");
+    let count = users.len();
+    let team_id = me.team_id.clone();
+    store
+        .call(move |c| directory::upsert_users(c, &team_id, &users))
+        .await?;
+    Ok(count)
+}
+
+async fn sync_conversations(
+    client: &Client,
+    store: &Store,
+    me: &AuthTest,
+) -> Result<DirectoryStats> {
     let convs = client.users_conversations().await?;
     tracing::info!(count = convs.len(), "fetched conversations");
 
     let stats = DirectoryStats {
-        users: users.len(),
+        users: 0,
         conversations: convs.len(),
     };
     let team_id = me.team_id.clone();
+    let self_user = me.user_id.clone();
     store
-        .call(move |c| {
-            directory::upsert_users(c, &team_id, &users)?;
-            directory::replace_memberships(c, &team_id, &self_user, &convs)
-        })
+        .call(move |c| directory::replace_memberships(c, &team_id, &self_user, &convs))
         .await?;
     // Undocumented; unread counts just stay unknown if it fails.
     // Its `latest` also lets sync skip conversations with nothing new.

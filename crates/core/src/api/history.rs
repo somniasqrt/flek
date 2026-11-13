@@ -100,8 +100,21 @@ fn carries_user_content(subtype: &str) -> bool {
 pub struct HistoryPage {
     /// Newest first, as Slack returns them.
     pub messages: Vec<Message>,
+    /// Identities present on Slack whose payload could not be decoded.
+    pub skipped_ts: Vec<String>,
+    /// A skipped item had no usable identity; absence cannot prove deletion.
+    pub incomplete: bool,
     pub has_more: bool,
     pub next_cursor: Option<String>,
+}
+
+impl HistoryPage {
+    pub fn present_ts(&self) -> impl Iterator<Item = &str> {
+        self.messages
+            .iter()
+            .map(|m| m.ts.as_str())
+            .chain(self.skipped_ts.iter().map(String::as_str))
+    }
 }
 
 /// Window and page position for [`Client::conversations_history`].
@@ -170,19 +183,53 @@ fn parse_page(raw: Value) -> Result<HistoryPage> {
     }
 
     let raw: Raw = serde_json::from_value(raw)?;
-    // Until deletion reconciliation understands incomplete pages, a decode
-    // failure must abort the page rather than look like a missing message.
-    let messages = raw
-        .messages
-        .into_iter()
-        .map(|v| {
-            let mut m: Message = serde_json::from_value(v.clone())?;
-            m.raw = v;
-            Ok(m)
-        })
-        .collect::<Result<_>>()?;
+    let mut messages = Vec::new();
+    let mut skipped_ts = Vec::new();
+    let mut skipped = 0;
+    let mut incomplete = false;
+    for v in raw.messages {
+        match serde_json::from_value::<Message>(v.clone()) {
+            Ok(mut message) => {
+                message.raw = v;
+                messages.push(message);
+            }
+            Err(_) => {
+                skipped += 1;
+                // Accept numeric timestamps too, but never log arbitrary text.
+                let ts = v
+                    .get("ts")
+                    .and_then(|ts| match ts {
+                        Value::String(ts) => Some(ts.clone()),
+                        Value::Number(ts) => {
+                            let text = ts.to_string();
+                            let (secs, frac) = text.split_once('.').unwrap_or((&text, ""));
+                            (frac.len() <= 6).then(|| format!("{secs}.{frac:0<6}"))
+                        }
+                        _ => None,
+                    })
+                    .filter(|ts| {
+                        ts.split_once('.').is_some_and(|(s, us)| {
+                            !s.is_empty()
+                                && !us.is_empty()
+                                && s.bytes().all(|b| b.is_ascii_digit())
+                                && us.bytes().all(|b| b.is_ascii_digit())
+                        })
+                    });
+                if let Some(ts) = ts {
+                    skipped_ts.push(ts);
+                } else {
+                    incomplete = true;
+                }
+            }
+        }
+    }
+    if skipped > 0 {
+        tracing::warn!(count = skipped, ts = ?skipped_ts, "skipped malformed history items");
+    }
     Ok(HistoryPage {
         messages,
+        skipped_ts,
+        incomplete,
         has_more: raw.has_more,
         next_cursor: raw
             .response_metadata
@@ -197,7 +244,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn null_stubs_preserve_content_and_malformed_pages_fail_closed() {
+    fn null_stubs_preserve_content_and_malformed_items_keep_identity() {
         let page = parse_page(json!({"messages": [
             {"ts": "1.0", "text": null, "files": null, "reactions": null},
             {"ts": "2.0", "text": "valid", "files": null, "reactions": null}
@@ -208,7 +255,9 @@ mod tests {
         assert_eq!(page.next_cursor.as_deref(), Some("next"));
         assert!(page.messages[0].is_hidden_by_limit());
         assert!(!page.messages[1].is_hidden_by_limit());
-        assert!(parse_page(json!({"messages":[{"ts":"3.0","text":42}]})).is_err());
+        let skipped = parse_page(json!({"messages":[{"ts":"3.0","text":42}]})).unwrap();
+        assert_eq!(skipped.skipped_ts, ["3.0"]);
+        assert!(!skipped.incomplete);
         let store = crate::store::Store::open_in_memory().unwrap();
         store.with_conn(|c| {
             c.execute_batch("INSERT INTO teams(id,name) VALUES('T1','Fake');

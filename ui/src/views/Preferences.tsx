@@ -13,7 +13,8 @@ import { Portal } from "solid-js/web";
 import { t, errorMessage } from "../i18n/index";
 import { api, type Status } from "../api";
 import { Cross, Gear, ImageIcon, Palette, Person, Refresh, SidebarPanel } from "../components/icons";
-import { changeSetting, setPreferencesOpen } from "../stores/settings";
+import { changeSetting, settings, setPreferencesOpen } from "../stores/settings";
+import { signOut } from "../stores/session";
 import type { Settings } from "../models/settings-model";
 import AccountSection from "./preferences/AccountSection";
 import type { Confirmable, PrefsContext } from "./preferences/context";
@@ -101,7 +102,7 @@ export default function Preferences(props: { status: Status }) {
       } else if (action === "sync") {
         await api.fullResync();
       } else if (action === "signout") {
-        await api.signOut();
+        await signOut();
         close();
       }
     });
@@ -164,6 +165,11 @@ export default function Preferences(props: { status: Status }) {
               </For>
             </nav>
             <div class="preferences-pane">
+              <Show when={settings().load_error}>
+                <p class="error" role="alert">
+                  {t("Could not read settings. Using safe preferences; automatic desktop import is off. Repair or remove settings.json to save changes.")}
+                </p>
+              </Show>
               <h3>{t(section())}</h3>
               <div class="preferences-sections">
                 <Switch>

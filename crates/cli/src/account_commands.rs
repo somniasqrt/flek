@@ -44,7 +44,8 @@ pub(super) async fn whoami(store: &CredentialStore, g: &Global) -> Result<()> {
 }
 
 pub(super) async fn import(store: &CredentialStore, g: &Global) -> Result<()> {
-    let teams = auth::import_and_save(store, g.team.as_deref())
+    let settings_path = flek_core::settings::default_path()?;
+    let teams = auth::import_explicit_and_save(store, g.team.as_deref(), &settings_path)
         .await
         .context("importing from Slack desktop")?;
     let failed = teams.iter().filter(|t| t.result.is_err()).count();

@@ -4,6 +4,15 @@ Run `npm run dev` from `ui/`, then open `/preview.html`. This is the synthetic
 IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
 `?lang=uk` switches to Ukrainian.
 
+- `/preview.html?signin&lang=uk` shows a synthetic rejected session. **Clear saved
+  session** asks for confirmation; Cancel keeps it, confirmation uses mocked
+  sign-out and clears local drafts/outbox while preserving UI preferences.
+  **Try the Slack desktop app again** imports a synthetic session.
+- `/preview.html?settingsError&preferences&lang=uk` shows the settings-read
+  warning in Preferences and refuses settings saves. In the console,
+  `__settingsError(false)` clears the diagnostic through mocked settings/change
+  events; `__settingsError(true)` restores it. Both flags also work with `lang=en`.
+
 - The newest **general** messages include XLSX (three sheet tabs including an
   empty sheet), DOCX (heading, bold/italic/underline, list, table, embedded PNG),
   a truncated spreadsheet, a broken DOCX and an over-limit fallback. Try each

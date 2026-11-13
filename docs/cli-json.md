@@ -23,7 +23,7 @@ The table lists payload fields alongside the common `schema_version: integer`.
 | `channels` | `conversations`: Conversation[]; archived conversations excluded unless `--archived` |
 | `history <conversation>` | `conversation`: Conversation; `messages`: Message[] (oldest first) |
 | `search <query>` | `results`: Message[] with an additional `snippet: string` on each result (`**` marks matches); ordering follows relevance or `--recent` |
-| `send <conversation> <text>` | `message`: Message, re-read from the database after sending |
+| `send <conversation> <text>` | `message`: Message or null, re-read after sending; `ts`: string; `not_stored_locally`: boolean |
 | `import <path>` | `summary`: `{format: string, read: integer, written: integer, unknown_channels: string[]}` |
 | `sync` | `summary`: `{conversations: integer, messages: integer, deleted: integer, failed: integer, files_downloaded: integer}` |
 | `auth list` | `teams`: string[] of stored team ids |
@@ -173,6 +173,11 @@ uses the existing fast-pass behavior (one newest page); use `sync` for deep
 history. Freshness failures fail the command, rather than presenting stale data
 as freshly fetched.
 
+A successful `send` always reports Slack's accepted `ts`. If local persistence or the
+post-send read fails, `message` is null and `not_stored_locally` is true; stderr
+warns that sync will recover the local copy. The command still exits successfully:
+retrying an accepted message can duplicate it. Schema version remains 1.
+
 ## NDJSON (`sync --follow --json`)
 
 Every stdout line is a complete compact JSON object with `schema_version: 1`
@@ -183,7 +188,7 @@ mixed into the stream. The terminal summary is emitted on graceful shutdown.
 |---|---|
 | `message` | `message`: Message, loaded from SQLite |
 | `progress` | `data`: `{stage: "directory"}`; `{stage: "conversations", done: integer, total: integer, current: string, deep: boolean}`; `{stage: "files", done: integer, total: integer}`; or `{stage: "idle"}` |
-| `connection` | `data`: `{state: "connected"}` or `{state: "reconnecting", in_secs: integer}` |
+| `connection` | `data`: `{state: "connected"}`, `{state: "sync_incomplete", in_secs: integer}` (socket alive, catch-up retry pending), or `{state: "reconnecting", in_secs: integer}` |
 | `summary` | `summary`: same object as finite `sync` |
 | `message_deleted`, `reactions` | `data`: `{conversation_id: string, ts: string}`; notification to re-read the DB |
 | `read_marker`, `history` | `data`: `{conversation_id: string}` |

@@ -102,6 +102,11 @@ pub fn downloadable(conn: &Connection, max_size: Option<i64>) -> Result<Vec<Pend
             FROM files
             WHERE hidden_by_limit = 0
             AND is_external = 0
+            AND auto_download_paused = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM file_download_failures f
+                WHERE f.file_id = files.id AND f.preview = 0
+                AND (f.permanent = 1 OR f.retry_after > unixepoch()))
             AND url_private_download IS NOT NULL
             AND (?1 IS NULL
                 OR COALESCE(SIZE, 0) <= ?1)
@@ -132,6 +137,11 @@ pub fn set_local_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
         ",
         params![id, path],
     )?;
+    clear_failure(conn, id, false)?;
+    conn.execute(
+        "UPDATE files SET auto_download_paused = 0 WHERE id = ?1",
+        [id],
+    )?;
     Ok(())
 }
 
@@ -142,12 +152,17 @@ pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
         "
             SELECT id, url, preview_path
             FROM (
-                SELECT id, preview_path, hidden_by_limit, is_external, COALESCE(json_extract(
+                SELECT id, preview_path, hidden_by_limit, is_external, auto_download_paused, COALESCE(json_extract(
                         raw_json, '$.thumb_pdf'), json_extract(raw_json, '$.thumb_video')) AS
                     url
                 FROM files)
             WHERE hidden_by_limit = 0
             AND is_external = 0
+            AND auto_download_paused = 0
+            AND NOT EXISTS (
+                SELECT 1 FROM file_download_failures f
+                WHERE f.file_id = id AND f.preview = 1
+                AND (f.permanent = 1 OR f.retry_after > unixepoch()))
             AND url IS NOT NULL
             ORDER BY id
         ",
@@ -176,5 +191,39 @@ pub fn set_preview_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
         ",
         params![id, path],
     )?;
+    clear_failure(conn, id, true)?;
     Ok(())
+}
+
+/// First transient failure waits one minute, doubling up to one day.
+pub fn record_failure(conn: &Connection, id: &str, preview: bool, permanent: bool) -> Result<()> {
+    conn.execute(
+        "
+            INSERT INTO file_download_failures(file_id, preview, failure_count,
+                last_failure_at, permanent, retry_after)
+            VALUES (?1, ?2, 1, unixepoch(), ?3, unixepoch() + 60)
+            ON CONFLICT (file_id, preview) DO UPDATE
+            SET failure_count = MIN(failure_count + 1, 31), last_failure_at = unixepoch(),
+                permanent = ?3,
+                retry_after = unixepoch() + MIN(86400, 60 * (1 << MIN(failure_count, 11)))
+        ",
+        params![id, preview, permanent],
+    )?;
+    Ok(())
+}
+
+fn clear_failure(conn: &Connection, id: &str, preview: bool) -> Result<()> {
+    conn.execute(
+        "DELETE FROM file_download_failures WHERE file_id = ?1 AND preview = ?2",
+        params![id, preview],
+    )?;
+    Ok(())
+}
+
+/// Snapshot only the small failure table so cache hits can clear stale retries
+/// without making unchanged cached files take the writer on every pass.
+pub(crate) fn retrying(conn: &Connection) -> Result<std::collections::HashSet<(String, bool)>> {
+    let mut stmt = conn.prepare("SELECT file_id, preview FROM file_download_failures")?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    Ok(rows.collect::<Result<_, _>>()?)
 }

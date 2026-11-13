@@ -67,6 +67,33 @@ pub async fn import_and_save(
     Ok(teams)
 }
 
+/// User-initiated import: save the session and opt back into desktop recovery.
+/// Broken preferences remain untouched and do not discard a valid imported session.
+pub async fn import_explicit_and_save(
+    store: &CredentialStore,
+    only: Option<&str>,
+    settings_path: &std::path::Path,
+) -> Result<Vec<ImportedTeam>> {
+    let mut teams = import_from_desktop().await?;
+    save_explicit_import(store, only, &mut teams, settings_path)?;
+    Ok(teams)
+}
+
+fn save_explicit_import(
+    store: &CredentialStore,
+    only: Option<&str>,
+    teams: &mut Vec<ImportedTeam>,
+    settings_path: &std::path::Path,
+) -> Result<()> {
+    save_imported(store, only, teams)?;
+    if teams.iter().any(|t| t.result.is_ok()) {
+        if let Err(error) = crate::settings::Settings::enable_desktop_import(settings_path) {
+            tracing::warn!(%error, "session imported, but desktop auto-import could not be enabled; repair settings.json");
+        }
+    }
+    Ok(())
+}
+
 fn save_imported(
     store: &CredentialStore,
     only: Option<&str>,
@@ -134,12 +161,14 @@ where
 /// stored session it re-imports once before giving up.
 pub async fn resolve_session(store: &CredentialStore, team: Option<&str>) -> Result<Session> {
     let path = crate::settings::default_path()?;
-    let enabled = crate::settings::Settings::load(&path)?.desktop_import_on_start;
+    let mut settings = crate::settings::Settings::safe_defaults();
+    settings.reload(&path);
+    let enabled = settings.desktop_import_on_start;
     resume_session(store, None, team, enabled).await
 }
 
-/// [`resolve_session`] for the app: when Slack cannot be reached (offline,
-/// server error), the session starts from the stored credentials and the
+/// [`resolve_session`] with cache fallback: any non-auth validation failure
+/// starts the session from the stored credentials and the
 /// identity recorded in `db`, so the app opens from cache and the sync engine
 /// connects once the network is back. Revocation recovery requires an enabled
 /// desktop import and a recorded desktop origin, and accepts only the same team.
@@ -155,7 +184,7 @@ pub async fn resume_session(
     };
     let Some(mut creds) = creds else {
         if !desktop_import_on_start {
-            return Err(Error::DesktopNotLoggedIn);
+            return Err(Error::DesktopImportDisabled);
         }
         tracing::info!("no stored credentials, importing from Slack desktop");
         return session_from_fresh_import(store, team).await;
@@ -165,17 +194,27 @@ pub async fn resume_session(
         store.save(&creds)?;
     }
 
-    match validate(
+    let validated = validate(
         creds.token.clone(),
         creds.cookie.clone(),
         creds.origin.clone(),
     )
-    .await
-    {
+    .await;
+    resume_validated(store, db, creds, desktop_import_on_start, validated).await
+}
+
+async fn resume_validated(
+    store: &CredentialStore,
+    db: Option<&crate::store::Store>,
+    creds: Credentials,
+    desktop_import_on_start: bool,
+    validated: Result<Session>,
+) -> Result<Session> {
+    match validated {
         Err(e) if e.is_auth_error() => {
             recover_rejected(store, &creds, desktop_import_on_start).await
         }
-        Err(e) if e.is_unreachable() => {
+        Err(e) => {
             let Some(db) = db else { return Err(e) };
             let team_id = creds.team_id.clone();
             let stored = db
@@ -183,7 +222,7 @@ pub async fn resume_session(
                 .await?;
             match stored {
                 Some(identity) => {
-                    tracing::info!(error = %e, "Slack unreachable, starting offline");
+                    tracing::info!(error = %e, "session validation unavailable, starting from cache");
                     Ok(Session {
                         credentials: creds,
                         identity,
@@ -192,7 +231,7 @@ pub async fn resume_session(
                 None => Err(e),
             }
         }
-        other => other,
+        Ok(session) => Ok(session),
     }
 }
 
@@ -217,11 +256,13 @@ where
     Fut: std::future::Future<Output = Result<Vec<ImportedTeam>>>,
 {
     store.delete(&creds.team_id)?;
-    if !enabled
-        || !creds
-            .origin
-            .as_ref()
-            .is_some_and(|o| matches!(o.kind, OriginKind::Desktop { .. }))
+    if !enabled {
+        return Err(Error::DesktopImportDisabled);
+    }
+    if !creds
+        .origin
+        .as_ref()
+        .is_some_and(|o| matches!(o.kind, OriginKind::Desktop { .. }))
     {
         return Err(Error::DesktopNotLoggedIn);
     }

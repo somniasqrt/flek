@@ -4,6 +4,13 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  // Session lifecycle (M9.16.8).
+  "Clear saved session": "Очистити збережений сеанс",
+  "Clear saved session?": "Очистити збережений сеанс?",
+  "This removes saved sessions and message drafts from Flek. The local archive is kept.":
+    "Збережені сеанси й чернетки повідомлень буде видалено з Flek. Локальний архів збережеться.",
+  "Could not read settings. Using safe preferences; automatic desktop import is off. Repair or remove settings.json to save changes.":
+    "Не вдалося прочитати налаштування. Використовуються безпечні параметри; автоімпорт із десктопного Slack вимкнено. Виправте або видаліть settings.json, щоб зберігати зміни.",
   "No cells in this preview.": "У цьому перегляді немає клітинок.",
   "This file is too large to preview (over 50 MB). Open it in the default app.": "Файл завеликий для перегляду (понад 50 МБ). Відкрийте його в типовому застосунку.",
   "This document is too large or complex to preview here. Open it in the default app.": "Документ завеликий або надто складний для перегляду тут. Відкрийте його в типовому застосунку.",
@@ -332,6 +339,8 @@ export const uk = {
   Channels: "Канали",
   Muted: "Приглушені",
   "No conversations match": "Розмов не знайдено",
+  "Connected; sync incomplete, retrying…": "На зв’язку; синхронізація неповна, повторюємо…",
+  "Sent to Slack; local copy will sync later.": "Надіслано в Slack; локальна копія синхронізується пізніше.",
   "Offline, reconnecting…": "Офлайн, відновлюємо з’єднання…",
   "Up to date": "Усе оновлено",
   "Syncing channels and people…": "Синхронізуємо канали й людей…",

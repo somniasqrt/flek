@@ -77,11 +77,12 @@ pub async fn download_files(
     if max_size == Some(0) {
         return Ok(FileStats::default());
     }
-    let (files_list, previews) = store
-        .call(move |c| {
+    let (files_list, previews, retrying) = store
+        .read(move |c| {
             Ok((
                 file_store::downloadable(c, max_size)?,
                 file_store::previews_to_fetch(c)?,
+                file_store::retrying(c)?,
             ))
         })
         .await?;
@@ -93,10 +94,20 @@ pub async fn download_files(
     let mut stats = FileStats::default();
     let mut bucket = TokenBucket::for_files();
     for (i, (f, preview)) in items.enumerate() {
-        if !files::cache_path(cache_dir, &f.id, f.name.as_deref()).is_file() {
+        let target = if preview {
+            files::preview_path(cache_dir, &f.id)
+        } else {
+            files::cache_path(cache_dir, &f.id, f.name.as_deref())
+        };
+        if !target.is_file() {
             bucket.acquire().await;
         }
-        match files::fetch_bounded(client, cache_dir, &f, max_size).await {
+        let result = if preview {
+            files::fetch_preview(client, cache_dir, &f, max_size).await
+        } else {
+            files::fetch_bounded(client, cache_dir, &f, max_size).await
+        };
+        match result {
             Ok((path, fresh)) => {
                 match (fresh, preview) {
                     (true, true) => stats.previews += 1,
@@ -105,7 +116,10 @@ pub async fn download_files(
                     (false, true) => {}
                 }
                 let path = path.to_string_lossy().into_owned();
-                if f.local_path.as_deref() != Some(path.as_str()) {
+                if fresh
+                    || f.local_path.as_deref() != Some(path.as_str())
+                    || retrying.contains(&(f.id.clone(), preview))
+                {
                     let id = f.id.clone();
                     store
                         .call(move |c| {
@@ -121,6 +135,11 @@ pub async fn download_files(
             Err(e) if e.is_auth_error() => return Err(e),
             Err(e) => {
                 stats.failed += 1;
+                let id = f.id.clone();
+                let permanent = files::permanent_file_failure(&e);
+                store
+                    .call(move |c| file_store::record_failure(c, &id, preview, permanent))
+                    .await?;
                 tracing::warn!(file = %f.id, preview, error = %e, "file download failed");
             }
         }
@@ -134,15 +153,17 @@ const LINK_IMAGES_PER_PASS: usize = 300;
 
 /// Caches the images of link previews through Slack's image proxy, paced
 /// like files. Uses a client without the session: these are public images.
-/// A failed image is recorded and not retried. Returns how many were fetched.
+/// Definitive refusals are remembered; transient failures back off. Returns the fetched count.
 pub async fn download_link_images(
     client: &Client,
     store: &Store,
     cache_dir: &Path,
     proxy: &str,
 ) -> Result<usize> {
+    prepare_images(store, cache_dir).await?;
+    refresh_media(store).await?;
     let urls = store
-        .call(|c| crate::store::unfurls::images_to_fetch(c, LINK_IMAGES_PER_PASS))
+        .read(|c| crate::store::unfurls::images_to_fetch(c, LINK_IMAGES_PER_PASS))
         .await?;
     fetch_images(client, store, cache_dir, Some(proxy), urls).await
 }
@@ -155,9 +176,10 @@ pub async fn download_avatars(
     cache_dir: &Path,
     team_id: &str,
 ) -> Result<usize> {
+    prepare_images(store, cache_dir).await?;
     let team = team_id.to_owned();
     let urls = store
-        .call(move |c| crate::store::directory::avatars_to_fetch(c, &team, LINK_IMAGES_PER_PASS))
+        .read(move |c| crate::store::directory::avatars_to_fetch(c, &team, LINK_IMAGES_PER_PASS))
         .await?;
     fetch_images(client, store, cache_dir, None, urls).await
 }
@@ -173,9 +195,11 @@ pub async fn download_custom_emoji(
     cache_dir: &Path,
     team_id: &str,
 ) -> Result<usize> {
+    prepare_images(store, cache_dir).await?;
+    refresh_media(store).await?;
     let team = team_id.to_owned();
     let urls = store
-        .call(move |c| crate::store::emoji::to_fetch(c, &team, EMOJI_PER_PASS))
+        .read(move |c| crate::store::emoji::to_fetch(c, &team, EMOJI_PER_PASS))
         .await?;
     fetch_images(client, store, cache_dir, None, urls).await
 }
@@ -206,15 +230,22 @@ pub async fn fetch_profile_photo(
         return Ok(Some(hash));
     }
     let http = files::ImageClient::new(user_agent)?;
-    let fetched = files::fetch_link_image(&http, None, cache_dir, &url).await;
-    let path = fetched
-        .as_ref()
-        .ok()
-        .map(|p| p.to_string_lossy().into_owned());
-    store
-        .call(move |c| crate::store::unfurls::set_image(c, &url, path.as_deref()))
-        .await?;
-    fetched.map(|_| Some(hash))
+    match files::fetch_link_image(&http, None, cache_dir, &url).await {
+        Ok(path) => {
+            let path = path.to_string_lossy().into_owned();
+            store
+                .call(move |c| crate::store::unfurls::set_image(c, &url, Some(&path)))
+                .await?;
+            Ok(Some(hash))
+        }
+        Err(error) => {
+            let permanent = files::permanent_image_failure(&error);
+            store
+                .call(move |c| crate::store::unfurls::record_image_failure(c, &url, permanent))
+                .await?;
+            Err(error)
+        }
+    }
 }
 
 async fn fetch_images(
@@ -233,19 +264,22 @@ async fn fetch_images(
     let mut fetched = 0;
     for url in urls {
         bucket.acquire().await;
-        let path = match files::fetch_link_image(&http, proxy, cache_dir, &url).await {
-            Ok(p) => {
+        match files::fetch_link_image(&http, proxy, cache_dir, &url).await {
+            Ok(path) => {
                 fetched += 1;
-                Some(p.to_string_lossy().into_owned())
+                let path = path.to_string_lossy().into_owned();
+                store
+                    .call(move |c| crate::store::unfurls::set_image(c, &url, Some(&path)))
+                    .await?;
             }
-            Err(e) => {
-                tracing::debug!(error = %e, "image download failed");
-                None
+            Err(error) => {
+                tracing::debug!(error = %error, "image download failed");
+                let permanent = files::permanent_image_failure(&error);
+                store
+                    .call(move |c| crate::store::unfurls::record_image_failure(c, &url, permanent))
+                    .await?;
             }
-        };
-        store
-            .call(move |c| crate::store::unfurls::set_image(c, &url, path.as_deref()))
-            .await?;
+        }
     }
     Ok(fetched)
 }
@@ -257,16 +291,89 @@ pub async fn download_team_icon(
     cache: &Path,
     team: &str,
 ) -> Result<usize> {
+    prepare_images(store, cache).await?;
     let team = team.to_owned();
     let urls = store
-        .read(move |c| {
-            Ok(crate::store::directory::team_icon_url(c, &team)?
-                .filter(|u| !crate::store::unfurls::is_cached(c, u))
-                .into_iter()
-                .collect())
-        })
+        .read(
+            move |c| match crate::store::directory::team_icon_url(c, &team)? {
+                Some(url) if crate::store::unfurls::image_pending(c, &url)? => Ok(vec![url]),
+                _ => Ok(Vec::new()),
+            },
+        )
         .await?;
     fetch_images(client, store, cache, None, urls).await
+}
+
+async fn refresh_media(store: &Store) -> Result<()> {
+    let through = store
+        .read(|c| {
+            Ok(c.query_row(
+                "SELECT COALESCE(MAX(position), 0) FROM media_message_changes",
+                [],
+                |r| r.get::<_, i64>(0),
+            )?)
+        })
+        .await?;
+    loop {
+        let scanned = store
+            .read(move |c| crate::store::unfurls::scan_media_through(c, through))
+            .await?;
+        if scanned.is_empty() {
+            break;
+        }
+        store
+            .call(move |c| crate::store::unfurls::save_media_scan(c, scanned))
+            .await?;
+        // Each batch releases the writer; newly changed positions are left for
+        // the next refresh so an active conversation cannot cause a livelock.
+        tokio::task::yield_now().await;
+    }
+    Ok(())
+}
+
+/// Reconcile all public paths once per store/cache per process; afterwards only
+/// exact missing-path hints from the display/scheme read paths are examined.
+async fn prepare_images(store: &Store, cache: &Path) -> Result<()> {
+    files::prepare_cache(cache)?;
+    type CacheKey = (Option<std::path::PathBuf>, std::path::PathBuf);
+    static CHECKED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<CacheKey>>> =
+        std::sync::OnceLock::new();
+    let key = (store.path().map(Path::to_owned), cache.canonicalize()?);
+    let checked = CHECKED.get_or_init(Default::default);
+    let first = !checked
+        .lock()
+        .map_err(|_| crate::Error::File("image cache lock poisoned".into()))?
+        .contains(&key);
+    let cache = cache.to_owned();
+    let missing = store
+        .read(move |c| {
+            let mut missing = crate::store::unfurls::missing_image_hints(c);
+            if first {
+                let mut stmt = c.prepare(
+                    "SELECT hash, local_path FROM link_images WHERE local_path IS NOT NULL",
+                )?;
+                let paths =
+                    stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+                for path in paths {
+                    let (hash, path) = path?;
+                    if files::inside_cache(&cache, Path::new(&path)).is_none() {
+                        missing.push((hash, path));
+                    }
+                }
+            }
+            Ok(missing)
+        })
+        .await?;
+    if !missing.is_empty() {
+        store
+            .call(move |c| crate::store::unfurls::invalidate_missing(c, &missing))
+            .await?;
+    }
+    checked
+        .lock()
+        .map_err(|_| crate::Error::File("image cache lock poisoned".into()))?
+        .insert(key);
+    Ok(())
 }
 
 #[cfg(test)]

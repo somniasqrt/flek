@@ -24,18 +24,28 @@ pub(super) async fn sync(
     use flek_core::sync::engine::{Engine, EngineOptions, Priority};
     use flek_core::sync::live::{bus, Change, ConnectionState, Progress};
 
-    let session = auth::resolve_session(creds, g.team.as_deref()).await?;
     let db = open_db(g)?;
+    let mut settings = flek_core::settings::Settings::safe_defaults();
+    settings.reload(&flek_core::settings::default_path()?);
+    let session = auth::resume_session(
+        creds,
+        Some(&db),
+        g.team.as_deref(),
+        settings.desktop_import_on_start,
+    )
+    .await?;
     let me = session.identity.clone();
 
     let only = match only {
         Some(q) => {
-            // The conversation may not be stored yet: fetch the directory first.
-            flek_core::sync::directory::sync_directory(&session.client()?, &db, &me).await?;
             let team = me.team_id.clone();
-            let found = db
-                .with_read(|c| references::resolve(c, &team, q, Match::Exact))?
-                .required(q)?;
+            let mut found = db.with_read(|c| references::resolve(c, &team, q, Match::Exact))?;
+            if !matches!(found, references::Resolution::Found(_)) {
+                // Only a missing local identity needs directory discovery before startup.
+                flek_core::sync::directory::sync_directory(&session.client()?, &db, &me).await?;
+                found = db.with_read(|c| references::resolve(c, &team, q, Match::Exact))?;
+            }
+            let found = found.required(q)?;
             Some(vec![found.id])
         }
         None => None,
@@ -66,12 +76,7 @@ pub(super) async fn sync(
         },
     };
 
-    let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
-    tokio::spawn(async move {
-        if tokio::signal::ctrl_c().await.is_ok() {
-            let _ = stop_tx.send(true);
-        }
-    });
+    let (stop_tx, stop_rx) = shutdown_signal(tokio::signal::ctrl_c());
 
     let bar = if g.json {
         indicatif::ProgressBar::hidden()
@@ -120,6 +125,12 @@ pub(super) async fn sync(
                         eprintln!("up to date; listening for new messages (Ctrl+C to stop)");
                     }
                 }
+                Change::Connection(ConnectionState::SyncIncomplete { in_secs }) => {
+                    say(
+                        &bar,
+                        format!("connected; sync incomplete, retrying in {in_secs}s"),
+                    );
+                }
                 Change::Connection(ConnectionState::Reconnecting { in_secs }) => {
                     say(&bar, format!("connection lost, reconnecting in {in_secs}s"));
                 }
@@ -142,6 +153,8 @@ pub(super) async fn sync(
         // Only if every sender is gone, which cannot happen while `bus` lives.
         result = printer => return result,
     };
+    // Retain a sender through engine shutdown even if signal registration failed.
+    drop(stop_tx);
     bar.finish_and_clear();
     if g.json && follow {
         // Flush queued notifications before the terminal summary on shutdown.
@@ -169,6 +182,25 @@ pub(super) async fn sync(
         );
     }
     Ok(())
+}
+
+fn shutdown_signal(
+    signal: impl std::future::Future<Output = std::io::Result<()>> + Send + 'static,
+) -> (
+    tokio::sync::watch::Sender<bool>,
+    tokio::sync::watch::Receiver<bool>,
+) {
+    let (keepalive, receiver) = tokio::sync::watch::channel(false);
+    let signal_stop = keepalive.clone();
+    tokio::spawn(async move {
+        match signal.await {
+            Ok(()) => {
+                let _ = signal_stop.send(true);
+            }
+            Err(error) => eprintln!("warning: could not listen for Ctrl+C: {error}"),
+        }
+    });
+    (keepalive, receiver)
 }
 
 pub(super) fn live_line(
@@ -216,5 +248,30 @@ pub(super) fn say(bar: &indicatif::ProgressBar, line: String) {
         eprintln!("{line}");
     } else {
         bar.println(line);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shutdown_signal;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_failed_ctrl_c_listener_does_not_close_the_shutdown_channel() {
+        // M9.14.9: a closed channel makes `changed()` return at once, forever.
+        let (stop, mut stopped) =
+            shutdown_signal(async { Err(std::io::Error::other("no signal handler")) });
+        let waited = tokio::time::timeout(Duration::from_millis(100), stopped.changed()).await;
+        assert!(waited.is_err(), "shutdown must stay pending");
+        stop.send(true).unwrap();
+        stopped.changed().await.unwrap();
+        assert!(*stopped.borrow());
+    }
+
+    #[tokio::test]
+    async fn ctrl_c_requests_shutdown() {
+        let (_stop, mut stopped) = shutdown_signal(async { Ok(()) });
+        stopped.changed().await.unwrap();
+        assert!(*stopped.borrow());
     }
 }

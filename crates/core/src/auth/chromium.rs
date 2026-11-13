@@ -18,12 +18,37 @@ const PBKDF2_ROUNDS: u32 = 1003;
 const CBC_IV: [u8; 16] = [b' '; 16];
 const HOST_HASH_LEN: usize = 32;
 const TEMP_PREFIX: &str = "flek-chromium-v1-";
+const TEMP_LOCK: &str = ".flek-import.lock";
+const STALE_COPY_AGE: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
-fn private_temp() -> Result<tempfile::TempDir> {
+/// A private copy with a process-held lease, released automatically on crashes.
+pub struct PrivateCopy {
+    lease: fs::File,
+    directory: tempfile::TempDir,
+}
+
+impl PrivateCopy {
+    pub fn path(&self) -> &Path {
+        self.directory.path()
+    }
+
+    pub fn close(self) -> std::io::Result<()> {
+        drop(self.lease);
+        self.directory.close()
+    }
+
+    #[cfg(test)]
+    fn keep(self) -> std::path::PathBuf {
+        drop(self.lease);
+        self.directory.keep()
+    }
+}
+
+fn private_temp() -> Result<PrivateCopy> {
     private_temp_in(&std::env::temp_dir())
 }
 
-fn private_temp_in(root: &Path) -> Result<tempfile::TempDir> {
+fn private_temp_in(root: &Path) -> Result<PrivateCopy> {
     let mut builder = tempfile::Builder::new();
     builder.prefix(TEMP_PREFIX);
     #[cfg(unix)]
@@ -33,16 +58,21 @@ fn private_temp_in(root: &Path) -> Result<tempfile::TempDir> {
     }
     let tmp = builder.tempdir_in(root)?;
     crate::private_fs::dir(tmp.path())?;
-    Ok(tmp)
+    let path = tmp.path().join(TEMP_LOCK);
+    let lease = fs::File::create(&path)?;
+    crate::private_fs::mode(&path, 0o600)?;
+    lease.lock()?;
+    Ok(PrivateCopy {
+        lease,
+        directory: tmp,
+    })
 }
 
 /// Remove stale crash copies only: our versioned prefix, owned directories,
-/// no symlinks, at least 24h old (do not race another running importer).
+/// no symlinks, at least five minutes old. A held lease protects even a slow
+/// concurrent importer; the grace period also covers directory/lease creation.
 pub fn cleanup_stale_copies() -> Result<()> {
-    cleanup_stale_in(
-        &std::env::temp_dir(),
-        std::time::Duration::from_secs(24 * 60 * 60),
-    )
+    cleanup_stale_in(&std::env::temp_dir(), STALE_COPY_AGE)
 }
 
 fn cleanup_stale_in(root: &Path, min_age: std::time::Duration) -> Result<()> {
@@ -76,6 +106,19 @@ fn cleanup_stale_in(root: &Path, min_age: std::time::Duration) -> Result<()> {
             .elapsed()
             .is_ok_and(|age| age >= min_age)
         {
+            let lease = match fs::File::open(entry.path().join(TEMP_LOCK)) {
+                Ok(file) => Some(file),
+                // Older versions did not create a lease file.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error.into()),
+            };
+            if let Some(file) = &lease {
+                match file.try_lock() {
+                    Ok(()) => {}
+                    Err(fs::TryLockError::WouldBlock) => continue,
+                    Err(fs::TryLockError::Error(error)) => return Err(error.into()),
+                }
+            }
             fs::remove_dir_all(entry.path())?;
         }
     }
@@ -84,14 +127,17 @@ fn cleanup_stale_in(root: &Path, min_age: std::time::Duration) -> Result<()> {
 
 /// Copies a LevelDB directory (minus its `LOCK`) into a temp dir, so the
 /// running browser's lock does not get in the way.
-pub fn copy_leveldb(src: &Path) -> Result<tempfile::TempDir> {
+pub fn copy_leveldb(src: &Path) -> Result<PrivateCopy> {
     copy_leveldb_into(src, private_temp()?)
 }
 
-fn copy_leveldb_into(src: &Path, tmp: tempfile::TempDir) -> Result<tempfile::TempDir> {
+fn copy_leveldb_into(src: &Path, tmp: PrivateCopy) -> Result<PrivateCopy> {
     for entry in fs::read_dir(src)? {
         let entry = entry?;
-        if !entry.file_type()?.is_file() || entry.file_name() == "LOCK" {
+        if !entry.file_type()?.is_file()
+            || entry.file_name() == "LOCK"
+            || entry.file_name() == TEMP_LOCK
+        {
             continue;
         }
         let dest = tmp.path().join(entry.file_name());
@@ -165,7 +211,7 @@ fn read_cookie_copy(
     cookies_db: &Path,
     hosts: &[&str],
     name: &str,
-    tmp: tempfile::TempDir,
+    tmp: PrivateCopy,
 ) -> Result<Option<StoredCookie>> {
     let file_name = cookies_db
         .file_name()
@@ -330,6 +376,33 @@ mod tests {
         cleanup_stale_in(root.path(), std::time::Duration::ZERO).unwrap();
         assert!(!stale.exists());
         assert!(other.exists());
+    }
+
+    #[test]
+    fn a_running_importer_keeps_its_copy_and_a_dead_one_loses_it() {
+        // M9.16.7: the lease, not the age, protects a concurrent importer.
+        let root = tempfile::tempdir().unwrap();
+        let live = private_temp_in(root.path()).unwrap();
+        fs::write(live.path().join("000003.log"), b"synthetic").unwrap();
+        cleanup_stale_in(root.path(), std::time::Duration::ZERO).unwrap();
+        assert!(live.path().join("000003.log").exists());
+
+        // A killed process releases the lock but leaves the directory.
+        let abandoned = live.keep();
+        cleanup_stale_in(root.path(), STALE_COPY_AGE).unwrap();
+        assert!(abandoned.exists(), "younger than the grace period");
+        cleanup_stale_in(root.path(), std::time::Duration::ZERO).unwrap();
+        assert!(!abandoned.exists());
+        assert!(STALE_COPY_AGE <= std::time::Duration::from_secs(10 * 60));
+    }
+
+    #[test]
+    fn closing_a_copy_removes_it_at_once() {
+        let root = tempfile::tempdir().unwrap();
+        let copy = private_temp_in(root.path()).unwrap();
+        fs::write(copy.path().join("000003.log"), b"synthetic").unwrap();
+        copy.close().unwrap();
+        assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
     }
 
     #[test]

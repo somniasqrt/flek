@@ -11,6 +11,7 @@
 //! ```
 //! Only an auth error (session revoked) or shutdown ends the loop.
 
+use std::collections::VecDeque;
 use std::pin::pin;
 use std::time::Duration;
 
@@ -20,7 +21,7 @@ use tokio::time::{interval, Instant, MissedTickBehavior};
 use crate::api::{AuthTest, Client};
 use crate::rtm::{Connection, Event};
 use crate::store::Store;
-use crate::sync::directory::sync_directory;
+use crate::sync::directory::DirectoryRefresh;
 use crate::sync::live::{apply, Applied, Bus, Change, ConnectionState};
 use crate::Result;
 
@@ -89,6 +90,30 @@ pub async fn follow(
     bus: &Bus,
     cfg: &FollowConfig,
     mut catch_up: impl AsyncFnMut() -> Result<()>,
+    shutdown: watch::Receiver<bool>,
+) -> Result<()> {
+    follow_with_directory(
+        client,
+        store,
+        me,
+        bus,
+        cfg,
+        &DirectoryRefresh::default(),
+        &mut catch_up,
+        shutdown,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn follow_with_directory(
+    client: &Client,
+    store: &Store,
+    me: &AuthTest,
+    bus: &Bus,
+    cfg: &FollowConfig,
+    directory: &DirectoryRefresh,
+    mut catch_up: impl AsyncFnMut() -> Result<()>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
     let mut restart = Backoff::new(cfg.backoff_min, cfg.backoff_max);
@@ -100,7 +125,7 @@ pub async fn follow(
         let result = tokio::select! {
             biased;
             _ = shutdown.changed() => return Ok(()),
-            result = follow_once(client, store, me, bus, cfg, &mut catch_up, follow_shutdown) => result,
+            result = follow_once(client, store, me, bus, cfg, directory, &mut catch_up, follow_shutdown) => result,
         };
         match result {
             Ok(()) => return Ok(()),
@@ -123,6 +148,7 @@ async fn follow_once(
     me: &AuthTest,
     bus: &Bus,
     cfg: &FollowConfig,
+    directory: &DirectoryRefresh,
     catch_up: &mut impl AsyncFnMut() -> Result<()>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<()> {
@@ -143,6 +169,7 @@ async fn follow_once(
                     me,
                     bus,
                     cfg,
+                    directory,
                     catch_up,
                     &mut shutdown,
                 )
@@ -181,6 +208,7 @@ async fn session(
     me: &AuthTest,
     bus: &Bus,
     cfg: &FollowConfig,
+    directory: &DirectoryRefresh,
     catch_up: &mut impl AsyncFnMut() -> Result<()>,
     shutdown: &mut watch::Receiver<bool>,
 ) -> Result<End> {
@@ -209,9 +237,18 @@ async fn session(
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     ticker.tick().await;
     let mut last_heard = Instant::now();
-    let mut directory_stale = false;
+    let mut directory_refresh = Box::pin(directory.refresh(client, store, me, true));
+    let mut directory_pending = false;
+    let mut deferred = VecDeque::new();
+    let mut replay_directory = false;
+    let mut replay = None;
 
     loop {
+        if replay_directory && replay.is_none() {
+            replay = deferred
+                .pop_front()
+                .map(|event| Box::pin(apply(store, event)));
+        }
         // Biased: shutdown first, then catch-up starts before any event is
         // handled, so even a short-lived connection begins catching up.
         tokio::select! {
@@ -227,6 +264,21 @@ async fn session(
                     Ok(()) => tracing::info!("caught up"),
                     Err(e) if e.is_auth_error() => return Err(e),
                     Err(e) => return Err(e),
+                }
+            }
+            result = &mut directory_refresh, if directory_pending => {
+                directory_pending = false;
+                match result {
+                    Ok(_) => {
+                        let _ = bus.send(Change::Directory);
+                        replay_directory = true;
+                    }
+                    Err(e) if e.is_auth_error() => return Err(e),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "directory refresh failed; retrying");
+                        directory_refresh = Box::pin(directory.refresh(client, store, me, true));
+                        directory_pending = true;
+                    }
                 }
             }
             result = &mut snapshot, if snapshot_pending => {
@@ -280,13 +332,20 @@ async fn session(
                         let _ = bus.send(change);
                     }
                     Applied::NeedsDirectory => {
-                        sync_directory(client, store, me).await?;
-                        let _ = bus.send(Change::Directory);
-                        if let Applied::Changed(change) = apply(store, event).await? {
-                            let _ = bus.send(change);
+                        deferred.push_back(event);
+                        if !directory_pending {
+                            replay_directory = false;
+                            directory_refresh = Box::pin(directory.refresh(client, store, me, true));
+                            directory_pending = true;
                         }
                     }
-                    Applied::DirectoryStale => directory_stale = true,
+                    Applied::DirectoryStale => {
+                        if !directory_pending {
+                            replay_directory = false;
+                            directory_refresh = Box::pin(directory.refresh(client, store, me, true));
+                            directory_pending = true;
+                        }
+                    }
                     Applied::Ignored => {}
                 }
             }
@@ -295,10 +354,11 @@ async fn session(
                     return Ok(End::Reconnect("no frames, connection is dead"));
                 }
                 conn.ping().await?;
-                if directory_stale {
-                    directory_stale = false;
-                    sync_directory(client, store, me).await?;
-                    let _ = bus.send(Change::Directory);
+            }
+            result = async { replay.as_mut().expect("pending replay").await }, if replay.is_some() => {
+                replay = None;
+                if let Applied::Changed(change) = result? {
+                    let _ = bus.send(change);
                 }
             }
         }
@@ -335,7 +395,9 @@ async fn catch_up_with_retry(
         }
         failed = true;
         let delay = retry.next_delay();
-        reconnecting(bus, delay);
+        let _ = bus.send(Change::Connection(ConnectionState::SyncIncomplete {
+            in_secs: delay.as_secs(),
+        }));
         tokio::time::sleep(delay).await;
     }
 }

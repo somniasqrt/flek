@@ -7,6 +7,13 @@ use crate::Result;
 
 /// Resolve symlinks before trusting a DB path. Only regular cache files qualify.
 pub fn inside_cache(cache: &Path, path: &Path) -> Option<PathBuf> {
+    if std::fs::symlink_metadata(cache)
+        .ok()?
+        .file_type()
+        .is_symlink()
+    {
+        return None;
+    }
     let cache = cache.canonicalize().ok()?;
     let path = path.canonicalize().ok()?;
     (path.starts_with(cache) && path.is_file()).then_some(path)
@@ -88,6 +95,9 @@ pub fn display_name(name: &str) -> String {
 /// Mark network content before it can be opened or revealed. Fail closed.
 #[cfg(target_os = "macos")]
 pub fn quarantine(path: &Path) -> Result<()> {
+    if xattr::get(path, "com.apple.quarantine")?.is_some() {
+        return Ok(());
+    }
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|_| Error::File("cannot determine quarantine time".into()))?

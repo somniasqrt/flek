@@ -157,7 +157,9 @@ pub async fn search(
         .map_err(text)
 }
 
-/// Sends a message as the user. Slack's copy is written to the database and
+/// Sends a message as the user. Remote acceptance remains success if local
+/// persistence fails (`not_stored_locally`); catch-up will recover the copy.
+/// When stored, it is
 /// announced like any other change; the UI shows it from there and matches
 /// it to its optimistic copy by `client_msg_id`.
 #[tauri::command]

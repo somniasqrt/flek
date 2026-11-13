@@ -34,7 +34,10 @@ async fn main() {
         Err(e) => e.exit(),
     };
     if let Err(error) = flek_core::auth::chromium::cleanup_stale_copies() {
-        std::process::exit(output::report(&anyhow::Error::new(error), cli.global.json));
+        eprintln!(
+            "warning: could not remove stale session copies: {}",
+            output::safe_message(&error.to_string())
+        );
     }
     let json_output = cli.global.json;
     if let Err(error) = dispatch::run(cli).await {

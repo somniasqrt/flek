@@ -26,7 +26,14 @@ pub fn upsert_users(conn: &mut Connection, default_team: &str, users: &[User]) -
             ",
         )?;
         for u in users {
-            let team = u.team_id.as_deref().unwrap_or(default_team);
+            let team = u
+                .team_id
+                .as_deref()
+                .filter(|id| !id.is_empty())
+                .unwrap_or(default_team);
+            if team.is_empty() {
+                continue;
+            }
             stub_team.execute([team])?;
             let real_name = Some(u.profile.real_name.as_str())
                 .filter(|s| !s.is_empty())

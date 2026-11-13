@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { draftKey, escapeText, newClientMsgId, nowTs, outgoingText } from "./compose.ts";
+import { clearDrafts, draftKey, escapeText, newClientMsgId, nowTs, outgoingText } from "./compose.ts";
 
 test("escapes what Slack reserves, nothing else", () => {
   assert.equal(escapeText("a < b && c > d *bold* <@U1>"), "a &lt; b &amp;&amp; c &gt; d *bold* &lt;@U1&gt;");
@@ -26,4 +26,32 @@ test("client ids are UUID-shaped and fresh", () => {
 
 test("ts for now", () => {
   assert.equal(nowTs(1762600000123), "1762600000.123000");
+});
+
+test("sign-out removes every draft and nothing else", () => {
+  const data = new Map<string, string>([
+    [draftKey("C1"), "hello"],
+    ["flek.layout", "{}"],
+    [draftKey("C1", "1.000000"), '{"v":1,"html":"<b>x</b>"}'],
+    ["flek.emoji.recent", "[]"],
+    [draftKey("D2"), "secret plan"],
+  ]);
+  const storage = {
+    get length() {
+      return data.size;
+    },
+    key: (i: number) => [...data.keys()][i] ?? null,
+    removeItem: (k: string) => void data.delete(k),
+  } as unknown as Storage;
+  clearDrafts(storage);
+  assert.deepEqual([...data.keys()].sort(), ["flek.emoji.recent", "flek.layout"]);
+});
+
+test("clearing drafts survives unavailable storage", () => {
+  const broken = {
+    get length(): number {
+      throw new Error("denied");
+    },
+  } as unknown as Storage;
+  assert.doesNotThrow(() => clearDrafts(broken));
 });

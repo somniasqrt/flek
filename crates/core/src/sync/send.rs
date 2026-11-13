@@ -24,12 +24,14 @@ pub struct Outgoing {
     pub client_msg_id: Option<String>,
 }
 
-/// A sent and stored message.
+/// A message accepted by Slack, with local persistence reported separately.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Sent {
     pub conversation_id: String,
     pub ts: String,
     pub client_msg_id: String,
+    /// Slack accepted the message; catch-up must recover its local copy.
+    pub not_stored_locally: bool,
     /// The database change to announce, if the message was written (it is
     /// not when the conversation is not stored yet; sync picks it up later).
     #[serde(skip)]
@@ -72,11 +74,15 @@ pub async fn send(client: &Client, store: &Store, me: &str, out: Outgoing) -> Re
             message,
         },
     )
-    .await?;
+    .await;
     let change = match applied {
-        Applied::Changed(c) => Some(c),
-        Applied::NeedsDirectory => {
+        Ok(Applied::Changed(c)) => Some(c),
+        Ok(Applied::NeedsDirectory) => {
             tracing::warn!("sent into a conversation that is not stored yet");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(%ts, error = %e, "message sent to Slack but not stored locally; catch-up will recover it");
             None
         }
         _ => None,
@@ -85,6 +91,7 @@ pub async fn send(client: &Client, store: &Store, me: &str, out: Outgoing) -> Re
         conversation_id: posted.channel,
         ts,
         client_msg_id,
+        not_stored_locally: change.is_none(),
         change,
     })
 }

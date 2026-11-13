@@ -33,6 +33,19 @@ export function writeDraft(key: string, text: string) {
   }
 }
 
+/// Remove message content on sign-out while preserving layout and preferences.
+export function clearDrafts(storage?: Storage) {
+  try {
+    const saved = storage ?? localStorage;
+    for (let i = saved.length - 1; i >= 0; i--) {
+      const key = saved.key(i);
+      if (key?.startsWith(DRAFT_PREFIX)) saved.removeItem(key);
+    }
+  } catch {
+    // Storage can be unavailable in a webview.
+  }
+}
+
 /// A random UUID (v4) for `client_msg_id`.
 export function newClientMsgId(): string {
   const c = globalThis.crypto;

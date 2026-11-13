@@ -49,18 +49,11 @@ pub fn avatars_to_fetch(conn: &Connection, team_id: &str, limit: usize) -> Resul
                     WHERE dm_user_id IS NOT NULL))
         "
     ))?;
-    let mut known = conn.prepare_cached(
-        "
-            SELECT 1
-            FROM link_images
-            WHERE HASH = ?1
-        ",
-    )?;
     let mut out = Vec::new();
     let mut rows = stmt.query([team_id])?;
     while let Some(r) = rows.next()? {
         let url: String = r.get(0)?;
-        if !known.exists([crate::store::unfurls::url_hash(&url)])? {
+        if crate::store::unfurls::image_pending(conn, &url)? {
             out.push(url);
             if out.len() >= limit {
                 break;

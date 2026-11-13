@@ -21,6 +21,7 @@ pub(super) fn default_team(db: &Store, g: &Global) -> Result<String> {
             "
                 SELECT id
                 FROM teams
+                WHERE self_user_id IS NOT NULL AND self_user_id != ''
                 ORDER BY id
             ",
         )?;

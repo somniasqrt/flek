@@ -492,7 +492,7 @@ async fn engine_retries_partial_pass_without_reconnecting_socket() {
         let mut failed = false;
         loop {
             match changes.recv().await.unwrap() {
-                Change::Connection(ConnectionState::Reconnecting { .. }) => failed = true,
+                Change::Connection(ConnectionState::SyncIncomplete { .. }) => failed = true,
                 Change::Connection(ConnectionState::Connected) if failed => {
                     stop.send(true).unwrap();
                     break;
