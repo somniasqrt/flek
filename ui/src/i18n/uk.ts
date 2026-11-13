@@ -4,6 +4,13 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "Can't download or open this file. It may be unavailable, too large or unsupported.": "Не вдалося завантажити або відкрити файл. Він може бути недоступним, завеликим або непідтримуваним.",
+  "Open in viewer": "Відкрити в переглядачі",
+  "Can't show this image here.": "Не вдалося показати це зображення.",
+  "This image is too large to preview (over 50 MB). Use the file action above.": "Це зображення завелике для перегляду (понад 50 МБ). Скористайтеся кнопкою файлу вгорі.",
+  "Can't play this video here. Try opening it in the default app.": "Не вдалося відтворити це відео. Спробуйте відкрити його в типовій програмі.",
+  "Loading image…": "Завантаження зображення…",
+
   // Session lifecycle (M9.16.8).
   "Clear saved session": "Очистити збережений сеанс",
   "Clear saved session?": "Очистити збережений сеанс?",
@@ -26,7 +33,6 @@ export const uk = {
   "More channel actions": "Інші дії з розмовою",
   "Open in Slack": "Відкрити в Slack",
   "Downloading…": "Завантаження…",
-  "Download video": "Завантажити відео",
   "Jump to date": "Перейти до дати",
   "Date": "Дата",
   "This date is older than the history stored in Flek.": "Ця дата передує історії, збереженій у Flek.",

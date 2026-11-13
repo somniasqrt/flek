@@ -6,7 +6,7 @@ import {
   onMount,
   Show,
 } from "solid-js";
-import { api, type FileRef } from "../api";
+import { api } from "../api";
 import { locale, t } from "../i18n/index";
 import {
   cellFormatter,
@@ -20,9 +20,11 @@ import { parseOffice } from "../models/document-client";
 import { viewerFailure } from "../models/document";
 import { sanitizeDocument } from "../models/document-sanitize";
 import { fileActionLabel } from "./FileSafety";
+import type { ViewerFile } from "./Viewer";
 
 export default function OfficeDocument(props: {
-  file: FileRef;
+  file: ViewerFile;
+  onOpen: () => void;
   kind: "xlsx" | "docx";
 }) {
   const [document, setDocument] = createSignal<OfficeResult>();
@@ -81,7 +83,7 @@ export default function OfficeDocument(props: {
           <p>{error()}</p>
           <button
             class="primary"
-            onClick={() => api.openFile(props.file.id).catch(() => {})}
+            onClick={props.onOpen}
           >
             {fileActionLabel(props.file)}
           </button>
@@ -140,7 +142,7 @@ export default function OfficeDocument(props: {
                   </p>
                   <button
                     class="primary"
-                    onClick={() => api.openFile(props.file.id).catch(() => {})}
+                    onClick={props.onOpen}
                   >
                     {fileActionLabel(props.file)}
                   </button>

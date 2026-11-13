@@ -4,31 +4,45 @@ import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "sol
 import { t, locale, clock24 } from "../i18n/index";
 import { api, fileUrl, tsDate, type FileRef } from "../api";
 import Avatar from "./Avatar";
-import { documentKind, viewerFailure } from "../models/document";
+import { viewerFailure } from "../models/document";
 export { canView } from "../models/document";
 
 const OfficeDocument = lazy(() => import("./OfficeDocument"));
 
-// In-app file viewer, over the whole window: images, PDFs and Office documents from the cache.
-// Other files still open in their default app.
+// In-app viewer for cached images, video, PDFs and Office documents.
 
 /// Who shared the file, for the header.
 export type Sender = { user_id: string | null; name: string; ts: string };
 
-type Viewing = { file: FileRef; from?: Sender };
+export type ViewerFile = Pick<FileRef,
+  "id" | "name" | "mimetype" | "local_path" | "can_open" | "viewer_kind" | "hidden_by_limit"
+>;
+type Viewing = { file: ViewerFile; from?: Sender };
 
 const [viewing, setViewing] = createSignal<Viewing | null>(null);
 
 export const isViewing = () => viewing() !== null;
-export const openViewer = (file: FileRef, from?: Sender) => setViewing({ file, from });
+export const openViewer = (file: ViewerFile, from?: Sender) => {
+  document.querySelectorAll<HTMLVideoElement>(".file-video").forEach((video) => video.pause());
+  setViewing({ file, from });
+};
 
 export default function Viewer() {
-  return <Show when={viewing()}>{(v) => <Overlay v={v()} />}</Show>;
+  return <Show when={viewing()} keyed>{(v) => <Overlay v={v} />}</Show>;
 }
 
 function Overlay(props: { v: Viewing }) {
   const f = props.v.file;
   const close = () => setViewing(null);
+  const [actionError, setActionError] = createSignal("");
+  const openDefault = async () => {
+    setActionError("");
+    try {
+      await api.openFile(f.id);
+    } catch {
+      setActionError(t("Can't download or open this file. It may be unavailable, too large or unsupported."));
+    }
+  };
   onMount(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
@@ -66,7 +80,7 @@ function Overlay(props: { v: Viewing }) {
             class="viewer-btn"
             aria-label={fileActionLabel(f)}
             title={fileActionLabel(f)}
-            onClick={() => api.openFile(f.id).catch(() => {})}
+            onClick={openDefault}
           >
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
@@ -78,18 +92,19 @@ function Overlay(props: { v: Viewing }) {
             </svg>
           </button>
         </header>
+        <Show when={actionError()}>
+          <p class="error" role="alert">{actionError()}</p>
+        </Show>
         {/* A click on the empty stage closes, like Slack's viewer. */}
         <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
-          <Show
-            when={documentKind(f) !== null}
-            fallback={<img class="viewer-image" src={fileUrl(f.id)} alt={name(f)} />}
-          >
-            <Show when={documentKind(f) === "pdf"} fallback={
+          <Show when={f.viewer_kind === "pdf" || f.viewer_kind === "xlsx" || f.viewer_kind === "docx"}
+            fallback={<Media file={f} onOpen={openDefault} />}>
+            <Show when={f.viewer_kind === "pdf"} fallback={
               <Suspense fallback={<div class="spinner" role="status" aria-label={t("Loading document…")} />}>
-                <OfficeDocument file={f} kind={documentKind(f) === "xlsx" ? "xlsx" : "docx"} />
+                <OfficeDocument file={f} kind={f.viewer_kind === "xlsx" ? "xlsx" : "docx"} onOpen={openDefault} />
               </Suspense>
             }>
-              <Pdf file={f} onClose={close} />
+              <Pdf file={f} onClose={close} onOpen={openDefault} />
             </Show>
           </Show>
         </div>
@@ -98,9 +113,83 @@ function Overlay(props: { v: Viewing }) {
   );
 }
 
+function Failure(props: { file: ViewerFile; message: string; onOpen: () => void }) {
+  return (
+    <div class="viewer-fail" role="alert">
+      <p>{props.message}</p>
+      <button class="primary" onClick={props.onOpen}>{fileActionLabel(props.file)}</button>
+    </div>
+  );
+}
+
+function Media(props: { file: ViewerFile; onOpen: () => void }) {
+  const [src, setSrc] = createSignal(props.file.viewer_kind === "svg" ? "" : fileUrl(props.file.id));
+  const [failed, setFailed] = createSignal("");
+  let video: HTMLVideoElement | undefined;
+  onMount(() => {
+    let closed = false;
+    let url: string | undefined;
+    onCleanup(() => {
+      closed = true;
+      if (video) {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+      }
+      if (url) URL.revokeObjectURL(url);
+    });
+    if (props.file.viewer_kind === "svg") {
+      // An SVG image document is never inserted into the DOM or navigated to.
+      api.documentData(props.file.id)
+        .then((bytes) => {
+          if (closed) return;
+          url = URL.createObjectURL(new Blob([bytes], { type: "image/svg+xml" }));
+          setSrc(url);
+        })
+        .catch((e) => {
+          if (!closed) {
+            setFailed(viewerFailure(e) === "too_large"
+              ? t("This image is too large to preview (over 50 MB). Use the file action above.")
+              : t("Can't show this image here."));
+          }
+        });
+    }
+  });
+  return (
+    <Show when={!failed()} fallback={<Failure file={props.file} message={failed()} onOpen={props.onOpen} />}>
+      <Show when={src()} fallback={<div class="spinner" role="status" aria-label={t("Loading image…")} />}>
+        <Show when={props.file.viewer_kind === "video"} fallback={
+          <img
+            class="viewer-image"
+            src={src()}
+            alt={name(props.file)}
+            onError={() => setFailed(t("Can't show this image here."))}
+          />
+        }>
+          <video
+            ref={video}
+            class="viewer-video"
+            controls
+            playsinline
+            preload="metadata"
+            src={src()}
+            aria-label={name(props.file)}
+            onError={() => {
+              video?.pause();
+              video?.removeAttribute("src");
+              video?.load();
+              setFailed(t("Can't play this video here. Try opening it in the default app."));
+            }}
+          />
+        </Show>
+      </Show>
+    </Show>
+  );
+}
+
 /// Pages of a PDF, drawn by pdf.js as they scroll into view, with a strip
 /// of page thumbnails on the left.
-function Pdf(props: { file: FileRef; onClose: () => void }) {
+function Pdf(props: { file: ViewerFile; onClose: () => void; onOpen: () => void }) {
   const [pages, setPages] = createSignal<{ w: number; h: number }[]>([]);
   const [failed, setFailed] = createSignal<string | null>(null);
   const [current, setCurrent] = createSignal(1);
@@ -208,12 +297,7 @@ function Pdf(props: { file: FileRef; onClose: () => void }) {
         onClick={(e) => e.target === e.currentTarget && props.onClose()}
       >
         <Show when={failed()}>
-          <div class="viewer-fail">
-            <p>{failed()}</p>
-            <button class="primary" onClick={() => api.openFile(props.file.id).catch(() => {})}>
-              {fileActionLabel(props.file)}
-            </button>
-          </div>
+          <Failure file={props.file} message={failed()!} onOpen={props.onOpen} />
         </Show>
         <Show when={!failed() && pages().length === 0}>
           <div class="spinner" />
@@ -247,4 +331,4 @@ async function draw(
   await page.render({ canvas, viewport }).promise;
 }
 
-const name = (f: FileRef) => fileName(f, t("file"));
+const name = (f: ViewerFile) => fileName(f, t("file"));

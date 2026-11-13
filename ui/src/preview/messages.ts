@@ -57,6 +57,18 @@ conversations.push(
     unread: 2,
   },
 );
+// Synthetic equivalents of the core's viewer decisions, never used by production.
+function previewViewerKind(f: Partial<FileRef>): FileRef["viewer_kind"] {
+  if (f.viewer_kind !== undefined) return f.viewer_kind;
+  if (f.name?.endsWith(".svg") && f.mimetype === "image/svg+xml") return "svg";
+  if (!f.can_open) return null;
+  if (f.mimetype?.startsWith("image/")) return "image";
+  if (f.mimetype?.startsWith("video/")) return "video";
+  if (f.name?.endsWith(".pdf")) return "pdf";
+  if (f.name?.endsWith(".xlsx")) return "xlsx";
+  if (f.name?.endsWith(".docx")) return "docx";
+  return null;
+}
 export const file = (f: Partial<FileRef>): FileRef => ({
   id: "F",
   name: null,
@@ -65,6 +77,7 @@ export const file = (f: Partial<FileRef>): FileRef => ({
   filetype: null,
   size: null,
   can_open: false,
+  viewer_kind: previewViewerKind(f),
   local_path: null,
   permalink: "https://example.com/f",
   hidden_by_limit: false,
@@ -356,15 +369,26 @@ messages.push(
   msg(now - 35, "U1", "Truncated spreadsheet (row 1001 / column CW)", { files: [file({ ...officeFiles[0], id: "FXLSX_LARGE", name: "large.xlsx" })] }),
   msg(now - 30, "U1", "Broken Word document (friendly error)", { files: [file({ ...officeFiles[1], id: "FDOCX_BROKEN", name: "broken.docx" })] }),
   msg(now - 25, "U1", "Document over 50 MiB (friendly fallback)", { files: [file({ ...officeFiles[0], id: "FXLSX_LIMIT", name: "over-limit.xlsx", size: 60 * 1024 * 1024 })] }),
-  msg(now - 20, "U1", "Undownloaded and legacy files keep their existing action", { files: [file({ ...officeFiles[1], id: "FDOCX_REMOTE", name: "remote.docx", local_path: null }), file({ id: "FXLS", name: "legacy.xls", filetype: "xls", mimetype: "application/vnd.ms-excel", local_path: "/synthetic/legacy.xls", can_open: true })] }),
+  msg(now - 20, "U1", "Download and open a Word document; legacy files use the OS action", { files: [file({ ...officeFiles[1], id: "FDOCX_REMOTE", name: "remote.docx", local_path: null }), file({ id: "FXLS", name: "legacy.xls", filetype: "xls", mimetype: "application/vnd.ms-excel", local_path: "/synthetic/legacy.xls", can_open: true })] }),
 );
+const mediaFiles = [
+  file({ id: "FJPEG", name: "cached.JPG", mimetype: "image/jpeg", filetype: "jpg", local_path: "/synthetic/cached.JPG", can_open: true, width: 320, height: 240 }),
+  file({ id: "FJPEG_DOWNLOAD", name: "download.jpg", permalink: null, mimetype: "image/jpeg", filetype: "jpg", preview_path: "/synthetic/thumb.png", can_open: true, width: 320, height: 240 }),
+  file({ id: "FSVG", name: "drawing.svg", mimetype: "image/svg+xml", filetype: "svg", local_path: "/synthetic/drawing.svg" }),
+  file({ id: "FJPEG_FAIL", name: "unavailable.jpg", mimetype: "image/jpeg", filetype: "jpg", preview_path: "/synthetic/thumb.png", can_open: true }),
+];
+messages.push(
+  ...mediaFiles.map((f, i) => msg(now - 14 + i, "U2", ["Cached JPEG", "JPEG thumbnail: download and open", "SVG in image context only", "Download failure: localized error"][i], { files: [f] })),
+);
+replies.push(msg(now - 9, "U2", "Media in a thread", { thread_ts: ROOT, files: [...mediaFiles.slice(0, 3), messages.find((m) => m.files.some((f) => f.id === "FVIDEO"))!.files[0]] }));
 replies.push(msg(now - 15, "U2", "Office files in a thread", { thread_ts: ROOT, files: officeFiles }));
+replies.sort((a, b) => a.ts.localeCompare(b.ts));
 const officeRoot = messages.find((m) => m.ts === ROOT)!;
 officeRoot.reply_count = replies.length;
 officeRoot.latest_reply = replies.at(-1)!.ts;
 export const bigMessages = Array.from({ length: 10_000 }, (_, i) => msg(now - (10_000 - i) * 90, `U${i % 3 + 1}`,
   `Synthetic message ${i + 1}. ` + "Variable row height. ".repeat(i % 7),
-  i % 200 === 0 ? { files: [file({ id: `FBIG${i}`, name: "image.png", mimetype: "image/png", local_path: "/synthetic/image.png", width: 640, height: 100 + i % 600 })] } : {},
+  i % 200 === 0 ? { files: [file({ id: `FBIG${i}`, name: "image.png", mimetype: "image/png", can_open: true, local_path: "/synthetic/image.png", width: 640, height: 100 + i % 600 })] } : {},
 ));
 conversations.push({ ...conversations[0], id: "CBIG", label: "timeline-10000", messages: bigMessages.length, unread: 0, latest_ts: bigMessages.at(-1)!.ts });
 messages.sort((a, b) => a.ts.localeCompare(b.ts));

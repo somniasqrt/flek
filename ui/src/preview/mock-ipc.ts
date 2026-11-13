@@ -5,7 +5,7 @@ import { fileType } from "../models/rail-model";
 import type { Conversation, Status } from "../api";
 import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
-import { pdf } from "./assets";
+import { pdf, svgFixture } from "./assets";
 import { spreadsheetFixture, wordFixture } from "./documents";
 
 const w = window as unknown as { __sendDelay: number };
@@ -157,12 +157,24 @@ mockIPC(
         return rows.slice(request.offset, request.offset + 100);
       }
       case "fetch_file": {
-        for (const m of [...messages, ...bigMessages]) for (const f of m.files) {
+        await new Promise((r) => setTimeout(r, 600));
+        if (a.fileId === "FJPEG_FAIL") throw "file_unavailable";
+        for (const m of [...messages, ...bigMessages, ...replies]) for (const f of m.files) {
           if (f.id !== a.fileId) continue;
           f.local_path = `/synthetic/${f.name ?? "download"}`;
           emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: m.ts } });
         }
-        return;
+        if ((args as { reveal: boolean }).reveal)
+          (window as unknown as { __openedFile: string }).__openedFile = String(a.fileId);
+        const source = [...messages, ...bigMessages, ...replies].find((m) => m.files.some((f) => f.id === a.fileId));
+        const file = source?.files.find((f) => f.id === a.fileId);
+        if (!file || !source) throw "file_unavailable";
+        return structuredClone({
+          ...file,
+          conversation_id: bigMessages.includes(source) ? "CBIG" : "C1",
+          ts: source.ts,
+          user_id: source.user_id,
+        });
       }
       case "open_url":
         // Inspect the last native-opener request without leaving the preview.
@@ -287,6 +299,7 @@ mockIPC(
         (window as unknown as { __openedFile: string }).__openedFile = String(a.fileId);
         return;
       case "document_data":
+        if (a.fileId === "FSVG") return new TextEncoder().encode(svgFixture).buffer;
         if (a.fileId === "FXLSX_LIMIT") throw "document_too_large";
         if (a.fileId === "FDOCX_BROKEN") return new Uint8Array([1, 2, 3]).buffer;
         if (a.fileId === "FDOCX" || a.fileId === "FDOCX_REMOTE") return wordFixture();

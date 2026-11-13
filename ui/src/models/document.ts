@@ -1,5 +1,3 @@
-import { canOpen, isRasterImage } from "./file-presentation.ts";
-
 export const DOCUMENT_LIMIT = 50 * 1024 * 1024;
 export const ROW_LIMIT = 1000;
 export const COLUMN_LIMIT = 100;
@@ -15,6 +13,7 @@ type ViewableFile = {
   mimetype: string | null;
   local_path: string | null;
   can_open?: boolean;
+  viewer_kind?: "image" | "svg" | "video" | "pdf" | "xlsx" | "docx" | null;
   hidden_by_limit: boolean;
 };
 
@@ -32,8 +31,7 @@ export function documentKind(
 export const canView = (file: ViewableFile) =>
   !!file.local_path &&
   !file.hidden_by_limit &&
-  canOpen(file) &&
-  (isRasterImage(file.mimetype) || documentKind(file) !== null);
+  file.viewer_kind != null;
 
 /// Why the viewer cannot show a document: over the IPC byte cap, over the
 /// parser limits (size, complexity, time), or unreadable.

@@ -73,7 +73,8 @@ pub fn can_open(path: &Path, mime: Option<&str>) -> bool {
         "aac" => &["audio/aac"],
         "wav" => &["audio/wav", "audio/x-wav", "audio/vnd.wave"],
         "flac" => &["audio/flac", "audio/x-flac"],
-        "ogg" | "oga" => &["audio/ogg"],
+        "ogg" => &["audio/ogg", "video/ogg"],
+        "oga" => &["audio/ogg"],
         "opus" => &["audio/opus", "audio/ogg"],
         "mp4" | "m4v" => &["video/mp4", "video/x-m4v"],
         "mov" => &["video/quicktime"],
@@ -85,6 +86,50 @@ pub fn can_open(path: &Path, mime: Option<&str>) -> bool {
         _ => &[],
     };
     allowed.contains(&mime.as_str())
+}
+
+/// In-app rendering is narrower than OS launch, except SVG in image context.
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViewerKind {
+    Image,
+    Svg,
+    Video,
+    Pdf,
+    Xlsx,
+    Docx,
+}
+
+pub fn viewer_kind(path: &Path, mime: Option<&str>) -> Option<ViewerKind> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    let mime = mime?.split(';').next()?.trim().to_ascii_lowercase();
+    if ext == "svg" && mime == "image/svg+xml" {
+        return Some(ViewerKind::Svg);
+    }
+    if !can_open(path, Some(&mime)) {
+        return None;
+    }
+    Some(match mime.as_str() {
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/bmp"
+        | "image/x-ms-bmp" => ViewerKind::Image,
+        "video/mp4" | "video/x-m4v" | "video/quicktime" | "video/webm" | "video/ogg" => {
+            ViewerKind::Video
+        }
+        "application/pdf" => ViewerKind::Pdf,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ViewerKind::Xlsx,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
+            ViewerKind::Docx
+        }
+        _ => return None,
+    })
+}
+
+/// Types permitted over the bounded document IPC, never as navigable documents.
+pub fn can_read_document(path: &Path, mime: Option<&str>) -> bool {
+    matches!(
+        viewer_kind(path, mime),
+        Some(ViewerKind::Svg | ViewerKind::Pdf | ViewerKind::Xlsx | ViewerKind::Docx)
+    )
 }
 
 /// Remove directional formatting that can disguise the real file extension.
@@ -165,6 +210,81 @@ mod tests {
         assert!(!can_open(Path::new("x.pdf"), Some("image/png")));
         assert!(!can_open(Path::new("x.png"), Some("image/jpeg")));
         assert!(!can_open(Path::new("x.pdf"), None));
+    }
+    #[test]
+    fn viewer_kind_needs_an_exact_pair_and_is_separate_from_os_launch() {
+        use ViewerKind::*;
+        for (name, mime, kind) in [
+            ("photo.JPG", "IMAGE/JPEG; charset=binary", Image),
+            ("a.jpeg", "image/jpeg", Image),
+            ("a.png", "image/png", Image),
+            ("a.gif", "image/gif", Image),
+            ("a.webp", "image/webp", Image),
+            ("a.avif", "image/avif", Image),
+            ("a.bmp", "image/x-ms-bmp", Image),
+            ("a.mp4", "video/mp4", Video),
+            ("a.m4v", "video/x-m4v", Video),
+            ("a.mov", "video/quicktime", Video),
+            ("a.webm", "video/webm", Video),
+            ("a.ogv", "video/ogg", Video),
+            ("a.ogg", "video/ogg", Video),
+            ("a.pdf", "application/pdf", Pdf),
+            (
+                "a.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                Xlsx,
+            ),
+            (
+                "a.docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                Docx,
+            ),
+            ("drawing.SVG", "image/svg+xml; charset=utf-8", Svg),
+        ] {
+            let got = viewer_kind(Path::new(name), Some(mime));
+            assert!(
+                matches!(got, Some(k) if std::mem::discriminant(&k) == std::mem::discriminant(&kind)),
+                "{name} {mime}: {got:?}"
+            );
+        }
+        for (name, mime) in [
+            ("photo", "image/jpeg"),
+            ("photo.jpg.command", "image/jpeg"),
+            ("photo.png", "image/jpeg"),
+            ("photo.jpg", "image/jpg"),
+            ("photo.svg", "text/html"),
+            ("page.html", "image/svg+xml"),
+            ("a.tiff", "image/tiff"),
+            ("a.heic", "image/heic"),
+            ("a.mkv", "video/x-matroska"),
+            ("a.avi", "video/x-msvideo"),
+            ("a.oga", "video/ogg"),
+            ("a.ogg", "audio/ogg"),
+            ("a.txt", "text/plain"),
+            ("a.doc", "application/msword"),
+        ] {
+            assert!(
+                viewer_kind(Path::new(name), Some(mime)).is_none(),
+                "{name} {mime}"
+            );
+        }
+        assert!(viewer_kind(Path::new("a.png"), None).is_none());
+        // SVG is shown in-app as an image but never handed to the OS launcher.
+        assert!(!can_open(Path::new("drawing.svg"), Some("image/svg+xml")));
+        assert!(can_open(Path::new("a.ogg"), Some("video/ogg")));
+        // Only parsed documents and SVG travel over the bounded IPC.
+        assert!(can_read_document(
+            Path::new("drawing.svg"),
+            Some("image/svg+xml")
+        ));
+        assert!(can_read_document(
+            Path::new("a.pdf"),
+            Some("application/pdf")
+        ));
+        assert!(!can_read_document(Path::new("a.png"), Some("image/png")));
+        assert!(!can_read_document(Path::new("a.mp4"), Some("video/mp4")));
+        assert_eq!(serde_json::to_value(Svg).unwrap(), "svg");
+        assert_eq!(serde_json::to_value(Image).unwrap(), "image");
     }
     #[test]
     fn strips_all_bidi_controls() {

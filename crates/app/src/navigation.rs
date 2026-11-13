@@ -118,5 +118,13 @@ mod tests {
         ] {
             assert!(csp.split(';').any(|d| d.trim() == directive));
         }
+        // Blob URLs carry the viewer's SVG and are allowed for images only.
+        for directive in csp.split(';').map(str::trim) {
+            assert_eq!(
+                directive.contains("blob:"),
+                directive.starts_with("img-src "),
+                "{directive}"
+            );
+        }
     }
 }

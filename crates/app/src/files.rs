@@ -71,7 +71,14 @@ async fn serve(
     let (path, mime) = if preview {
         (file.preview_path, "image/png".to_owned())
     } else {
-        let mime = file.mimetype.unwrap_or_default();
+        let mime = file
+            .mimetype
+            .unwrap_or_default()
+            .split(';')
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_ascii_lowercase();
         if !raster_mime(&mime) && !video_mime(&mime) {
             return Err(StatusCode::FORBIDDEN);
         }
@@ -251,6 +258,7 @@ fn raster_mime(mime: &str) -> bool {
             | "image/webp"
             | "image/avif"
             | "image/bmp"
+            | "image/x-ms-bmp"
             | "image/x-icon"
             | "image/vnd.microsoft.icon"
     )

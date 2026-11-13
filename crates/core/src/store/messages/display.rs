@@ -44,6 +44,7 @@ pub struct FileRef {
     pub mimetype: Option<String>,
     pub filetype: Option<String>,
     pub can_open: bool,
+    pub viewer_kind: Option<crate::files::ViewerKind>,
     pub size: Option<i64>,
     /// Cached copy on disk, once downloaded.
     pub local_path: Option<String>,
@@ -464,6 +465,8 @@ fn attach_files(
             .or(name.as_deref())
             .unwrap_or_default();
         let can_open = crate::files::can_open(std::path::Path::new(path), mimetype.as_deref());
+        let viewer_kind =
+            crate::files::viewer_kind(std::path::Path::new(path), mimetype.as_deref());
         Ok((
             r.get::<_, String>(0)?,
             FileRef {
@@ -475,6 +478,7 @@ fn attach_files(
                     .map(crate::files::display_name),
                 mimetype,
                 can_open,
+                viewer_kind,
                 filetype: r.get(5)?,
                 size: r.get(6)?,
                 local_path,

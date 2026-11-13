@@ -24,36 +24,39 @@ const dom = new JSDOM("");
 const sanitize = (html: string) =>
   sanitizeDocument(html, dom.window as unknown as Window & typeof globalThis);
 
-test("viewer requires exact document filename/MIME, downloaded and approved", () => {
+test("viewer follows core's decision and needs a downloaded, visible file", () => {
   for (const [kind, mime] of Object.entries(DOCUMENT_MIMES)) {
+    assert.equal(documentKind({ name: `sample.${kind.toUpperCase()}`, mimetype: mime }), kind);
+    assert.equal(documentKind({ name: "sample.xls", mimetype: mime }), null);
+    assert.equal(documentKind({ name: `sample.${kind}`, mimetype: "text/html" }), null);
+  }
+  for (const viewer_kind of ["image", "svg", "video", "pdf", "xlsx", "docx"] as const) {
     const file = {
-      name: `sample.${kind.toUpperCase()}`,
-      mimetype: mime,
+      name: "sample",
+      mimetype: null,
       local_path: "/synthetic/file",
-      can_open: true,
+      // SVG is viewable although the OS launcher refuses it.
+      can_open: viewer_kind !== "svg",
+      viewer_kind,
       hidden_by_limit: false,
     };
-    assert.equal(documentKind(file), kind);
-    assert.equal(canView(file), true);
+    assert.equal(canView(file), true, viewer_kind);
     for (const patch of [
-      { name: "sample.xls" },
-      { name: "sample.doc" },
-      { name: "sample.pptx" },
-      { name: "sample.ods" },
-      { mimetype: "text/html" },
       { local_path: null },
-      { can_open: false },
-      { can_open: undefined },
       { hidden_by_limit: true },
+      { viewer_kind: null },
+      { viewer_kind: undefined },
     ])
       assert.equal(canView({ ...file, ...patch }), false);
   }
+  // A thumbnail-only JPEG is not viewable until its original is fetched.
   assert.equal(
     canView({
-      name: "sample.svg",
-      mimetype: "image/svg+xml",
-      local_path: "/synthetic/file",
+      name: "photo.jpg",
+      mimetype: "image/jpeg",
+      local_path: null,
       can_open: true,
+      viewer_kind: "image",
       hidden_by_limit: false,
     }),
     false,

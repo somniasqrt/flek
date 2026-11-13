@@ -1,4 +1,11 @@
 export const en = {
+  "Can't download or open this file. It may be unavailable, too large or unsupported.": "Can't download or open this file. It may be unavailable, too large or unsupported.",
+  "Open in viewer": "Open in viewer",
+  "Can't show this image here.": "Can't show this image here.",
+  "This image is too large to preview (over 50 MB). Use the file action above.": "This image is too large to preview (over 50 MB). Use the file action above.",
+  "Can't play this video here. Try opening it in the default app.": "Can't play this video here. Try opening it in the default app.",
+  "Loading image…": "Loading image…",
+
   // Session lifecycle (M9.16.8).
   "Clear saved session": "Clear saved session",
   "Clear saved session?": "Clear saved session?",
@@ -21,7 +28,6 @@ export const en = {
   "More channel actions": "More channel actions",
   "Open in Slack": "Open in Slack",
   "Downloading…": "Downloading…",
-  "Download video": "Download video",
   "Jump to date": "Jump to date",
   "Date": "Date",
   "This date is older than the history stored in Flek.": "This date is older than the history stored in Flek.",

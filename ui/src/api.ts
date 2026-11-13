@@ -65,6 +65,7 @@ export type Conversation = {
 
 export type FileRef = {
   can_open?: boolean;
+  viewer_kind?: "image" | "svg" | "video" | "pdf" | "xlsx" | "docx" | null;
   id: string;
   name: string | null;
   title: string | null;
@@ -224,6 +225,7 @@ export type ActivityPage = {
 
 export type StoredFile = {
   can_open?: boolean;
+  viewer_kind?: "image" | "svg" | "video" | "pdf" | "xlsx" | "docx" | null;
   title: string | null;
   id: string;
   name: string | null;
@@ -313,7 +315,7 @@ export const api = {
     invoke<ActivityPage>("activity", { tab, unread, limit, offset }),
   browseFiles: (query: string, kind: string | null, sort: string, mine: boolean, offset: number) =>
     invoke<StoredFile[]>("browse_files", { query, kind, sort, mine, offset }),
-  fetchFile: (fileId: string, reveal = false) => invoke<void>("fetch_file", { fileId, reveal }),
+  fetchFile: (fileId: string, reveal = false) => invoke<StoredFile>("fetch_file", { fileId, reveal }),
   presenceFor: (ids: string[]) => invoke<Presence[]>("presence_for", { ids }),
   statusesFor: (ids: string[]) => invoke<Record<string, CustomStatus>>("statuses_for", { ids }),
   subscribePresence: (ids: string[]) => invoke<void>("subscribe_presence", { ids }),

@@ -2,13 +2,14 @@ import FileSafety from "./FileSafety";
 import { documentKind } from "../models/document";
 import { isRasterImage, isInlineVideo, fileName } from "../models/file-presentation";
 import { createSignal, For, Show } from "solid-js";
-import { t, errorMessage } from "../i18n/index";
+import { t } from "../i18n/index";
 import { settings } from "../stores/settings";
-import { api, fileUrl, type FileRef } from "../api";
-import { canView, openViewer, type Sender } from "./Viewer";
+import { fileUrl, type FileRef } from "../api";
+import type { Sender } from "./Viewer";
+import { attachmentAction, openAttachment } from "./file-actions";
 
 // Files of a message: cached images inline, everything else as a card.
-// Images, PDFs and Office documents use the viewer; core decides whether other types open or reveal.
+// Core supplies viewer eligibility; other types use the OS open/reveal policy.
 
 const MAX_W = 480;
 const MAX_H = 360;
@@ -16,11 +17,6 @@ const MAX_H = 360;
 const ROW_H = 180;
 
 export default function Files(props: { files: FileRef[]; from?: Sender }) {
-  const open = (f: FileRef) => {
-    if (canView(f)) openViewer(f, props.from);
-    else if (f.local_path) api.openFile(f.id).catch(() => {});
-    else if (f.permalink) api.openUrl(f.permalink).catch(() => {});
-  };
   // Like Slack: images first, then the other files. One image is shown
   // large; several sit in a row at one height. A lone PDF gets a card with
   // the top of its first page; several files are compact cards in a row.
@@ -35,14 +31,14 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
         <div class="file-row">
           <For each={images()}>
             {(f) => (
-              <Image f={f} src={fileUrl(f.id)} single={images().length === 1} onOpen={open} />
+              <Attachment f={f} from={props.from} image single={images().length === 1} preview={false} />
             )}
           </For>
         </div>
       </Show>
       <Show when={others().length > 0}>
         <div class="file-row">
-          <For each={others()}>{(f) => <VideoOrCard f={f} preview={lone()} onOpen={open} />}</For>
+          <For each={others()}>{(f) => <Attachment f={f} from={props.from} preview={lone()} />}</For>
         </div>
       </Show>
     </div>
@@ -51,7 +47,7 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
 
 const isImage = (f: FileRef) => isRasterImage(f.mimetype) && !f.hidden_by_limit;
 
-function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: FileRef) => void }) {
+function Image(props: { f: FileRef; src: string; single: boolean; busy: boolean; onOpen: (f: FileRef) => void }) {
   // Reserve the final size up front so loading images never shift the timeline.
   const size = () => {
     const w = props.f.width ?? MAX_W;
@@ -64,6 +60,7 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
     <div class="file-image">
       <button
         class="image"
+        disabled={props.busy}
         style={size()}
         aria-label={name(props.f)}
         onClick={() => props.onOpen(props.f)}
@@ -76,66 +73,56 @@ function Image(props: { f: FileRef; src: string; single: boolean; onOpen: (f: Fi
   );
 }
 
-function VideoOrCard(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => void }) {
+function Attachment(props: { f: FileRef; from?: Sender; preview: boolean; image?: boolean; single?: boolean }) {
   const [failed, setFailed] = createSignal(false);
-  const [busy, setBusy] = createSignal(false);
-  const [error, setError] = createSignal("");
-  const download = async () => {
-    if (busy()) return;
-    setBusy(true);
-    setError("");
-    try {
-      await api.fetchFile(props.f.id);
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
+  const busy = () => attachmentAction(props.f.id).busy;
+  const error = () => attachmentAction(props.f.id).error;
+  const open = () => {
+    if (!props.f.hidden_by_limit) void openAttachment(props.f.id, props.from);
   };
   return (
-    <div class="video-or-card">
-      <Show when={isInlineVideo(props.f) && !failed()} fallback={<Card {...props} />}>
-        <video
-          class="file-video"
-          controls
-          preload="metadata"
-          playsinline
-          aria-label={name(props.f)}
-          src={fileUrl(props.f.id)}
-          poster={props.f.preview_path ? fileUrl(props.f.id, true) : undefined}
-          onError={() => setFailed(true)}
-        />
-        <span class="file-name">{name(props.f)}</span>
-        <FileSafety file={props.f} />
+    <div class="video-or-card" aria-busy={busy()}>
+      <Show when={props.image} fallback={
+        <Show when={isInlineVideo(props.f) && !failed()} fallback={<Card {...props} busy={busy()} onOpen={open} />}>
+          <video
+            class="file-video"
+            controls
+            preload="metadata"
+            playsinline
+            aria-label={name(props.f)}
+            src={fileUrl(props.f.id)}
+            poster={props.f.preview_path ? fileUrl(props.f.id, true) : undefined}
+            onError={() => setFailed(true)}
+          />
+          <div class="file-video-actions">
+            <button class="file-name" disabled={busy()} onClick={open}>{name(props.f)}</button>
+            <button disabled={busy()} onClick={open} aria-label={t("Open in viewer")} title={t("Open in viewer")}>
+              <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <path d="M7 3H3v4M13 3h4v4M3 13v4h4M17 13v4h-4" fill="none" stroke="currentColor" stroke-width="1.6" />
+              </svg>
+            </button>
+          </div>
+          <FileSafety file={props.f} />
+        </Show>
+      }>
+        <Image f={props.f} src={fileUrl(props.f.id)} single={!!props.single} busy={busy()} onOpen={open} />
       </Show>
-      <Show
-        when={
-          props.f.mimetype?.startsWith("video/") && !props.f.local_path && !props.f.hidden_by_limit
-        }
-      >
-        <button class="download-video" disabled={busy()} onClick={download}>
-          {busy() ? t("Downloading…") : t("Download video")}
-        </button>
-      </Show>
-      <Show when={error()}>
-        <p class="error" role="alert">
-          {error()}
-        </p>
-      </Show>
+      <Show when={busy()}><p role="status">{t("Downloading…")}</p></Show>
+      <Show when={error()}><p class="error" role="alert">{error()}</p></Show>
     </div>
   );
 }
 
-function Card(props: { f: FileRef; preview: boolean; onOpen: (f: FileRef) => void }) {
+function Card(props: { f: FileRef; preview: boolean; busy: boolean; onOpen: (f: FileRef) => void }) {
   const f = props.f;
-  const available = !f.hidden_by_limit && (!!f.local_path || !!f.permalink);
+  const available = !f.hidden_by_limit;
   const preview = () =>
     settings().image_previews && props.preview && !f.hidden_by_limit && !!f.preview_path;
   return (
     <button
       class="file-card"
       classList={{ "with-preview": preview() }}
-      disabled={!available}
+      disabled={!available || props.busy}
       onClick={() => props.onOpen(f)}
       aria-label={name(f)}
     >

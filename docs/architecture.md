@@ -279,14 +279,40 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 
 Folders express ownership: views are screens/panels; components are reusable UI; models hold transformations (some draft helpers also touch DOM/localStorage); stores own shared reactive state. `views/preferences/` stays one feature folder. `components/composer/` is private editor machinery; preview/ never enters production. Layout widths use proportional clamp()/min()/max() with pixel floors; icons, fonts, padding and row heights stay in px. Desired panel sizes persist only on user commits; ResizeObserver measures actual size without overwriting preference.
 
-## Document viewer
+## File viewer
 
 `document_data` replaces `pdf_data` in the command manifest, UI API and preview. It
 requires a stored file, a downloaded canonical regular file inside the cache,
-and the core's exact resolved filename/MIME agreement for PDF, XLSX or DOCX.
+and the core's exact resolved filename/MIME agreement for PDF, XLSX, DOCX or SVG.
 Metadata and the read stream both enforce `MAX_DOCUMENT_BYTES` (50 MiB). The UI
 shows a localized failure with the existing OS-open action for oversized or
 unsupported documents. Other Office formats retain their OS action.
+
+Core supplies `viewer_kind` independently of `can_open`: raster images, SVG,
+the existing narrow video set, PDF, XLSX and DOCX may use the viewer. SVG remains
+ineligible for OS launch; its OS action reveals it in the file manager. Missing
+viewer decisions fail closed in the UI. Timeline, threads and FileBrowser use
+one download/open action: `fetch_file` reconciles cache hits or uses the existing
+manual download path, then returns a fresh SQLite file view. It preserves manual
+caps, quarantine and retry/failure semantics. Busy/error state is keyed by file id
+so DB-driven thumbnail-to-image replacement cannot discard it. Hidden attachments
+remain disabled. Download, OS-action and rendering failures have localized copy.
+
+SVG bytes use the same 50 MiB metadata and streaming cap as other IPC documents.
+They become a temporary `image/svg+xml` Blob URL used only by `<img>`: no inline
+attachment SVG DOM, document navigation, iframe/object/embed or external loads.
+Image-context SVG disables scripts and external resources. The URL is revoked on
+close, and late IPC completion cannot create a URL after close. `blob:` is added
+only to CSP `img-src`; navigation guards, `frame-src`, `object-src`, media/connect
+sources, command names and main-only IPC permissions stay unchanged. `flekfile`
+continues to reject SVG, including MIME case/parameter variants.
+
+Inline video retains controls, with a viewer expand button and clickable filename.
+Opening the viewer pauses inline players; the viewer uses `<video controls>` over
+the existing ranged `flekfile` branch (8 MiB cap, HEAD/206/416). Closing by Esc,
+backdrop, stage or close button pauses the video, removes its source and calls
+`load()` to release it. Codec/protocol errors show the PDF-style failure block
+with the OS action. Native codec support remains platform-dependent.
 
 PDF rendering remains lazy pdf.js canvas. OfficeDocument is a separate lazy UI
 chunk. It starts a disposable worker, with a 15-second deadline and termination on
@@ -308,7 +334,7 @@ Mammoth disables external file access and embedded style maps. Only raster embed
 images become data URIs. Its output (at most 2 MiB) passes DOMPurify with a narrow
 tag/attribute allowlist before insertion, capped at 20,000 nodes / depth 64. Links
 are inert text; no href, CSS, event handlers, ids, remote/SVG images or active embeds
-survive. The paper stays white in both themes. The CSP is unchanged. Cached
+survive. The paper stays white in both themes. Office rendering adds no CSP sources. Cached
 `preview_path` thumbnails are reused wherever already present, without new network
 requests. No thumbnail support is inferred from a filename.
 
@@ -419,7 +445,7 @@ M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Startup cleanup precedes session boot; sign-in retries a failed migration. The app-owned webview_cleanup_version setting is saved only after removal completes, and cannot be overwritten by UI preferences. Sign-out destroys signin and removes legacy Slack data even if credential deletion reports an error. Capture and sign-out share the maintenance lock. browsing_data.rs tests scope, completion-before-marker, failure and repeat behavior; core settings tests legacy defaults/restart persistence. See platforms.md for exactly what is removed.
 - Main never navigates outside tauri://localhost or http(s)://tauri.localhost (no custom port/userinfo); debug alone also permits the configured dev origin, including its exact port. Native popups are always denied; http(s) popup URLs go through open_url. Config disables automatic window creation so navigation.rs attaches both guards before main loads. Pure URL/config tests guard this; gestures require owner QA.
 - Message/unfurl/profile anchors have no href, cannot drag or expose native link context menus, and open only via open_url. role=link, tab focus, Enter, focus ring and URL titles preserve accessibility. There was no custom copy-link menu on these anchors. models/external-link.test.ts tests interactions and checks integration.
-- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No inline SVG attachment previews in Files, Viewer or FileBrowser; trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs use document_data IPC and pdf.js canvas; XLSX/DOCX use the same bounded IPC and never flekfile; video/PDF thumbnails are PNGs, not embedded documents.
+- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No SVG attachment DOM or inline timeline/FileBrowser previews; the viewer uses bounded IPC bytes in an image-context Blob URL only. Trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs use document_data IPC and pdf.js canvas; XLSX/DOCX/SVG use the same bounded IPC and never flekfile; video/PDF thumbnails are PNGs, not embedded documents.
 - UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. It also enforces object-src/base-uri/form-action/frame-src 'none'; no object/iframe/base or form actions are used (forms handle submit locally). tests/unfurls.rs guards proxy/cache parsing; config and UI source regressions guard directives and the PDF canvas path.
 
 - File session headers go only to HTTPS on port 443 at `slack.com`/`*.slack.com`, `slack-edge.com`/subdomains and `slack-files.com`/subdomains. Imported URLs are untrusted; userinfo is refused. The explicitly configured API base's exact origin is the only HTTP mock exception (host, scheme and effective port). RTM requires WSS `*.slack.com`; its mock exception maps WS/WSS to HTTP/HTTPS and still compares the exact origin. net_policy tests plus tests/network_security.rs and tests/rtm.rs guard rejection before requests and valid local handshakes.

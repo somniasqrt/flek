@@ -14,6 +14,7 @@ pub struct File {
     pub size: Option<i64>,
     pub local_path: Option<String>,
     pub can_open: bool,
+    pub viewer_kind: Option<crate::files::ViewerKind>,
 }
 
 impl File {
@@ -29,6 +30,8 @@ impl File {
             .or(name.as_deref())
             .unwrap_or_default();
         let can_open = crate::files::can_open(std::path::Path::new(path), mimetype.as_deref());
+        let viewer_kind =
+            crate::files::viewer_kind(std::path::Path::new(path), mimetype.as_deref());
         Self {
             id,
             name: name.as_deref().map(crate::files::display_name),
@@ -36,6 +39,7 @@ impl File {
             size,
             local_path,
             can_open,
+            viewer_kind,
         }
     }
 }

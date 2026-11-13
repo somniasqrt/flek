@@ -41,14 +41,7 @@ fn document_path(cache: &Path, file: &messages::CachedFile) -> CmdResult<PathBuf
         .ok_or("the file is not downloaded yet")?;
     let path = flek_core::files::inside_cache(cache, Path::new(path))
         .ok_or("the file is outside the cache")?;
-    if !matches!(
-        path.extension()
-            .and_then(|s| s.to_str())
-            .map(str::to_ascii_lowercase)
-            .as_deref(),
-        Some("pdf" | "xlsx" | "docx")
-    ) || !flek_core::files::can_open(&path, file.mimetype.as_deref())
-    {
+    if !flek_core::files::can_read_document(&path, file.mimetype.as_deref()) {
         return Err("unsupported document type or mismatched filename/MIME".into());
     }
     Ok(path)
@@ -71,7 +64,7 @@ async fn read_document(path: &Path) -> CmdResult<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Cached PDF/XLSX/DOCX bytes. WebKit refuses fetch of cross-origin custom
+/// Cached PDF/XLSX/DOCX/SVG bytes. WebKit refuses fetch of cross-origin custom
 /// scheme responses, so documents use IPC and are parsed only in the webview.
 #[tauri::command]
 pub async fn document_data(
@@ -144,8 +137,10 @@ pub async fn fetch_file(
     state: State<'_, AppState>,
     file_id: String,
     reveal: bool,
-) -> CmdResult<()> {
+) -> CmdResult<flek_core::reads::File> {
+    let team = state.team_id().ok_or("no active workspace")?;
     let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    let read_id = file_id.clone();
     let path = match flek_core::files::stored_cached_path(&state.store, &cache, &file_id)
         .await
         .map_err(text)?
@@ -186,7 +181,11 @@ pub async fn fetch_file(
         flek_core::files::quarantine(&path).map_err(text)?;
         app.opener().reveal_item_in_dir(path).map_err(text)?;
     }
-    Ok(())
+    state
+        .store
+        .read(move |c| flek_core::reads::file(c, &team, &read_id))
+        .await
+        .map_err(text)
 }
 
 fn external_scheme_allowed(url: &tauri::Url) -> bool {
@@ -256,6 +255,7 @@ mod tests {
                 "docx",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             ),
+            ("svg", "image/svg+xml"),
         ] {
             let path = cache.path().join(format!("sample.{ext}"));
             std::fs::write(&path, b"synthetic").unwrap();
@@ -274,6 +274,10 @@ mod tests {
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             ),
             ("docx", "application/pdf"),
+            ("svg", "text/html"),
+            ("html", "image/svg+xml"),
+            ("png", "image/png"),
+            ("mp4", "video/mp4"),
         ] {
             let path = cache.path().join(format!("refused.{ext}"));
             std::fs::write(&path, b"synthetic").unwrap();

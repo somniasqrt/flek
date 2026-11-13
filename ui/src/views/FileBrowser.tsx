@@ -7,7 +7,7 @@ import { Document } from "../components/icons";
 import { people } from "../stores/people";
 import { fileType } from "../models/rail-model";
 import type { Jump } from "./Search";
-import { canView, openViewer } from "../components/Viewer";
+import { attachmentAction, openAttachment } from "../components/file-actions";
 
 export const fileCategories = () =>
   [
@@ -72,7 +72,7 @@ export default function FileBrowser(props: {
       setFiles(append ? [...files(), ...rows] : rows);
       setMore(rows.length === 100);
     } catch (e) {
-      if (gen === generation) setError(String(e));
+      if (gen === generation) setError(errorMessage(e));
     } finally {
       if (gen === generation) setBusy(false);
     }
@@ -104,24 +104,18 @@ export default function FileBrowser(props: {
         }
         return;
       }
-      await api.fetchFile(f.id, action === "download");
-      // Re-read SQLite after fetching; the viewer never renders a network response.
-      const m = f.conversation_id && f.ts ? await api.message(f.conversation_id, f.ts) : null;
-      const ref = m?.files.find((item) => item.id === f.id);
-      if (ref && action === "open") {
-        if (canView(ref)) {
-          openViewer(ref, {
-            user_id: f.user_id,
-            name: people()[f.user_id ?? ""] ?? t("Unknown"),
-            ts: f.ts!,
-          });
-        } else {
-          await api.openFile(f.id);
-        }
+      if (action === "download") await api.fetchFile(f.id, true);
+      else {
+        const opened = await openAttachment(f.id, f.ts ? {
+          user_id: f.user_id,
+          name: people()[f.user_id ?? ""] ?? t("Unknown"),
+          ts: f.ts,
+        } : undefined);
+        if (!opened) return;
       }
       await load();
-    } catch (e) {
-      setError(String(e));
+    } catch {
+      setError(t("Can't download or open this file. It may be unavailable, too large or unsupported."));
     } finally {
       setWorking(null);
     }
@@ -131,7 +125,7 @@ export default function FileBrowser(props: {
     if (!c) return f.conversation_id ?? t("Unknown conversation");
     return c.kind === "im" || c.kind === "mpim" ? c.label : `#${c.label}`;
   };
-  const available = (f: StoredFile) => !f.hidden_by_limit || !!f.local_path;
+  const available = (f: StoredFile) => !f.hidden_by_limit;
   return (
     <div class="timeline file-browser">
       <header class="conv-header">
@@ -159,14 +153,20 @@ export default function FileBrowser(props: {
         <For each={files()}>
           {(f) => (
             <div class="browser-file">
-              <span class="browser-file-icon" data-kind={fileType(f.mimetype)}>
+              <button
+                class="browser-file-icon"
+                data-kind={fileType(f.mimetype)}
+                disabled={!available(f) || !!working()}
+                onClick={() => act(f, "open")}
+                aria-label={fileName(f, t("Untitled file"))}
+              >
                 <Show
                   when={isRasterImage(f.mimetype) && f.local_path}
                   fallback={fileType(f.mimetype) === "pdf" ? "PDF" : <Document size={26} />}
                 >
                   <img src={fileUrl(f.id)} alt="" loading="lazy" />
                 </Show>
-              </span>
+              </button>
               <div class="browser-file-text">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
                   {fileName(f, t("Untitled file"))}
@@ -176,13 +176,19 @@ export default function FileBrowser(props: {
                   {f.ts ? tsDate(f.ts).toLocaleDateString(locale()) : ""}
                 </p>
                 <FileSafety file={f} />
+                <Show when={working() === f.id}>
+                  <p role="status">{t("Downloading…")}</p>
+                </Show>
+                <Show when={attachmentAction(f.id).error}>
+                  <p class="error" role="alert">{attachmentAction(f.id).error}</p>
+                </Show>
                 <Show when={f.hidden_by_limit}>
                   <p class="muted">{t("Hidden by Slack's 90-day limit")}</p>
                 </Show>
               </div>
               <div class="browser-file-actions">
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
-                  {fileActionLabel(f)}
+                  {f.viewer_kind ? t("Open in viewer") : fileActionLabel(f)}
                 </button>
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "download")}>
                   {t("Download")}
@@ -196,7 +202,7 @@ export default function FileBrowser(props: {
         </For>
         <Show when={error()}>
           <p class="error view-empty" role="alert">
-            {errorMessage(error())}
+            {error()}
           </p>
         </Show>
         <Show when={!busy() && files().length === 0 && !error()}>

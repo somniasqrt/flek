@@ -26,6 +26,17 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
 - In **general**, the newest messages include all supported read-only Block Kit
   types, a two-second blue MP4, a video download card, a huddle and an unsupported
   attachment. Downloads update the synthetic store and emit a message change.
+- The newest **general** messages also show a cached JPEG, an undownloaded JPEG
+  with a thumbnail, an SVG card and a JPEG that always fails to download. Click
+  each in the timeline and **Files**; the existing thread includes the first
+  three and a cached video too. The JPEG download card has no permalink. Downloads have a 600 ms mock delay, then return a fresh synthetic
+  stored-file view. The failure shows localized copy and remains retryable.
+  Expand the inline MP4 using its filename or expand button, then close with Esc,
+  backdrop or the close button. Inline playback pauses when the viewer opens;
+  closing releases the viewer player. SVG uses the same bounded-IPC contract as
+  documents and only an `<img>` Blob URL; the OS action records a reveal request.
+  `document_data` returns generated SVG bytes for FSVG. No new commands or
+  permission mocks are needed.
 - Use Command+K (Control+K on Windows/Linux) to filter channel, DM or group names;
   full display names of group members also match. Arrows select, Enter opens,
   Escape closes. Link formatting uses Command+Shift+U / Control+Shift+U.
@@ -43,14 +54,19 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   opening via the OS is mocked: message/header/fallback actions write the URL to
   `window.__openedUrl`; they do not open Slack.
 
+The checked-in `ui/public/preview-image.jpg` is a generated 32×24 solid blue JPEG
+(about 650 bytes). It is used for FJPEG and FJPEG_DOWNLOAD; the cached thumbnail
+uses the same tiny JPEG. The SVG is generated in assets.ts.
+
 The checked-in `ui/public/preview-video.mp4` is generated from a two-second,
 160x90 blue color source (H.264, no audio, no external content). The production
 entry point does not import the preview modules; Vite copies the tiny public
 fixture to build output.
 
 Native WebKit video decoding, byte-range seeking over `flekfile`, OS deep-link
-launching and sustained 60 fps require owner verification. Cached videos whose
-codec is unsupported fall back to the file card. To bound responder memory,
+launching and sustained 60 fps require owner verification. Inline videos whose
+codec is unsupported fall back to the file card; opening that card shows the
+viewer with its localized failure and default-app action. To bound responder memory,
 a request without a Range header for a video over 8 MiB also falls back to the
 card; ranged responses are at most 8 MiB. Protocol containment, extension/MIME
 checks, quarantine/download limits and active-document rejection remain in force.

@@ -88,6 +88,7 @@ for integrations that request them explicitly.
 | `size` | integer or null, bytes |
 | `local_path` | string or null, cached file path |
 | `can_open` | boolean, core extension/MIME launch policy; OS opening rechecks the resolved cache path |
+| `viewer_kind` | `image`, `svg`, `video`, `pdf`, `xlsx`, `docx` or null; core in-app viewer policy, separate from OS launch eligibility |
 
 | Reaction field | Type |
 |---|---|
