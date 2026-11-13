@@ -121,7 +121,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `views/text.rs` — Timestamp rendering and Slack reference/entity resolution.
 - `views/users.rs` — Hydrated user output including stored presence and DND.
 - `views/version.rs` — Machine-view schema version (independent of SQLite version).
-- `store/migrations/` — append-only SQL 0001–0017; schema evolution described below.
+- `store/migrations/` — append-only SQL 0001–0019; schema evolution described below.
 
 ### crates/cli/src
 
@@ -331,9 +331,9 @@ states live in preview/documents.ts, messages.ts and mock-ipc.ts.
 
 `store::default_path()` returns `<data_dir>/flek/flek.db`; on macOS this is `~/Library/Application Support/flek/flek.db`. See platforms.md for other OSes. One mutex-protected writer uses WAL, synchronous=NORMAL and a 5-second busy budget by default (startup WAL switching also retries SQLITE_BUSY). Readers are read-only/query_only connections pooled up to four idle handles, each with a 5-second busy timeout. In-memory tests share the writer. Use call/with_conn for writes, read/with_read for reads; do not block the async/UI thread with SQLite. `files::default_cache_dir()` holds files by sanitized id/name and public image hashes in `_links`. Non-secret settings.json is adjacent to the DB; credentials belong in CredentialStore/Keychain, never these files. Native window geometry is separate.
 
-Migrations are compiled by store/migrations.rs from numbered SQL files. Startup inspects schema_version, then rechecks under an IMMEDIATE transaction before applying pending files. Foreign keys are off during rebuilds, checked using pragma_foreign_key_check afterwards, then re-enabled. No checksum is stored; applied text is nevertheless immutable. For future schema work append a numbered file and MIGRATIONS entry, include old-schema/backfill tests, and rebuild any message-derived data from existing raw_json. This pass adds no migration.
+Migrations are compiled by store/migrations.rs from numbered SQL files. Startup inspects schema_version, then rechecks under an IMMEDIATE transaction before applying pending files. Foreign keys are off during rebuilds, checked using pragma_foreign_key_check afterwards, then re-enabled. No checksum is stored; applied text is nevertheless immutable. For future schema work append a numbered file and MIGRATIONS entry, include old-schema/backfill tests, and rebuild any message-derived data from existing raw_json. Migration 0018 adds conversation activity_seen and local thread_reads cursors. Migration 0019 adds a nullable thread_sync.retry_after deadline; existing successful progress is unchanged.
 
-Every table (schema through 0017), with its writer and notable semantics:
+Every table (schema through 0019), with its writer and notable semantics:
 - `schema_version`: migration runner; version primary key and applied_at, separate from JSON v1.
 - `teams`: directory/auth sync; identity, self_user_id, workspace raw_json/icon; self change recounts unread.
 - `users`: directory/live/import; names, bot/deleted flags and raw_json profile fields.
@@ -343,7 +343,8 @@ Every table (schema through 0017), with its writer and notable semantics:
 - `files`: message merges/cache sync; metadata/raw_json, hidden_by_limit, is_external, local_path and preview_path.
 - `message_files`: message writer; many-to-many file shares, cascading message FK, not one owner per file.
 - `sync_state`: backfill; oldest_ts/newest_ts, complete and updated_at; live messages never advance these cursors.
-- `thread_sync`: thread backfill; fetched latest_reply and synced_at per conversation/root.
+- `thread_sync`: thread backfill; fetched latest_reply and synced_at per conversation/root. Non-auth request failures set retry_after for an hour without advancing fetched progress; background walks, including full resync, defer that root until then. Explicit thread refresh bypasses the delay, and a successful fetch clears it.
+- `thread_reads`: local thread panel/live thread_marked cursors; per-conversation/root last_read for Activity. conversations.activity_seen tracks the separate Activity visit cursor (0018).
 - `messages_fts`: FTS5 external content over messages.text, stable content_rowid=id, unicode61 tokenizer. INSERT/DELETE/text UPDATE triggers maintain it; migration 0005 rebuilds existing text.
 - `link_images`: file/image sync; URL hash, source URL, local_path, failed and fetched_at for cached public images.
 - `custom_emoji`: directory emoji sync; team/name to URL or alias_of (including standard emoji aliases).
@@ -361,6 +362,7 @@ Migration 0007 owns counters and uses NULL-safe IS comparisons. Unread means und
 
 - Read authoritative messages from SQLite: CLI output::tests::events_use_stored_messages_and_typed_frames; core tests/send.rs and machine_views.rs. UI rule also requires review.
 - Full content survives hidden/empty versions including attachments: tests/backfill.rs::hidden_version_never_overwrites_full_message and tests/qa_hidden.rs.
+- Missing history/replies can imply deletion only newer than sync::FREE_HISTORY_DAYS (90); thread responses must include the root. Incomplete cursor pagination reports IncompleteSync without reconciliation or completion markers. Pins use import-style gap filling, and file tombstones cannot overwrite stored metadata. tests/archive_sync.rs covers these guards, thread retry persistence/recovery/auth propagation and the 0018→0019 migration.
 - Edits are ordered; late live events do not resurrect deletion: tests/qa_ordering.rs::older_edit_does_not_replace_newer_edit and late_edit_does_not_resurrect_a_deleted_message.
 - Import fills gaps and retains hidden-root metadata/reactions: tests/import.rs and tests/qa_import.rs; never invent a new message identity.
 - Live cannot advance catch-up/thread cursors: tests/backfill.rs::live_message_before_catch_up_does_not_skip_offline_ones and tests/live.rs::thread_reply_moves_no_markers.

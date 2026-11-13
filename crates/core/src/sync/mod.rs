@@ -13,6 +13,13 @@ pub mod threads;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Slack Free may omit older messages; absence beyond this window is not deletion evidence.
+pub const FREE_HISTORY_DAYS: u32 = 90;
+
+pub(crate) fn deletion_cutoff() -> String {
+    ts_days_ago(FREE_HISTORY_DAYS)
+}
+
 /// Knobs shared by history and thread sync.
 #[derive(Debug, Clone, Default)]
 pub struct SyncOptions {

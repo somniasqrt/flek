@@ -15,7 +15,7 @@ fn store() -> Store {
                  INSERT INTO conversations (id, team_id, kind, name, label) VALUES ('C1', 'T1', 'public_channel', 'general', 'general');",
             )?;
             messages::set_sync_state(c, "C1", &SyncState { oldest_ts: Some("1.000000".into()), newest_ts: Some("10.000000".into()), complete: true })?;
-            c.execute("INSERT INTO thread_sync VALUES ('C1', '10.000000', '10.000000', 0)", [])?;
+            c.execute("INSERT INTO thread_sync(conversation_id, thread_ts, latest_reply, synced_at) VALUES ('C1', '10.000000', '10.000000', 0)", [])?;
             Ok(())
         })
         .unwrap();

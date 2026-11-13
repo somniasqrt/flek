@@ -46,8 +46,8 @@ impl FileRow {
     }
 }
 
-/// Upserts a file; like messages, a hidden version never replaces a full
-/// one, and `local_path` is never touched here.
+/// Upserts a file; hidden versions cannot replace full ones, and tombstones
+/// never overwrite stored metadata. Cache paths are never touched here.
 pub(crate) fn upsert_file(tx: &Transaction<'_>, f: &FileRow) -> Result<()> {
     tx.prepare_cached(
         "
@@ -60,8 +60,9 @@ pub(crate) fn upsert_file(tx: &Transaction<'_>, f: &FileRow) -> Result<()> {
                 url_private_download = excluded.url_private_download, permalink = excluded.permalink,
                 is_external = excluded.is_external, hidden_by_limit = excluded.hidden_by_limit,
                 raw_json = excluded.raw_json
-            WHERE excluded.hidden_by_limit = 0
-            OR files.hidden_by_limit = 1
+            WHERE COALESCE(json_extract(excluded.raw_json, '$.mode'), '') != 'tombstone'
+            AND (excluded.hidden_by_limit = 0
+                OR files.hidden_by_limit = 1)
         ",
     )?
     .execute(params![

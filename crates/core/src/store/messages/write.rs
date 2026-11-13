@@ -69,13 +69,13 @@ fn write_messages(
     Ok(total)
 }
 
-/// Merge messages inside a caller-owned transaction, preserving all sync merge rules.
-pub(crate) fn upsert_messages_in_transaction(
+/// Fill message gaps inside a caller-owned transaction, as with archive import.
+pub(crate) fn import_messages_in_transaction(
     tx: &Transaction<'_>,
     conversation_id: &str,
     rows: &[MessageRow],
 ) -> Result<()> {
-    write_messages_in_transaction(tx, conversation_id, rows, Mode::Sync).map(drop)
+    write_messages_in_transaction(tx, conversation_id, rows, Mode::Import).map(drop)
 }
 
 fn write_messages_in_transaction(

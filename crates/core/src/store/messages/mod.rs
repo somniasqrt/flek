@@ -13,7 +13,7 @@ mod display;
 pub use display::*;
 mod cache;
 pub use cache::*;
-pub(crate) use write::upsert_messages_in_transaction;
+pub(crate) use write::import_messages_in_transaction;
 
 pub fn conversation_exists(conn: &Connection, conversation_id: &str) -> Result<bool> {
     Ok(conn.query_row(

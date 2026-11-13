@@ -65,10 +65,18 @@ fake ones before writing anything down.
   from the response; no content-stripped stubs came back (0 rows flagged
   `hidden_by_limit` out of 281, oldest message ≈ 88 days old, backfill reached
   `has_more: false`). Files may still carry `mode: hidden_by_limit`.
-- **Consequence:** history older than the window can only come from archives
-  (`flek import`). What is already in the local DB is never removed by sync:
-  a message missing from the window only gets `deleted = 1` when it falls
-  inside the refresh window, which is always recent.
+- **Consequence:** older history can come from archives (`flek import`) or
+  messages cached before they aged out. Absence from a response is deletion
+  evidence only inside the refresh window **and** newer than the shared
+  90-day cutoff, enforced in core even for oversized windows and full resyncs.
+  The CLI rejects `--refresh-days` above 90. Thread reconciliation applies the
+  same cutoff and requires the response to contain the root. Cursor pagination
+  reporting `has_more: true` without a usable cursor does not mark deletions or
+  advance completion markers; it reports an incomplete sync for retry.
+  Non-auth thread request failures are deferred for an hour (persisted across
+  restarts), while other threads continue. Explicit thread refreshes can retry
+  immediately. Actual `conversations.replies` coverage of old Free-plan threads
+  still needs owner verification; these safeguards are covered by mocks.
 
 ### System DM `USLACK`
 

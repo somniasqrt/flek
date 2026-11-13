@@ -8,7 +8,7 @@ pub async fn fresh(client: &Client, store: &Store, id: &str) -> Result<()> {
     let id = id.to_owned();
     store
         .call(move |c| {
-            // Preserve the full-content merge rules for pinned messages too.
+            // Pins carry partial messages: only fill gaps, as with archive import.
             let messages = pins
                 .iter()
                 .filter_map(|p| p.message.as_ref())
@@ -16,7 +16,7 @@ pub async fn fresh(client: &Client, store: &Store, id: &str) -> Result<()> {
                 .collect::<Vec<_>>();
 
             let tx = c.transaction()?;
-            crate::store::messages::upsert_messages_in_transaction(&tx, &id, &messages)?;
+            crate::store::messages::import_messages_in_transaction(&tx, &id, &messages)?;
             tx.execute(
                 "
                     DELETE

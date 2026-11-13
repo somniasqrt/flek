@@ -51,8 +51,9 @@ pub(super) enum Command {
         /// Largest file to download, in MB (0 = no limit).
         #[arg(long, default_value_t = 100, value_name = "MB")]
         max_file_size: u64,
-        /// Re-read the last N days for edits, reactions, deletions and thread replies (0 = off).
-        #[arg(long, default_value_t = 7, value_name = "DAYS")]
+        /// Re-read the last N days for edits, reactions, deletions and thread replies (0 = off, max 90).
+        #[arg(long, default_value_t = 7, value_name = "DAYS",
+            value_parser = clap::value_parser!(u32).range(0..=i64::from(flek_core::sync::FREE_HISTORY_DAYS)))]
         refresh_days: u32,
         /// Re-read the whole history and every thread, merging without loss.
         #[arg(long)]
@@ -123,4 +124,21 @@ pub(super) enum AuthCommand {
         #[arg(long)]
         all: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refresh_days_rejects_values_above_archive_visibility_limit() {
+        let error = Cli::try_parse_from(["flek", "sync", "--refresh-days", "91"])
+            .err()
+            .expect("oversized refresh window must be a usage error");
+        assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(error.to_string().contains("90"));
+        for days in ["0", "7", "90"] {
+            assert!(Cli::try_parse_from(["flek", "sync", "--refresh-days", days]).is_ok());
+        }
+    }
 }

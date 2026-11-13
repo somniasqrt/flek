@@ -90,7 +90,9 @@ pub fn stale_threads(conn: &Connection, conversation_id: &str) -> Result<Vec<Str
             WHERE m.conversation_id = ?1
             AND m.reply_count > 0
             AND m.hidden_by_limit = 0
-            AND (t.latest_reply IS NULL
+            AND (t.retry_after IS NULL OR t.retry_after <= unixepoch())
+            AND (t.retry_after IS NOT NULL
+                OR t.latest_reply IS NULL
                 OR t.latest_reply < COALESCE(m.latest_reply, ''))
             ORDER BY m.ts DESC
         ",
@@ -119,7 +121,9 @@ pub fn threads_to_fetch(
             WHERE m.conversation_id = ?1
             AND m.reply_count > 0
             AND m.hidden_by_limit = 0
+            AND (t.retry_after IS NULL OR t.retry_after <= unixepoch())
             AND (?3
+                OR t.retry_after IS NOT NULL
                 OR t.latest_reply IS NULL
                 OR t.latest_reply < COALESCE(m.latest_reply, '')
                 OR (?2 IS NOT NULL
@@ -197,9 +201,25 @@ pub fn mark_thread_synced(
             INSERT INTO thread_sync(conversation_id, thread_ts, latest_reply, synced_at)
             VALUES (?1, ?2, ?3, unixepoch())
             ON CONFLICT (conversation_id, thread_ts) DO UPDATE
-            SET latest_reply = excluded.latest_reply, synced_at = excluded.synced_at
+            SET latest_reply = excluded.latest_reply, synced_at = excluded.synced_at,
+                retry_after = NULL
         ",
         params![conversation_id, thread_ts, latest_reply],
+    )?;
+    Ok(())
+}
+
+/// Defer a failed thread for an hour without claiming its replies were fetched.
+/// Explicit thread refreshes can still retry it immediately.
+pub fn mark_thread_failed(conn: &Connection, conversation_id: &str, thread_ts: &str) -> Result<()> {
+    conn.execute(
+        "
+            INSERT INTO thread_sync(conversation_id, thread_ts, latest_reply, synced_at, retry_after)
+            VALUES (?1, ?2, '', 0, unixepoch() + 3600)
+            ON CONFLICT (conversation_id, thread_ts) DO UPDATE
+            SET retry_after = excluded.retry_after
+        ",
+        params![conversation_id, thread_ts],
     )?;
     Ok(())
 }

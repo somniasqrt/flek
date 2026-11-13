@@ -71,12 +71,12 @@ async fn setup() -> (MockServer, Client, Store, RateLimiter) {
 #[tokio::test]
 async fn refresh_window_picks_up_edits_reactions_and_deletions() {
     let (server, client, store, mut limiter) = setup().await;
+    let a = flek_core::sync::ts_days_ago(4);
+    let b = flek_core::sync::ts_days_ago(2);
+    let c = flek_core::sync::ts_days_ago(1);
+    let since = flek_core::sync::ts_days_ago(3);
     Mock::given(path("/conversations.history"))
-        .respond_with(page(vec![
-            msg("30.000000", "c"),
-            msg("20.000000", "b"),
-            msg("10.000000", "a"),
-        ]))
+        .respond_with(page(vec![msg(&c, "c"), msg(&b, "b"), msg(&a, "a")]))
         .mount(&server)
         .await;
     backfill_conversation(&client, &store, &mut limiter, "C1", &SyncOptions::default())
@@ -86,27 +86,24 @@ async fn refresh_window_picks_up_edits_reactions_and_deletions() {
     // Offline: "b" edited and got a reaction, "c" deleted, "a" (outside the window) deleted too.
     server.reset().await;
     Mock::given(path("/conversations.history"))
-        .and(field("oldest", "15.000000"))
+        .and(field("oldest", &since))
         .respond_with(page(vec![
-            json!({"ts": "20.000000", "user": "U1", "text": "b (fixed)", "edited": {"ts": "25.000000"},
+            json!({"ts": &b, "user": "U1", "text": "b (fixed)", "edited": {"ts": &c},
                    "reactions": [{"name": "eyes", "users": ["U2"], "count": 1}]}),
         ]))
         .expect(1)
         .mount(&server)
         .await;
-    let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &window("15.000000"))
+    let stats = backfill_conversation(&client, &store, &mut limiter, "C1", &window(&since))
         .await
         .unwrap();
     assert_eq!(stats.deleted, 1);
     assert_eq!(
         texts(&store),
-        [
-            ("10.000000".into(), "a".into()),
-            ("20.000000".into(), "b (fixed)".into())
-        ]
+        [(a.clone(), "a".into()), (b.clone(), "b (fixed)".into())]
     );
     let reactions = store
-        .with_conn(|c| messages::reactions(c, "C1", "20.000000"))
+        .with_conn(|c| messages::reactions(c, "C1", &b))
         .unwrap();
     assert_eq!(reactions, [("eyes".to_string(), 1)]);
 }
@@ -114,8 +111,11 @@ async fn refresh_window_picks_up_edits_reactions_and_deletions() {
 #[tokio::test]
 async fn active_old_threads_are_refetched_inside_the_window() {
     let (server, client, store, mut limiter) = setup().await;
+    let first_reply = flek_core::sync::ts_days_ago(2);
+    let second_reply = flek_core::sync::ts_days_ago(1);
+    let since = flek_core::sync::ts_days_ago(3);
     let root = json!({"ts": "10.000000", "thread_ts": "10.000000", "user": "U1", "text": "old root",
-                      "reply_count": 1, "latest_reply": "50.000000"});
+                      "reply_count": 1, "latest_reply": &first_reply});
     Mock::given(path("/conversations.history"))
         .respond_with(page(vec![msg("60.000000", "recent"), root.clone()]))
         .mount(&server)
@@ -123,7 +123,7 @@ async fn active_old_threads_are_refetched_inside_the_window() {
     Mock::given(path("/conversations.replies"))
         .respond_with(page(vec![
             root.clone(),
-            json!({"ts": "50.000000", "thread_ts": "10.000000", "user": "U2", "text": "r1"}),
+            json!({"ts": &first_reply, "thread_ts": "10.000000", "user": "U2", "text": "r1"}),
         ]))
         .mount(&server)
         .await;
@@ -149,12 +149,12 @@ async fn active_old_threads_are_refetched_inside_the_window() {
     Mock::given(path("/conversations.replies"))
         .respond_with(page(vec![
             root,
-            json!({"ts": "70.000000", "thread_ts": "10.000000", "user": "U2", "text": "r2"}),
+            json!({"ts": &second_reply, "thread_ts": "10.000000", "user": "U2", "text": "r2"}),
         ]))
         .expect(1)
         .mount(&server)
         .await;
-    let opts = window("40.000000");
+    let opts = window(&since);
     backfill_conversation(&client, &store, &mut limiter, "C1", &opts)
         .await
         .unwrap();

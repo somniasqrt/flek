@@ -47,6 +47,9 @@ pub enum Error {
     #[error("unexpected HTTP status {0}")]
     HttpStatus(u16),
 
+    #[error("incomplete pagination from {0}; sync progress was not advanced")]
+    IncompleteSync(&'static str),
+
     #[error("not supported on this platform: {0}")]
     Unsupported(&'static str),
 
@@ -130,9 +133,11 @@ impl Error {
                 ErrorKind::RateLimited
             }
             Self::HttpStatus(429) => ErrorKind::RateLimited,
-            Self::Slack { .. } | Self::Http(_) | Self::HttpStatus(_) | Self::WebSocket(_) => {
-                ErrorKind::Network
-            }
+            Self::Slack { .. }
+            | Self::Http(_)
+            | Self::HttpStatus(_)
+            | Self::WebSocket(_)
+            | Self::IncompleteSync(_) => ErrorKind::Network,
             _ => ErrorKind::Internal,
         }
     }

@@ -20,8 +20,8 @@ use crate::api::{Client, HistoryQuery, Message};
 use crate::store::files::FileRow;
 use crate::store::messages::{self, MessageRow, SyncState};
 use crate::store::Store;
-use crate::sync::SyncOptions;
-use crate::Result;
+use crate::sync::{deletion_cutoff, SyncOptions};
+use crate::{Error, Result};
 
 /// `conversations.history` / `.replies` are Tier 3 (~50 requests/minute):
 /// one request every 1.2 s never goes above it, bursts included.
@@ -111,13 +111,17 @@ pub async fn backfill_conversation(
             save_page(store, conversation_id, &page.messages, None).await?;
             stats.pages += 1;
             stats.messages += page.messages.len();
-            match page.next_cursor {
-                Some(next) if page.has_more => cursor = Some(next),
-                _ => break,
+            if !page.has_more {
+                break;
             }
+            let Some(next) = page.next_cursor.filter(|next| !next.trim().is_empty()) else {
+                return Err(Error::IncompleteSync("conversations.history"));
+            };
+            cursor = Some(next);
         }
-        if lower < newest {
-            let (id, lo, hi) = (conversation_id.to_owned(), lower.clone(), newest.clone());
+        let deletion_lower = lower.max(deletion_cutoff());
+        if deletion_lower < newest {
+            let (id, lo, hi) = (conversation_id.to_owned(), deletion_lower, newest.clone());
             stats.deleted = store
                 .call(move |c| {
                     let gone: Vec<String> = messages::top_level_between(c, &id, &lo, &hi)?
@@ -165,6 +169,7 @@ pub async fn backfill_conversation(
             state.newest_ts = page.messages.iter().map(|m| m.ts.clone()).max();
         }
         // An empty page means nothing older is left, whatever has_more says.
+        // Nothing is marked deleted on this path, so ending here loses nothing.
         state.complete = !page.has_more || page.messages.is_empty();
         stats.pages += 1;
         stats.messages += page.messages.len();
