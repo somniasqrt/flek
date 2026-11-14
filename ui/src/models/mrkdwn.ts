@@ -37,6 +37,55 @@ export function parse(text: string): Block[] {
   return blocks;
 }
 
+/// The message as plain text for the clipboard: the stored text, never the
+/// rendered one, so shortened links keep their full address.
+export function plainText(text: string, userName: (id: string) => string | undefined = () => undefined): string {
+  const inlines = (list: Inline[]): string => list.map(one).join("");
+  const one = (n: Inline): string => {
+    switch (n.t) {
+      case "text":
+      case "code":
+      case "special":
+        return n.v;
+      case "b":
+      case "i":
+      case "s":
+        return inlines(n.c);
+      case "user":
+        return "@" + (userName(n.id) ?? n.label ?? n.id);
+      case "channel":
+        return "#" + (n.label ?? n.id);
+      case "emoji":
+        return `:${n.name}:`;
+      case "link": {
+        const url = n.url.startsWith("mailto:") ? n.url.slice(7) : n.url;
+        const label = n.label ? inlines(n.label) : "";
+        return !label || label === url || label === n.url ? url : `${label} (${url})`;
+      }
+    }
+  };
+  const blocks = (list: Block[]): string =>
+    list
+      .map((b) => {
+        switch (b.t) {
+          case "p":
+            return b.lines.map(inlines).join("\n");
+          case "h":
+            return inlines(b.c);
+          case "quote":
+            return blocks(b.c).replace(/^/gm, "> ");
+          case "list":
+            return b.items
+              .map((item, i) => "  ".repeat(item.level) + (b.ordered ? `${b.start + i}. ` : "• ") + inlines(item.c))
+              .join("\n");
+          case "pre":
+            return b.v;
+        }
+      })
+      .join("\n");
+  return blocks(parse(text));
+}
+
 // Shared with the rich composer: preserve ordinary text, recognize closed fences only.
 export function fencedParts(text: string): { code: boolean; text: string }[] {
   const parts = text.split("```");

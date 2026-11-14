@@ -13,6 +13,7 @@ import { discard, retry } from "../stores/outbox";
 import { people } from "../stores/people";
 import { openProfile } from "../stores/profile";
 import Rich from "./Rich";
+import { plainText } from "../models/mrkdwn";
 import { relativeTime } from "../models/time";
 import Unfurls from "./Unfurls";
 
@@ -156,9 +157,7 @@ export default function MessageRow(props: {
   const copy = async () => {
     setMenu(null);
     try {
-      await navigator.clipboard.writeText(
-        rowElement.querySelector<HTMLElement>(".rich")?.innerText ?? m.text,
-      );
+      await navigator.clipboard.writeText(plainText(m.text, (id) => people()[id]));
     } catch {
       setError(t("Could not copy the message"));
     }

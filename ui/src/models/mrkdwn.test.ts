@@ -1,7 +1,7 @@
 // Run with `npm test --workspace ui` (Node's own test runner, types stripped).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { inline, parse } from "./mrkdwn.ts";
+import { inline, parse, plainText } from "./mrkdwn.ts";
 
 test("emphasis, code and escapes", () => {
   assert.deepEqual(inline("*bold* and _it_ ~gone~ `a<b` &lt;3"), [
@@ -41,6 +41,23 @@ test("Slack tokens", () => {
     { t: "text", v: " " },
     { t: "emoji", name: "custom-one" },
   ]);
+});
+
+test("copied text comes from the stored message, with full links", () => {
+  const url = "https://docs.google.com/document/d/1bSDg6PV3GGmFAKEFAKEFAKE/edit?usp=sharing&amp;x=1";
+  assert.equal(
+    plainText(`Пані і панове, кидаю вимоги до лаб:\n<${url}>`),
+    "Пані і панове, кидаю вимоги до лаб:\nhttps://docs.google.com/document/d/1bSDg6PV3GGmFAKEFAKEFAKE/edit?usp=sharing&x=1",
+  );
+  assert.equal(
+    plainText("*Hi* <@U1> and <@U2|bob> in <#C1|general> <!here> :wave: <https://example.test|site> <https://a.test|https://a.test> <mailto:a@b.test|a@b.test> `x &lt; y`", (id) =>
+      id === "U1" ? "Ali" : undefined),
+    "Hi @Ali and @bob in #general @here :wave: site (https://example.test) https://a.test a@b.test x < y",
+  );
+  assert.equal(
+    plainText("- one\n- two\n1. first\n&gt; quoted\n```let x = 1;\n```"),
+    "• one\n• two\n1. first\n> quoted\nlet x = 1;",
+  );
 });
 
 test("blocks: headings, lists, quotes, code", () => {
