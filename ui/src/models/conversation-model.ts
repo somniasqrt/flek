@@ -18,3 +18,21 @@ export function conversationActions(kind: string) {
 export function hasUnread(c: { unread: number | null; notification?: string }) {
   return c.notification !== "muted" && (c.unread ?? 0) > 0;
 }
+
+export function conversationStarLabel(c: { kind: string; starred?: boolean }) {
+  const channel = c.kind === "public_channel" || c.kind === "private_channel";
+  return channel
+    ? c.starred ? t("Unstar channel") : t("Star channel")
+    : c.starred ? t("Unstar conversation") : t("Star conversation");
+}
+
+/// Header menus anchor their right edge; sidebar context menus anchor their left.
+export function conversationMenuPosition(
+  x: number, y: number, width: number, height: number,
+  viewportWidth: number, viewportHeight: number, rightAligned: boolean,
+) {
+  return {
+    left: Math.max(8, Math.min(rightAligned ? x - width : x, viewportWidth - width - 8)),
+    top: Math.max(8, Math.min(y, viewportHeight - height - 8)),
+  };
+}

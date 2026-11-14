@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-composer-people"
+description = "Enables the composer_people command without any pre-configured scope."
+commands.allow = ["composer_people"]
+
+[[permission]]
+identifier = "deny-composer-people"
+description = "Denies the composer_people command without any pre-configured scope."
+commands.deny = ["composer_people"]

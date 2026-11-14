@@ -177,3 +177,19 @@ pub async fn end_snooze(state: State<'_, AppState>) -> CmdResult<()> {
         .await
         .map_err(text)
 }
+
+/// Local directory only; completion never requests Slack data.
+#[tauri::command]
+pub async fn composer_people(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> CmdResult<Vec<flek_core::reads::ComposerPerson>> {
+    let Some(team) = state.team_id() else {
+        return Ok(Vec::new());
+    };
+    state
+        .store
+        .read(move |c| flek_core::reads::composer_people(c, &team, &conversation_id))
+        .await
+        .map_err(text)
+}

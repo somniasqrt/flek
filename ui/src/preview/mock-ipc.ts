@@ -302,6 +302,11 @@ mockIPC(
         return;
       case "conversation_link":
         return `https://demo.slack.com/archives/${a.conversationId}`;
+      case "channel_header":
+        // CBIG deliberately has no membership cache. C2 is muted and private.
+        return a.conversationId === "C1" || a.conversationId === "C2"
+          ? { num_members: 3, member_ids: ["U1", "U2", "U4"] }
+          : null;
       case "channel_info": {
         const c = conversations.find((c) => c.id === a.conversationId)!;
         return {
@@ -309,10 +314,36 @@ mockIPC(
           created: now - 86400 * 30,
           creator: "U1",
           num_members: 3,
-          members: ["U1", "U2", "U3"].map((id) => ({ id, name: people[id] })),
+          members: ["U1", "U2", "U4"].map((id) => ({ id, name: people[id] })),
           pins: [{ ts: ROOT, text: "Pinned preview message" }],
         };
       }
+      case "channel_directory":
+        return { channels: [
+          ...conversations.filter(c => c.kind === "public_channel" || c.kind === "private_channel")
+            .map(c => ({ id: c.id, name: c.label, is_private: c.kind === "private_channel",
+              is_member: true, is_archived: c.is_archived, topic: c.topic,
+              purpose: null, num_members: 5, created: now - 86400, creator: "U1" })),
+          ...Array.from({ length: 12 }, (_, i) => ({ id: `CPREVIEW${i}`,
+            name: `project-${i + 1}`, is_private: i === 0, is_member: i < 3,
+            is_archived: false, topic: null, purpose: null, num_members: 5, created: now - 86400, creator: "U1" })),
+        ], fetched_at: now, truncated: false };
+      case "composer_people":
+        return [
+          ...Object.entries(people).map(([id, label]) => ({ id,
+            name: label.toLowerCase().replaceAll(" ", "."),
+            display_name: id === "U2" ? "Taras" : label,
+            real_name: label, is_bot: false,
+            is_member: ["U1", "U2", "U3"].includes(id) && a.conversationId === "C1",
+            recent_dm: ["U1", "U2", "U4"].includes(id),
+          })),
+          ...Array.from({ length: 20 }, (_, i) => ({ id: `UPREVIEW${i}`,
+            name: `preview.person.${i}`, display_name: `Preview ${i + 1}`,
+            real_name: `Synthetic Person ${i + 1}`, is_bot: false,
+            is_member: i < 3 && a.conversationId === "C1", recent_dm: false,
+          })),
+          { id: "UBOT", name: "helper.bot", display_name: "Helper Bot", real_name: "Preview Bot", is_bot: true, is_member: false, recent_dm: false },
+        ];
       case "people":
         return people;
       case "avatars":

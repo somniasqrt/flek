@@ -9,6 +9,8 @@ export type RichInline =
   | { type: "text"; text: string; style?: TextStyle }
   | { type: "link"; url: string; text?: string; style?: TextStyle }
   | { type: "user"; user_id: string }
+  | { type: "channel"; channel_id: string }
+  | { type: "broadcast"; range: "here" | "channel" | "everyone" }
   | { type: "emoji"; name: string };
 export type RichSection = {
   type: "rich_text_section" | "rich_text_quote" | "rich_text_preformatted";
@@ -134,6 +136,14 @@ function inline(nodes: Iterable<Node>, style: TextStyle = {}): RichInline[] {
       out.push({ type: "user", user_id: node.dataset.userId });
       continue;
     }
+    if (node.dataset.channelId) {
+      out.push({ type: "channel", channel_id: node.dataset.channelId });
+      continue;
+    }
+    if (["here", "channel", "everyone"].includes(node.dataset.broadcast || "")) {
+      out.push({ type: "broadcast", range: node.dataset.broadcast as "here" | "channel" | "everyone" });
+      continue;
+    }
     const s = { ...style };
     if (
       ["B", "STRONG"].includes(tag) ||
@@ -242,7 +252,11 @@ export function blocksText(blocks: RichBlock[], names: Readonly<Record<string, s
                   ? n.text || n.url
                   : n.type === "emoji"
                     ? `:${n.name}:`
-                    : `@${names[n.user_id] || n.user_id}`,
+                    : n.type === "channel"
+                      ? `<#${n.channel_id}>`
+                      : n.type === "broadcast"
+                        ? `<!${n.range}>`
+                        : `@${names[n.user_id] || n.user_id}`,
             )
             .join("");
         return e.type === "rich_text_list" ? e.elements.map(section).join("\n") : section(e);
@@ -298,6 +312,16 @@ export function restoreEditor(editor: HTMLElement, draft: string) {
       out.setAttribute("href", node.getAttribute("href")!);
     if (node.dataset.userId && /^[A-Z0-9]+$/.test(node.dataset.userId)) {
       out.dataset.userId = node.dataset.userId;
+      out.contentEditable = "false";
+      out.className = "mention";
+    }
+    if (node.dataset.channelId && /^[A-Z0-9]+$/.test(node.dataset.channelId)) {
+      out.dataset.channelId = node.dataset.channelId;
+      out.contentEditable = "false";
+      out.className = "mention";
+    }
+    if (["here", "channel", "everyone"].includes(node.dataset.broadcast || "")) {
+      out.dataset.broadcast = node.dataset.broadcast;
       out.contentEditable = "false";
       out.className = "mention";
     }

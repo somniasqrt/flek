@@ -24,6 +24,8 @@ export function supportedRich(raw: unknown, depth = 0): boolean {
   if (depth > 4) return false;
   const n = record(raw);
   if (["text", "link", "user", "emoji"].includes(String(n.type))) return true;
+  if (n.type === "channel") return typeof n.channel_id === "string" && !!n.channel_id;
+  if (n.type === "broadcast") return ["here", "channel", "everyone"].includes(String(n.range));
   return (
     [
       "rich_text",

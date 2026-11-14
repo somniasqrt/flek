@@ -11,22 +11,22 @@ import {
 } from "solid-js";
 import { VirtualLayout } from "../models/virtualizer";
 import MeasuredRow from "../components/MeasuredRow";
-import { menuTarget, type ConversationMenuTarget } from "../components/ConversationMenu";
+import ConversationMenu, { menuTarget, type ConversationMenuTarget } from "../components/ConversationMenu";
 import JumpToDate from "../components/JumpToDate";
 import { settings } from "../stores/settings";
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import { t, errorMessage } from "../i18n/index";
-import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message } from "../api";
-import { firstUnread } from "../models/conversation-model";
+import { t, errorMessage, plural, locale } from "../i18n/index";
+import { api, isReplyOnly, tsDate, type Change, type Conversation, type Message, type ChannelHeader } from "../api";
+import { conversationStarLabel, firstUnread } from "../models/conversation-model";
 import Avatar from "../components/Avatar";
 import Composer from "../components/Composer";
 import DmIntro from "../components/DmIntro";
 import CustomStatus from "../components/CustomStatus";
-import { Hash, Lock } from "../components/icons";
+import { Hash, Lock, Star, StarFilled, Bell, Search, Kebab } from "../components/icons";
 import MessageRow from "../components/MessageRow";
 import { pendingFor } from "../stores/outbox";
 import { presenceOf, statuses } from "../stores/presence-store";
-import { openProfile } from "../stores/profile";
+import { people } from "../stores/people";
 import type { Jump } from "./Search";
 
 const PAGE = 60;
@@ -37,7 +37,11 @@ const REVEAL_PAGE = 500;
 
 export default function Timeline(props: {
   conversation: Conversation;
-  onMenu: (target: ConversationMenuTarget) => void;
+  onDetails: () => void;
+  onSearch: () => void;
+  onLeave: (conversation: Conversation) => void;
+  onError: (message: string) => void;
+  revision: number;
   onJoin: (id: string) => Promise<void>;
   me: string;
   members: string[];
@@ -48,6 +52,44 @@ export default function Timeline(props: {
   /// A message to scroll to and highlight (a search result).
   jump: Jump | null;
 }) {
+  const [headerMenu, setHeaderMenu] = createSignal<(ConversationMenuTarget & {
+    placement: "header" | "notifications";
+  }) | null>(null);
+  const [headerMembers, setHeaderMembers] = createSignal<ChannelHeader | null>(null);
+  let headerRequest = 0;
+  let headerConversation: string | undefined;
+  createEffect(() => {
+    const id = props.conversation.id;
+    props.revision;
+    const request = ++headerRequest;
+    if (id !== headerConversation) {
+      headerConversation = id;
+      setHeaderMembers(null);
+      setHeaderMenu(null);
+    }
+    if (!isChannel(props.conversation)) return;
+    // This command only reads SQLite; it cannot enqueue sync or fetch membership.
+    void api.channelHeader(id).then(
+      (members) => { if (request === headerRequest) setHeaderMembers(members); },
+      () => { if (request === headerRequest) setHeaderMembers(null); },
+    );
+  });
+  onCleanup(() => { headerRequest++; });
+  const starLabel = () => conversationStarLabel(props.conversation);
+  const toggleStar = async () => {
+    try {
+      await api.conversationPreference(props.conversation.id, !props.conversation.starred, null);
+    } catch (e) {
+      props.onError(String(e));
+    }
+  };
+  const openHeaderMenu = (e: MouseEvent, placement: "header" | "notifications") => {
+    setHeaderMenu({ ...menuTarget(e, props.conversation.id, "header"), placement });
+  };
+  const name = () => props.conversation.dm_user_id === props.me
+    ? t("{name} (you)", { name: props.conversation.label })
+    : props.conversation.label;
+
   // Reconciled by ts: updates touch only the rows that changed, so syncing
   // never re-renders (and flickers) the whole timeline.
   const [rows, setRows] = createStore<Message[]>([]);
@@ -533,50 +575,74 @@ export default function Timeline(props: {
 
   return (
     <div class="timeline">
-      <header class="conv-header">
+      <header class="conv-header conversation-header">
+        <button class="conv-header-icon conv-star" classList={{ starred: !!props.conversation.starred }}
+          title={starLabel()} aria-label={starLabel()} aria-pressed={!!props.conversation.starred}
+          onClick={toggleStar}>
+          <Show when={props.conversation.starred} fallback={<Star size={20} />}>
+            <StarFilled size={20} />
+          </Show>
+        </button>
         <h2>
-          {props.conversation.kind === "public_channel" ? (
-            <Hash size={18} />
-          ) : props.conversation.kind === "private_channel" ? (
-            <Lock size={18} />
-          ) : null}
-          <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
-            {(id) => (
-              <button
-                class="dm-header-avatar"
-                title={t("View profile")}
-                onClick={() => openProfile(id())}
-              >
-                <Avatar
-                  id={id()}
-                  name={props.conversation.label}
-                  size={28}
-                  presence={settings().presence_dots ? presenceOf(id()) : undefined}
-                />
+          <button class="conv-name" onClick={props.onDetails}
+            title={props.conversation.topic || (isChannel(props.conversation) ? t("Channel details") : t("View profile"))}
+            aria-label={isChannel(props.conversation) ? t("Channel details") : t("View profile")}>
+            <Show when={isChannel(props.conversation)} fallback={
+              <Avatar id={props.conversation.dm_user_id ?? props.members[0] ?? null}
+                name={name()} size={26}
+                presence={props.conversation.dm_user_id && settings().presence_dots
+                  ? presenceOf(props.conversation.dm_user_id) : undefined} />
+            }>
+              <Show when={props.conversation.kind === "private_channel"} fallback={<Hash size={20} />}>
+                <Lock size={20} />
+              </Show>
+            </Show>
+            <span class="conv-name-label">{name()}</span>
+            <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
+              {(id) => <CustomStatus status={statuses()[id()]} text />}
+            </Show>
+          </button>
+        </h2>
+        <div class="conv-header-actions">
+          <Show when={isChannel(props.conversation) && headerMembers()}>
+            {(members) => (
+              <button class="conv-members" onClick={props.onDetails}
+                title={plural("members", members().num_members)}
+                aria-label={plural("members", members().num_members)}>
+                <span class="conv-member-avatars" aria-hidden="true">
+                  <For each={members().member_ids}>
+                    {(id) => <Avatar id={id} name={people()[id] ?? id} size={24} />}
+                  </For>
+                </span>
+                <span>{members().num_members.toLocaleString(locale())}</span>
               </button>
             )}
           </Show>
-          {props.conversation.dm_user_id === props.me
-            ? t("{name} (you)", { name: props.conversation.label })
-            : props.conversation.label}
-          <Show when={props.conversation.kind === "im" && props.conversation.dm_user_id}>
-            {(id) => <CustomStatus status={statuses()[id()]} text />}
-          </Show>
-        </h2>
-        <Show when={props.conversation.topic}>
-          <span class="muted topic">{props.conversation.topic}</span>
-        </Show>
-        <button
-          aria-label={t("More channel actions")}
-          aria-haspopup="menu"
-          onClick={(e) => props.onMenu(menuTarget(e, props.conversation.id))}
-        >
-          ⋯
-        </button>
-        <button class="jump-date-action" onClick={() => pickDate()}>
-          {t("Jump to date")}
-        </button>
+          <button class="conv-header-icon" aria-haspopup="menu"
+            aria-expanded={headerMenu()?.placement === "notifications"}
+            title={props.conversation.notification === "muted" ? t("Notifications muted in Flek") : t("Notification preferences")}
+            aria-label={props.conversation.notification === "muted" ? t("Notifications muted in Flek") : t("Notification preferences")}
+            onClick={(e) => openHeaderMenu(e, "notifications")}>
+            <Bell size={20} muted={props.conversation.notification === "muted"} />
+          </button>
+          <button class="conv-header-icon" title={t("Search in this conversation")}
+            aria-label={t("Search in this conversation")} onClick={props.onSearch}>
+            <Search size={20} />
+          </button>
+          <button class="conv-header-icon" title={t("More conversation actions")}
+            aria-label={t("More conversation actions")} aria-haspopup="menu"
+            aria-expanded={headerMenu()?.placement === "header"}
+            onClick={(e) => openHeaderMenu(e, "header")}>
+            <Kebab size={20} />
+          </button>
+        </div>
       </header>
+      <Show when={headerMenu()} keyed>
+        {(target) => <ConversationMenu conversation={props.conversation}
+          x={target.x} y={target.y} placement={target.placement}
+          onClose={() => setHeaderMenu(null)} onDetails={props.onDetails}
+          onJumpDate={() => pickDate()} onLeave={props.onLeave} onError={props.onError} />}
+      </Show>
       <Show when={datePicker()}>
         {(date) => (
           <JumpToDate

@@ -3,16 +3,27 @@ import { Portal } from "solid-js/web";
 import { t, errorMessage } from "../i18n/index";
 import { openInSlack } from "../stores/slack";
 import { api, type Conversation } from "../api";
-import { conversationActions, hasUnread } from "../models/conversation-model";
+import {
+  conversationActions,
+  conversationMenuPosition,
+  conversationStarLabel,
+  hasUnread,
+} from "../models/conversation-model";
 
 export type ConversationMenuTarget = { id: string; x: number; y: number };
 
-export function menuTarget(e: MouseEvent | KeyboardEvent, id: string): ConversationMenuTarget {
+export function menuTarget(
+  e: MouseEvent | KeyboardEvent,
+  id: string,
+  placement: "sidebar" | "header" = "sidebar",
+): ConversationMenuTarget {
   e.preventDefault();
   const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
   return {
     id,
-    x: e instanceof MouseEvent && e.button === 2 ? e.clientX : rect.left + 24,
+    x: placement === "header"
+      ? rect.right
+      : e instanceof MouseEvent && e.button === 2 ? e.clientX : rect.left + 24,
     y: e instanceof MouseEvent && e.button === 2 ? e.clientY : rect.bottom,
   };
 }
@@ -26,11 +37,15 @@ export default function ConversationMenu(props: {
   x: number;
   y: number;
   onClose: () => void;
+  placement?: "sidebar" | "header" | "notifications";
+  onJumpDate?: () => void;
   onDetails: () => void;
   onLeave: (conversation: Conversation) => void;
   onError: (message: string) => void;
 }) {
   const c = () => props.conversation;
+  const header = () => props.placement === "header";
+  const sidebar = () => !props.placement || props.placement === "sidebar";
   const actions = () => conversationActions(c().kind);
   const [submenu, setSubmenu] = createSignal<"copy" | "notify" | null>(null);
   const [position, setPosition] = createSignal({ left: props.x, top: props.y });
@@ -76,10 +91,10 @@ export default function ConversationMenu(props: {
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null;
     const fit = () =>
-      setPosition({
-        left: Math.max(8, Math.min(props.x, window.innerWidth - panel.offsetWidth - 8)),
-        top: Math.max(8, Math.min(props.y, window.innerHeight - panel.offsetHeight - 8)),
-      });
+      setPosition(conversationMenuPosition(
+        props.x, props.y, panel.offsetWidth, panel.offsetHeight,
+        window.innerWidth, window.innerHeight, !sidebar(),
+      ));
     const observer = new ResizeObserver(fit);
     observer.observe(panel);
     fit();
@@ -144,127 +159,168 @@ export default function ConversationMenu(props: {
     <Portal>
       <div
         class="message-menu conversation-menu"
+        classList={{ "conversation-header-menu": !sidebar() }}
         ref={panel}
         role="menu"
-        aria-label={t("Actions for {name}", { name: c().label })}
+        aria-label={props.placement === "notifications" ? t("Notification preferences") : t("Actions for {name}", { name: c().label })}
         style={{ left: `${position().left}px`, top: `${position().top}px` }}
         onKeyDown={keydown}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <button
-          role="menuitem"
-          disabled={!hasUnread(c()) || !c().latest_ts}
-          onMouseEnter={() => setSubmenu(null)}
-          onClick={() => run(() => api.markRead(c().id, c().latest_ts!))}
-        >
-          {t("Mark as read")}
-        </button>
-        <button
-          role="menuitem"
-          onMouseEnter={() => setSubmenu(null)}
-          onClick={() => {
-            props.onDetails();
-            props.onClose();
-          }}
-        >
-          {actions().details}
-          {actions().channel ? " ›" : ""}
-        </button>
-        <button role="menuitem" onMouseEnter={() => setSubmenu(null)} onClick={() => run(() => openInSlack(c().id))}>
-          {t("Open in Slack")}
-        </button>
-        <div class="menu-separator" role="separator" />
-        <button
-          role="menuitem"
-          data-submenu="copy"
-          aria-haspopup="menu"
-          aria-expanded={submenu() === "copy"}
-          onMouseEnter={() => setSubmenu("copy")}
-          onClick={() => setSubmenu("copy")}
-        >
-          {t("Copy")}
-          <span>›</span>
-        </button>
-        <button
-          role="menuitem"
-          onMouseEnter={() => setSubmenu(null)}
-          onClick={() => run(() => api.conversationPreference(c().id, !c().starred, null))}
-        >
-          {c().starred ? t("Unstar") : t("Star channel")}
-        </button>
-        <button
-          role="menuitem"
-          data-submenu="notify"
-          aria-haspopup="menu"
-          aria-expanded={submenu() === "notify"}
-          onMouseEnter={() => setSubmenu("notify")}
-          onClick={() => setSubmenu("notify")}
-        >
-          {t("Notify you about…")}
-          <span>›</span>
-        </button>
-        <div class="menu-separator" role="separator" />
-        <button
-          role="menuitem"
-          class="danger"
-          disabled={c().is_general}
-          onMouseEnter={() => setSubmenu(null)}
-          onClick={closeConversation}
-        >
-          {actions().dismiss}
-        </button>
-        <Show when={submenu()}>
-          <div
-            class="conversation-submenu"
-            role="menu"
-            aria-label={submenu() === "copy" ? t("Copy") : t("Notify you about…")}
-            style={{ left: `${subPosition().left}px`, top: `${subPosition().top}px` }}
-          >
-            <Show when={submenu() === "copy"}>
-              <button role="menuitem" onClick={() => copy(c().label)}>
-                {t("Copy name")}
-              </button>
+        <Show
+          when={props.placement === "notifications"}
+          fallback={<>
+            <Show when={sidebar()}>
               <button
                 role="menuitem"
-                onClick={() =>
-                  run(async () => {
-                    const link = await api.conversationLink(c().id);
-                    if (!link) throw new Error(t("Workspace link is not cached yet"));
-                    await navigator.clipboard.writeText(link);
-                  })
-                }
+                disabled={!hasUnread(c()) || !c().latest_ts}
+                onMouseEnter={() => setSubmenu(null)}
+                onClick={() => run(() => api.markRead(c().id, c().latest_ts!))}
               >
-                {t("Copy link")}
-              </button>
-              <button role="menuitem" onClick={() => copy(c().id)}>
-                {t("Copy ID")}
+                {t("Mark as read")}
               </button>
             </Show>
-            <Show when={submenu() === "notify"}>
-              <p class="muted menu-note">{t("In Flek only")}</p>
-              <For
-                each={[
-                  ["all", t("All new posts")],
-                  ["mentions", t("Just mentions")],
-                  ["muted", t("Mute and hide")],
-                ]}
+            <button
+              role="menuitem"
+              onMouseEnter={() => setSubmenu(null)}
+              onClick={() => {
+                props.onDetails();
+                props.onClose();
+              }}
+            >
+              {actions().details}
+              {sidebar() && actions().channel ? " ›" : ""}
+            </button>
+            <Show when={sidebar()}>
+              <button role="menuitem" onMouseEnter={() => setSubmenu(null)} onClick={() => run(() => openInSlack(c().id))}>
+                {t("Open in Slack")}
+              </button>
+              <div class="menu-separator" role="separator" />
+            </Show>
+            <button
+              role="menuitem"
+              data-submenu="copy"
+              aria-haspopup="menu"
+              aria-expanded={submenu() === "copy"}
+              onMouseEnter={() => setSubmenu("copy")}
+              onClick={() => setSubmenu("copy")}
+            >
+              {t("Copy")}
+              <span>›</span>
+            </button>
+            <button
+              role="menuitem"
+              onMouseEnter={() => setSubmenu(null)}
+              onClick={() => run(() => api.conversationPreference(c().id, !c().starred, null))}
+            >
+              {sidebar() ? c().starred ? t("Unstar") : t("Star channel") : conversationStarLabel(c())}
+            </button>
+            <Show when={sidebar()}>
+              <button
+                role="menuitem"
+                data-submenu="notify"
+                aria-haspopup="menu"
+                aria-expanded={submenu() === "notify"}
+                onMouseEnter={() => setSubmenu("notify")}
+                onClick={() => setSubmenu("notify")}
               >
-                {([value, label]) => (
-                  <button
-                    role="menuitemradio"
-                    aria-checked={(c().notification ?? "all") === value}
-                    onClick={() => notification(value)}
-                  >
-                    {(c().notification ?? "all") === value ? "✓ " : ""}
-                    {label}
+                {t("Notify you about…")}
+                <span>›</span>
+              </button>
+            </Show>
+            <Show when={header()}>
+              <div class="menu-separator" role="separator" />
+              <button
+                role="menuitem"
+                disabled={!hasUnread(c()) || !c().latest_ts}
+                onMouseEnter={() => setSubmenu(null)}
+                onClick={() => run(() => api.markRead(c().id, c().latest_ts!))}
+              >
+                {t("Mark as read")}
+              </button>
+              <button role="menuitem" onMouseEnter={() => setSubmenu(null)} onClick={() => {
+                props.onClose();
+                props.onJumpDate?.();
+              }}>
+                {t("Jump to date…")}
+              </button>
+              <div class="menu-separator" role="separator" />
+              <button role="menuitem" onMouseEnter={() => setSubmenu(null)} onClick={() => run(() => openInSlack(c().id))}>
+                {t("Open in Slack")}
+              </button>
+            </Show>
+            <div class="menu-separator" role="separator" />
+            <button
+              role="menuitem"
+              class="danger"
+              disabled={c().is_general}
+              onMouseEnter={() => setSubmenu(null)}
+              onClick={closeConversation}
+            >
+              {actions().dismiss}
+            </button>
+            <Show when={submenu()}>
+              <div
+                class="conversation-submenu"
+                role="menu"
+                aria-label={submenu() === "copy" ? t("Copy") : t("Notify you about…")}
+                style={{ left: `${subPosition().left}px`, top: `${subPosition().top}px` }}
+              >
+                <Show when={submenu() === "copy"}>
+                  <button role="menuitem" onClick={() => copy(c().label)}>
+                    {t("Copy name")}
                   </button>
-                )}
-              </For>
+                  <button
+                    role="menuitem"
+                    onClick={() =>
+                      run(async () => {
+                        const link = await api.conversationLink(c().id);
+                        if (!link) throw new Error(t("Workspace link is not cached yet"));
+                        await navigator.clipboard.writeText(link);
+                      })
+                    }
+                  >
+                    {t("Copy link")}
+                  </button>
+                  <button role="menuitem" onClick={() => copy(c().id)}>
+                    {t("Copy ID")}
+                  </button>
+                </Show>
+                <Show when={submenu() === "notify"}>
+                  <NotificationChoices conversation={c()} onSelect={notification} />
+                </Show>
+              </div>
             </Show>
-          </div>
+          </>}
+        >
+          <NotificationChoices conversation={c()} onSelect={notification} />
         </Show>
       </div>
     </Portal>
+  );
+}
+
+function NotificationChoices(props: { conversation: Conversation; onSelect: (value: string) => void }) {
+  return (
+    <>
+      <p class="muted menu-note">{t("In Flek only")}</p>
+      <For each={[
+        ["all", t("All new posts")],
+        ["mentions", t("Just mentions")],
+        ["muted", t("Mute and hide")],
+      ]}>
+        {([value, label]) => (
+          <button
+            role="menuitemradio"
+            aria-checked={(props.conversation.notification ?? "all") === value}
+            onClick={() => props.onSelect(value)}
+          >
+            {(props.conversation.notification ?? "all") === value ? "✓ " : ""}
+            {label}
+          </button>
+        )}
+      </For>
+    </>
   );
 }
 

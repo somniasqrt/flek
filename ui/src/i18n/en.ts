@@ -1,4 +1,18 @@
 export const en = {
+  // Conversation header.
+  "Unstar channel": "Unstar channel",
+  "Star conversation": "Star conversation",
+  "Unstar conversation": "Unstar conversation",
+  "Notification preferences": "Notification preferences",
+  "Notifications muted in Flek": "Notifications muted in Flek",
+  "Search in this conversation": "Search in this conversation",
+  "More conversation actions": "More conversation actions",
+  "Jump to date…": "Jump to date…",
+
+
+  "Private channel": "Private channel",
+  "Composer suggestions": "Composer suggestions",
+  "Notify the channel": "Notify the channel",
   "Download to Downloads": "Download to Downloads",
   "Saved to Downloads": "Saved to Downloads",
   "The system Downloads folder could not be found or accessed.": "The system Downloads folder could not be found or accessed.",

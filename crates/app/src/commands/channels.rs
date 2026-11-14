@@ -6,6 +6,18 @@ use flek_core::store::directory::{self, ConversationRow};
 use tauri::State;
 
 #[tauri::command]
+pub async fn channel_header(
+    state: State<'_, AppState>,
+    conversation_id: String,
+) -> CmdResult<Option<flek_core::reads::ChannelHeader>> {
+    state
+        .store
+        .read(move |c| flek_core::reads::channel_header(c, &conversation_id))
+        .await
+        .map_err(text)
+}
+
+#[tauri::command]
 pub async fn channel_info(
     state: State<'_, AppState>,
     conversation_id: String,
@@ -16,6 +28,8 @@ pub async fn channel_info(
         flek_core::sync::channel_details::fresh(&client, &state.store, &conversation_id)
             .await
             .map_err(text)?;
+        // Other DB readers, including the header, can now show the cached snapshot.
+        let _ = state.bus.send(flek_core::sync::live::Change::Directory);
     }
     state
         .store

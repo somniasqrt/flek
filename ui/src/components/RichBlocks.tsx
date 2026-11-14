@@ -9,7 +9,7 @@ import {
 } from "../models/block-kit";
 import Emoji from "./EmojiView";
 import { settings } from "../stores/settings";
-import { people } from "../stores/people";
+import { people, channelNames } from "../stores/people";
 import { safeLink } from "../models/rich-compose";
 
 // Read-only received Block Kit and the composer's documented rich text.
@@ -21,6 +21,8 @@ type Node = {
   name?: string;
   skin_tone?: number;
   user_id?: string;
+  channel_id?: string;
+  range?: string;
   style?: Record<string, unknown> | string;
   indent?: number;
   elements?: unknown[];
@@ -38,6 +40,10 @@ function inline(raw: unknown): JSX.Element {
   let content: JSX.Element;
   if (n.type === "user")
     content = <span class="mention">@{people()[text(n.user_id)] ?? text(n.user_id)}</span>;
+  else if (n.type === "channel")
+    content = <span class="mention">#{channelNames()[text(n.channel_id)] ?? text(n.channel_id)}</span>;
+  else if (n.type === "broadcast")
+    content = <span class="mention special">@{text(n.range)}</span>;
   else if (n.type === "emoji") {
     const name = text(n.name);
     const tone = n.skin_tone;

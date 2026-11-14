@@ -62,7 +62,7 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   that channel to load all 10,000 synthetic records at once. Only the visible
   rows and overscan should exist in the DOM. Inspect `.virtual-row` count while
   scrolling and use the browser performance panel to check frame rate.
-- Day labels and the header open the date picker. Test a populated day, a gap,
+- Day labels and the header kebab menu’s **Jump to date…** open the date picker. Test a populated day, a gap,
   a date before the archive and a future date. Date windows page both directions.
   Check author grouping/day boundaries, resizes, media layout changes and scroll
   anchoring on prepends; `__reply()` simulates a live thread update.
@@ -114,3 +114,19 @@ jump-flash and outbox states retain precedence. Resize the timeline to a narrow
 pane with Ukrainian dates: both normal/sticky date pills remain centered and
 ellipsize. `?platform=windows` / `?platform=linux` exercises OS wording only;
 native Downloads resolution, disk errors/quarantine and reveal need native QA.
+
+## Conversation header (M3.7.4)
+
+- **general** is starred, has three cached members (two images and initials), and
+  cannot be left. **course-project**, under collapsed **Muted**, is private and
+  muted. **timeline-10000** has no cached membership, so its header omits the count
+  and avatars. **Olena Koval** is a DM; **Olena, Taras** is a group DM.
+- Click the star and bell choices to exercise the normal mocked directory-change
+  flow. Notifications show **In Flek only** and the muted bell changes immediately
+  after the store refresh. Sidebar right-click retains its notification submenu.
+- Name and member buttons open cached channel details; DM names open a profile.
+  The magnifier focuses global search with the channel/DM `in:` filter and a
+  trailing space. Kebab opens a right-aligned menu; Copy opens its submenu.
+- Check light/dark themes, English/Ukrainian, long names and narrow panes, keyboard
+  arrows/Home/End/Escape, focus return, menu clamping and avatar loading without
+  layout shift. Header/menu membership reads never request fresh data.

@@ -24,7 +24,7 @@ import DirectMessages from "./DirectMessages";
 import FileBrowser, { FileNav } from "./FileBrowser";
 import QuickSwitcher from "../components/QuickSwitcher";
 import NewMessage from "./NewMessage";
-import { SearchBar, SearchResults } from "./Search";
+import { SearchBar, SearchResults, scopeFilter } from "./Search";
 import Viewer from "../components/Viewer";
 import Sidebar from "./Sidebar";
 import SyncBar from "../components/SyncBar";
@@ -49,7 +49,7 @@ export default function Workspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, searchRequest, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame,
@@ -196,7 +196,11 @@ export default function Workspace(props: { status: Ready }) {
                       {(c) => (
                         <Timeline
                           conversation={c()}
-                          onMenu={setMenu}
+                          onDetails={() => details(c())}
+                          onSearch={() => setSearchRequest({ prefill: scopeFilter(c()) })}
+                          onLeave={setLeaving}
+                          onError={setActionError}
+                          revision={revision()}
                           onJoin={joinChannel}
                           me={props.status.user_id}
                           members={dms().find((dm) => dm.id === c().id)?.members ?? []}

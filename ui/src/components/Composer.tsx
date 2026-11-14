@@ -1,13 +1,14 @@
 import { For, Show } from "solid-js";
 import { t } from "../i18n/index";
-import { emoji } from "../models/emoji";
+import Avatar from "./Avatar";
+import Emoji from "./EmojiView";
+import { presenceOf } from "../stores/presence-store";
+import { settings } from "../stores/settings";
 import EmojiPicker from "./EmojiPicker";
 import ComposeIcon from "./ComposeIcon";
-import { escapeText } from "../models/compose";
+import { Lock } from "./icons";
 import { safeLink } from "../models/rich-compose";
-import {
-shortcutLabel
-} from "../models/shortcuts";
+import { shortcutLabel } from "../models/shortcuts";
 import { keyCombo, modKeyLabel } from "../platform";
 import { people } from "../stores/people";
 
@@ -15,10 +16,45 @@ import { createComposer, savePreference, type ComposerProps } from "./composer/c
 
 export default function Composer(props: ComposerProps) {
   const {
-    mac, key, hasText, toolbar, modEnter, setModEnter, popover, setPopover, broadcast,
-    setBroadcast, linkUrl, setLinkUrl, linkLabel, setLinkLabel, personQuery, setPersonQuery,
-    remember, refresh, selectionChanged, focusSelection, exec, insert, toggleToolbar, action,
-    applyLink, submit, onKeyDown, title, formatButton, mention, setBox, setEditor,
+    mac,
+    key,
+    hasText,
+    toolbar,
+    modEnter,
+    setModEnter,
+    popover,
+    setPopover,
+    broadcast,
+    setBroadcast,
+    linkUrl,
+    setLinkUrl,
+    linkLabel,
+    setLinkLabel,
+    personQuery,
+    setPersonQuery,
+    focusSelection,
+    exec,
+    insert,
+    toggleToolbar,
+    action,
+    applyLink,
+    submit,
+    onKeyDown,
+    title,
+    formatButton,
+    mention,
+    insertEmoji,
+    setBox,
+    setEditor,
+    completionId,
+    completionOpen,
+    completions,
+    completionIndex,
+    setCompletionIndex,
+    chooseCompletion,
+    onInput,
+    onCompositionStart,
+    onCompositionEnd,
   } = createComposer(props);
   return (
     <div class="composer">
@@ -33,6 +69,66 @@ export default function Composer(props: ComposerProps) {
           }
         }}
       >
+        <Show when={completionOpen()}>
+          <div
+            class="compose-popover compose-autocomplete"
+            id={completionId}
+            role="listbox"
+            aria-label={t("Composer suggestions")}
+          >
+            <For each={completions()}>
+              {(item, index) => (
+                <div
+                  id={`${completionId}-${index()}`}
+                  role="option"
+                  aria-selected={completionIndex() === index()}
+                  class="compose-completion"
+                  classList={{ selected: completionIndex() === index() }}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setCompletionIndex(index())}
+                  onClick={() => chooseCompletion(item)}
+                >
+                  <span class="compose-completion-preview" aria-hidden="true">
+                    {item.kind === "person" ? (
+                      <Avatar
+                        id={item.id}
+                        name={item.label}
+                        size={28}
+                        presence={settings().presence_dots ? presenceOf(item.id) : undefined}
+                      />
+                    ) : item.kind === "emoji" ? (
+                      <Emoji name={item.id} />
+                    ) : item.kind === "channel" && item.private ? (
+                      <Lock size={20} />
+                    ) : item.kind === "channel" ? (
+                      "#"
+                    ) : (
+                      "@"
+                    )}
+                  </span>
+                  <span class="compose-completion-label">
+                    {item.kind === "emoji"
+                      ? `:${item.label}:`
+                      : item.kind === "broadcast"
+                        ? `@${item.label}`
+                        : item.label}
+                  </span>
+                  <Show when={item.kind === "person" && item.detail !== item.label}>
+                    <span class="compose-completion-detail">
+                      {item.kind === "person" ? item.detail : ""}
+                    </span>
+                  </Show>
+                  <Show when={item.kind === "channel" && item.private}>
+                    <span class="sr-only">{t("Private channel")}</span>
+                  </Show>
+                  <Show when={item.kind === "broadcast"}>
+                    <span class="compose-completion-detail">{t("Notify the channel")}</span>
+                  </Show>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
         <Show when={toolbar()}>
           <div class="composer-format" role="toolbar" aria-label={t("Text formatting")}>
             {formatButton("bold", t("Bold"))}
@@ -105,15 +201,19 @@ export default function Composer(props: ComposerProps) {
           contentEditable
           role="textbox"
           aria-multiline="true"
+          aria-autocomplete="list"
+          aria-expanded={completionOpen()}
+          aria-controls={completionOpen() ? completionId : undefined}
+          aria-activedescendant={
+            completionOpen() ? `${completionId}-${completionIndex()}` : undefined
+          }
           aria-label={props.placeholder}
           data-placeholder={props.placeholder}
           data-empty={!hasText()}
           spellcheck
-          onInput={(e) => {
-            remember((e as InputEvent).inputType === "insertText");
-            refresh();
-            selectionChanged();
-          }}
+          onInput={(e) => onInput(e as InputEvent)}
+          onCompositionStart={onCompositionStart}
+          onCompositionEnd={onCompositionEnd}
           onKeyDown={onKeyDown}
           onPaste={(e) => {
             e.preventDefault();
@@ -242,10 +342,7 @@ export default function Composer(props: ComposerProps) {
           <div class="compose-popover compose-emoji-popover">
             <EmojiPicker
               onPick={(name) => {
-                exec(
-                  "insertHTML",
-                  `<span contenteditable="false" data-emoji-name="${name.replace(/[^a-z0-9_+:.\-]/gi, "")}">${escapeText(emoji(name) ?? `:${name}:`)}</span> `,
-                );
+                insertEmoji(name);
                 setPopover(null);
               }}
             />

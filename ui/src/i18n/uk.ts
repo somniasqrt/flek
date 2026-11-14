@@ -4,6 +4,20 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  // Conversation header.
+  "Unstar channel": "Прибрати канал з обраного",
+  "Star conversation": "Додати розмову до обраного",
+  "Unstar conversation": "Прибрати розмову з обраного",
+  "Notification preferences": "Налаштування сповіщень",
+  "Notifications muted in Flek": "Сповіщення вимкнено у Flek",
+  "Search in this conversation": "Шукати в цій розмові",
+  "More conversation actions": "Інші дії з розмовою",
+  "Jump to date…": "Перейти до дати…",
+
+
+  "Composer suggestions": "Підказки",
+  "Notify the channel": "Сповістити канал",
+  "Private channel": "Приватний канал",
   "Download to Downloads": "Зберегти в «Завантаження»",
   "Saved to Downloads": "Збережено в «Завантаження»",
   "The system Downloads folder could not be found or accessed.": "Не вдалося знайти системну теку «Завантаження» або отримати доступ до неї.",

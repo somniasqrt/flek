@@ -82,6 +82,10 @@
   background: var(--popover-bg, var(--bg));
   box-shadow: var(--shadow);
 }
+.conversation-menu.conversation-header-menu {
+  /* Fixed submenus stay in viewport coordinates while a short window scrolls. */
+  overflow: auto;
+}
 :root {
   --popover-bg: #fff;
 }

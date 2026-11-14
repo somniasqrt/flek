@@ -4,6 +4,53 @@ use crate::{references, views, Result};
 use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 
+/// Small, offline-only header view. A missing count differs from a cached empty set.
+#[derive(Serialize)]
+pub struct ChannelHeader {
+    pub num_members: i64,
+    pub member_ids: Vec<String>,
+}
+
+pub fn channel_header(c: &Connection, id: &str) -> Result<Option<ChannelHeader>> {
+    let Some((raw, synced)) = c
+        .query_row(
+            "SELECT raw_json, EXISTS(SELECT 1 FROM conversation_details_sync WHERE conversation_id = ?1)
+             FROM conversations WHERE id = ?1",
+            [id],
+            |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, bool>(1)?)),
+        )
+        .optional()?
+    else {
+        return Ok(None);
+    };
+    let cached_count = raw
+        .and_then(|r| serde_json::from_str::<serde_json::Value>(&r).ok())
+        .and_then(|r| r["num_members"].as_i64())
+        .filter(|n| *n >= 0);
+    let num_members = if synced {
+        // A complete membership snapshot is more precise than directory metadata.
+        c.query_row(
+            "SELECT COUNT(*) FROM conversation_members WHERE conversation_id = ?1",
+            [id],
+            |r| r.get(0),
+        )?
+    } else if let Some(count) = cached_count {
+        count
+    } else {
+        return Ok(None);
+    };
+    let mut stmt = c.prepare(
+        "SELECT user_id FROM conversation_members WHERE conversation_id = ?1 ORDER BY user_id LIMIT 3",
+    )?;
+    let member_ids = stmt
+        .query_map([id], |r| r.get(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(Some(ChannelHeader {
+        num_members,
+        member_ids,
+    }))
+}
+
 #[derive(Serialize)]
 pub struct ChannelInfo {
     pub conversation: views::Conversation,

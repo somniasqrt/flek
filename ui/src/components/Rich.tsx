@@ -7,7 +7,7 @@ import { parseBlockKit } from "../models/block-kit";
 import Emoji from "./EmojiView";
 import { linkInfo, shortUrl, type LinkKind } from "../models/links";
 import { parse, type Block, type Inline } from "../models/mrkdwn";
-import { people } from "../stores/people";
+import { people, channelNames } from "../stores/people";
 
 // Renders a message's mrkdwn text: blocks, inline styles, mentions, emoji
 // and links (meeting / doc / video links get a service badge).
@@ -98,7 +98,7 @@ function node(n: Inline): JSX.Element {
     case "user":
       return <span class="mention">@{people()[n.id] ?? n.label ?? n.id}</span>;
     case "channel":
-      return <span class="mention">#{n.label ?? n.id}</span>;
+      return <span class="mention">#{channelNames()[n.id] ?? n.label ?? n.id}</span>;
     case "special":
       return <span class="mention special">{n.v}</span>;
     case "emoji":

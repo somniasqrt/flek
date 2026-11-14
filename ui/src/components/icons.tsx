@@ -54,6 +54,28 @@ export const Search = (p: { size?: number }) => (
   </Icon>
 );
 
+const starPath = "m10 2 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4-3.9-3.8 5.4-.8Z";
+export const Star = (p: { size?: number }) => (
+  <Icon size={p.size}><path d={starPath} /></Icon>
+);
+export const StarFilled = (p: { size?: number }) => (
+  <Icon size={p.size}><path d={starPath} fill="currentColor" /></Icon>
+);
+export const Bell = (p: { size?: number; muted?: boolean }) => (
+  <Icon size={p.size}>
+    <path d={p.muted
+      ? "M7 3.9A4.5 4.5 0 0 1 14.5 7v3M5.5 7v3.5L3 14h10M8 17h4M2.5 2.5l15 15"
+      : "M5.5 7a4.5 4.5 0 0 1 9 0v3.5L17 14H3l2.5-3.5ZM8 17h4"} />
+  </Icon>
+);
+export const Kebab = (p: { size?: number }) => (
+  <Icon size={p.size}>
+    <circle cx="10" cy="4" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="10" r="1.4" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="16" r="1.4" fill="currentColor" stroke="none" />
+  </Icon>
+);
+
 // One continuous face-and-plus silhouette, rather than a text emoji and a plus.
 export const AddReaction = (p: { size?: number }) => (
   <Icon size={p.size ?? 20}>

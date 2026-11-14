@@ -899,3 +899,75 @@ fn unread_excludes_left_conversations_without_panicking() {
     })
     .unwrap();
 }
+
+#[test]
+fn channel_header_reads_only_the_local_cache() {
+    let db = seed();
+    db.with_conn(|c| {
+        // Nothing cached yet and unknown conversations: no header data, no error.
+        assert!(reads::channel_header(c, "CFAKE")?.is_none());
+        assert!(reads::channel_header(c, "CMISSING")?.is_none());
+        // Directory metadata gives a count before the member list is fetched.
+        c.execute(
+            "UPDATE conversations SET raw_json = '{\"num_members\":582}' WHERE id = 'CFAKE'",
+            [],
+        )?;
+        let header = reads::channel_header(c, "CFAKE")?.unwrap();
+        assert_eq!(header.num_members, 582);
+        assert!(header.member_ids.is_empty());
+        // Negative or malformed counts are ignored.
+        c.execute(
+            "UPDATE conversations SET raw_json = '{\"num_members\":-1}' WHERE id = 'COTHER'",
+            [],
+        )?;
+        assert!(reads::channel_header(c, "COTHER")?.is_none());
+        // A synced member snapshot wins over metadata; at most three ids, stable order.
+        for user in ["UTWO", "USELF", "UONE", "UGONE"] {
+            c.execute(
+                "INSERT INTO conversation_members VALUES ('CFAKE', ?1)",
+                [user],
+            )?;
+        }
+        c.execute(
+            "INSERT INTO conversation_details_sync VALUES ('CFAKE', 123)",
+            [],
+        )?;
+        let header = reads::channel_header(c, "CFAKE")?.unwrap();
+        assert_eq!(header.num_members, 4);
+        assert_eq!(header.member_ids, ["UGONE", "UONE", "USELF"]);
+        // A synced empty snapshot is a real zero, not "unknown".
+        c.execute(
+            "INSERT INTO conversation_details_sync VALUES ('COTHER', 123)",
+            [],
+        )?;
+        let header = reads::channel_header(c, "COTHER")?.unwrap();
+        assert_eq!(header.num_members, 0);
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn composer_people_are_local_and_ranked_by_context() {
+    let db = seed();
+    db.with_conn(|c| {
+        c.execute(
+            "INSERT INTO conversation_members VALUES ('CFAKE','UTWO')",
+            [],
+        )?;
+        let people = reads::composer_people(c, "TFAKE", "CFAKE")?;
+        let ids: Vec<_> = people.iter().map(|p| p.id.as_str()).collect();
+        // Deleted users never show up; bots do (the UI hides them for empty queries).
+        assert!(!ids.contains(&"UGONE"));
+        assert!(ids.contains(&"WBOT"));
+        let find = |id: &str| people.iter().find(|p| p.id == id).unwrap();
+        assert!(find("UTWO").is_member && !find("UONE").is_member);
+        assert!(find("UONE").recent_dm && !find("UTWO").recent_dm);
+        assert!(find("WBOT").is_bot);
+        assert_eq!(find("UONE").display_name.as_deref(), Some("Alice"));
+        // Other teams see nothing.
+        assert!(reads::composer_people(c, "TOTHER", "CFAKE")?.is_empty());
+        Ok(())
+    })
+    .unwrap();
+}

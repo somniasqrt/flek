@@ -388,3 +388,56 @@
   margin: 0 3px;
 }
 
+
+/* Completion stays anchored to the editor in both the timeline and thread. */
+.compose-autocomplete {
+  left: 0;
+  right: 0;
+  padding: 4px 0;
+  max-height: min(328px, 45vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.compose-completion {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.compose-completion.selected {
+  background: var(--hover);
+}
+.compose-completion-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  font-size: 22px;
+}
+.compose-completion-label {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compose-completion-detail {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.composer-editor [data-emoji-name] { display: inline-block; }
+
+.compose-autocomplete .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

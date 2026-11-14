@@ -241,6 +241,8 @@ export type StoredFile = {
   permalink: string | null;
 };
 
+export type ChannelHeader = { num_members: number; member_ids: string[] };
+
 export type ChannelInfo = {
   conversation: {
     id: string;
@@ -309,6 +311,8 @@ export const api = {
     invoke<void>("dismiss_conversation", { conversationId }),
   channelInfo: (conversationId: string, fresh = false) =>
     invoke<ChannelInfo>("channel_info", { conversationId, fresh }),
+  channelHeader: (conversationId: string) =>
+    invoke<ChannelHeader | null>("channel_header", { conversationId }),
   conversationLink: (conversationId: string) =>
     invoke<string | null>("conversation_link", { conversationId }),
   teamIcon: () => invoke<string | null>("team_icon"),
@@ -347,6 +351,7 @@ export const api = {
     invoke<Message[]>("thread", { conversationId, ts }),
   importDesktop: () => invoke<void>("import_desktop"),
   signIn: () => invoke<void>("sign_in"),
+  composerPeople: (conversationId: string) => invoke<import("./models/composer-autocomplete").ComposerPerson[]>("composer_people", { conversationId }),
   people: () => invoke<Record<string, string>>("people"),
   avatars: () => invoke<Record<string, string>>("avatars"),
   customEmoji: () => invoke<CustomEmoji>("custom_emoji"),

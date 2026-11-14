@@ -1,5 +1,7 @@
 //! Offline reads shared by CLI and app, built exclusively from SQLite.
 
+mod composer;
+pub use composer::*;
 mod users;
 pub use users::*;
 mod history;
