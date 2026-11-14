@@ -10,5 +10,5 @@ export const revealLabel = () => pick({
 });
 export const fileActionLabel = (file: FilePresentation) => canOpen(file) ? t("Open in default app") : revealLabel();
 export default function FileSafety(props: { file: FilePresentation }) {
-  return <Show when={!canOpen(props.file)}><span class="muted file-safety">{t("This file type can run code. Flek doesn't open it directly.")} {revealLabel()}</span></Show>;
+  return <Show when={!canOpen(props.file) && !props.file.viewer_kind}><span class="muted file-safety">{t("This file type can run code. Flek doesn't open it directly.")} {revealLabel()}</span></Show>;
 }

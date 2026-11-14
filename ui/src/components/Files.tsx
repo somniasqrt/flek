@@ -1,4 +1,5 @@
 import FileSafety from "./FileSafety";
+import SvgPreview from "./SvgPreview";
 import { documentKind } from "../models/document";
 import { isRasterImage, isInlineVideo, fileName } from "../models/file-presentation";
 import { createSignal, For, Show } from "solid-js";
@@ -21,9 +22,9 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
   // large; several sit in a row at one height. A lone PDF gets a card with
   // the top of its first page; several files are compact cards in a row.
   const images = () =>
-    props.files.filter((f) => settings().image_previews && isImage(f) && f.local_path);
+    props.files.filter((f) => settings().image_previews && isImage(f));
   const others = () =>
-    props.files.filter((f) => !(settings().image_previews && isImage(f) && f.local_path));
+    props.files.filter((f) => !(settings().image_previews && isImage(f)));
   const lone = () => props.files.length === 1;
   return (
     <div class="files">
@@ -45,13 +46,16 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
   );
 }
 
-const isImage = (f: FileRef) => isRasterImage(f.mimetype) && !f.hidden_by_limit;
+const isImage = (f: FileRef) => !f.hidden_by_limit && (
+  (isRasterImage(f.mimetype) && !!f.local_path) ||
+  (f.viewer_kind === "svg" && !!(f.preview_path || f.local_path))
+);
 
-function Image(props: { f: FileRef; src: string; single: boolean; busy: boolean; onOpen: (f: FileRef) => void }) {
+function Image(props: { f: FileRef; src?: string; single: boolean; busy: boolean; onOpen: (f: FileRef) => void; onError?: () => void }) {
   // Reserve the final size up front so loading images never shift the timeline.
   const size = () => {
-    const w = props.f.width ?? MAX_W;
-    const h = props.f.height ?? MAX_H;
+    const w = Math.max(1, props.f.width ?? props.f.preview_width ?? MAX_W);
+    const h = Math.max(1, props.f.height ?? props.f.preview_height ?? MAX_H);
     const k = props.single ? Math.min(1, MAX_W / w, MAX_H / h) : Math.min(ROW_H / h, MAX_W / w);
     // The height follows from the ratio, so the CSS width cap can shrink it.
     return { width: `${Math.round(w * k)}px`, "aspect-ratio": `${w} / ${h}` };
@@ -65,7 +69,9 @@ function Image(props: { f: FileRef; src: string; single: boolean; busy: boolean;
         aria-label={name(props.f)}
         onClick={() => props.onOpen(props.f)}
       >
-        <img src={props.src} alt={name(props.f)} loading="lazy" />
+        <Show when={props.src}>
+          <img src={props.src} alt={name(props.f)} loading="lazy" onError={props.onError} />
+        </Show>
       </button>
       <span class="file-name">{name(props.f)}</span>
       <FileSafety file={props.f} />
@@ -105,7 +111,13 @@ function Attachment(props: { f: FileRef; from?: Sender; preview: boolean; image?
           <FileSafety file={props.f} />
         </Show>
       }>
-        <Image f={props.f} src={fileUrl(props.f.id)} single={!!props.single} busy={busy()} onOpen={open} />
+        <Show when={props.f.viewer_kind === "svg"} fallback={
+          <Image f={props.f} src={fileUrl(props.f.id)} single={!!props.single} busy={busy()} onOpen={open} />
+        }>
+          <SvgPreview file={props.f} fallback={<Card {...props} preview={false} busy={busy()} onOpen={open} />}>
+            {(src, onError) => <Image f={props.f} src={src()} single={!!props.single} busy={busy()} onOpen={open} onError={onError} />}
+          </SvgPreview>
+        </Show>
       </Show>
       <Show when={busy()}><p role="status">{t("Downloading…")}</p></Show>
       <Show when={error()}><p class="error" role="alert">{error()}</p></Show>

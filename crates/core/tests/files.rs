@@ -373,3 +373,122 @@ async fn open_policy_uses_cached_extension_even_with_safe_metadata_name() {
     assert_eq!(resolved, path.canonicalize().unwrap());
     assert!(!allowed);
 }
+
+#[tokio::test]
+async fn svg_thumbnails_join_the_preview_queue_and_only_images_are_kept() {
+    let server = MockServer::start().await;
+    let base = server.uri();
+    let client =
+        Client::with_base_url(Secret::new("xoxc-fake"), Secret::new("xoxd-fake"), &base).unwrap();
+    let store = store();
+    let cache = tempfile::tempdir().unwrap();
+    let file = |id: &str, name: &str, mime: &str, extra: serde_json::Value| {
+        let mut f = json!({
+            "id": id, "name": name, "mimetype": mime, "size": 5,
+            "url_private_download": format!("{base}/download/{id}"),
+        });
+        f.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        f
+    };
+    let svg = "image/svg+xml";
+    Mock::given(path("/conversations.history"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"ok": true, "has_more": false, "messages": [
+            {"ts": "1.000000", "user": "U1", "text": "", "files": [
+                file("S1", "logo.SVG", "image/svg+xml; charset=utf-8", json!({
+                    "thumb_360": format!("{base}/thumb/S1-360"), "thumb_480": format!("{base}/thumb/S1-480")
+                })),
+                file("S2", "jpeg-thumb.svg", svg, json!({"thumb_480": "", "thumb_360": format!("{base}/thumb/S2")})),
+                file("S3", "html-thumb.svg", svg, json!({"thumb_160": format!("{base}/thumb/S3")})),
+                file("S4", "no-thumb.svg", svg, json!({})),
+                // Size-specific thumbnails of other types are never queued.
+                file("J1", "photo.jpg", "image/jpeg", json!({"thumb_480": format!("{base}/thumb/J1")})),
+                file("H1", "page.html", svg, json!({"thumb_480": format!("{base}/thumb/H1")})),
+            ]}
+        ]})))
+        .mount(&server)
+        .await;
+    Mock::given(wiremock::matchers::path_regex("^/download/"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(b"<svg/>".to_vec(), svg))
+        .mount(&server)
+        .await;
+    for (thumb, body, times) in [
+        ("S1-480", &b"\x89PNG\r\n"[..], 1),
+        ("S1-360", &b"\x89PNG\r\n"[..], 0),
+        ("S2", &b"\xff\xd8\xff\xe0"[..], 1),
+        // A sign-in page behind an image content type is refused once, for good.
+        ("S3", &b"<html>"[..], 1),
+        ("J1", &b"\x89PNG\r\n"[..], 0),
+        ("H1", &b"\x89PNG\r\n"[..], 0),
+    ] {
+        Mock::given(path(format!("/thumb/{thumb}")))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body.to_vec(), "image/png"))
+            .expect(times)
+            .mount(&server)
+            .await;
+    }
+    backfill_conversation(
+        &client,
+        &store,
+        &mut RateLimiter::new(Duration::ZERO),
+        "C1",
+        &SyncOptions::default(),
+    )
+    .await
+    .unwrap();
+    for _ in 0..2 {
+        download_files(&client, &store, cache.path(), Some(1_000_000), |_, _| {})
+            .await
+            .unwrap();
+    }
+    let (previews, refused): (Vec<String>, Vec<String>) = store
+        .with_conn(|c| {
+            let ids = |sql: &str| -> flek_core::Result<Vec<String>> {
+                let mut stmt = c.prepare(sql)?;
+                let rows = stmt.query_map([], |r| r.get(0))?;
+                Ok(rows.collect::<Result<_, _>>()?)
+            };
+            Ok((
+                ids("SELECT id FROM files WHERE preview_path IS NOT NULL ORDER BY id")?,
+                ids("SELECT file_id FROM file_download_failures WHERE preview = 1 AND permanent = 1")?,
+            ))
+        })
+        .unwrap();
+    assert_eq!(previews, ["S1", "S2"]);
+    assert_eq!(refused, ["S3"]);
+    assert!(!files::preview_path(cache.path(), "S3").exists());
+    assert_eq!(files::preview_type(b"\x89PNG\r\n"), Some("image/png"));
+    assert_eq!(files::preview_type(b"\xff\xd8\xff\xe0"), Some("image/jpeg"));
+    assert_eq!(files::preview_type(b"<svg/>"), None);
+    assert_eq!(files::preview_type(b""), None);
+}
+
+#[tokio::test]
+async fn inline_svg_read_is_svg_only_and_capped_at_one_mebibyte() {
+    let dir = tempfile::tempdir().unwrap();
+    let svg = dir.path().join("drawing.svg");
+    let cap = 1024 * 1024;
+    std::fs::write(&svg, vec![b' '; cap]).unwrap();
+    assert_eq!(
+        files::read_inline_svg(&svg, Some("image/svg+xml"))
+            .await
+            .unwrap()
+            .len(),
+        cap
+    );
+    std::fs::write(&svg, vec![b' '; cap + 1]).unwrap();
+    let error = files::read_inline_svg(&svg, Some("image/svg+xml"))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("inline_preview_too_large"));
+    std::fs::write(&svg, b"<svg/>").unwrap();
+    assert!(files::read_inline_svg(&svg, Some("text/html"))
+        .await
+        .is_err());
+    let html = dir.path().join("page.html");
+    std::fs::write(&html, b"<svg/>").unwrap();
+    assert!(files::read_inline_svg(&html, Some("image/svg+xml"))
+        .await
+        .is_err());
+}

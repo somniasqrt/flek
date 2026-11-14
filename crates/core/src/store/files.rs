@@ -145,41 +145,77 @@ pub fn set_local_path(conn: &Connection, id: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
-/// Previews Slack rendered for files (first page of a PDF, a video frame)
-/// that should be cached. `local_path` is the recorded preview path.
+/// Previews Slack rendered for files (PDF first pages, video frames and SVG
+/// raster thumbnails). Read stored raw_json so old files need no resync.
 pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
     let mut stmt = conn.prepare(
         "
-            SELECT id, url, preview_path
-            FROM (
-                SELECT id, preview_path, hidden_by_limit, is_external, auto_download_paused, COALESCE(json_extract(
-                        raw_json, '$.thumb_pdf'), json_extract(raw_json, '$.thumb_video')) AS
-                    url
-                FROM files)
+            SELECT id, name, mimetype, local_path, raw_json, preview_path
+            FROM files
             WHERE hidden_by_limit = 0
             AND is_external = 0
             AND auto_download_paused = 0
+            AND COALESCE(json_extract(raw_json, '$.thumb_pdf'),
+                json_extract(raw_json, '$.thumb_video'), json_extract(raw_json, '$.thumb_480'),
+                json_extract(raw_json, '$.thumb_360'), json_extract(raw_json, '$.thumb_720'),
+                json_extract(raw_json, '$.thumb_960'), json_extract(raw_json, '$.thumb_1024'),
+                json_extract(raw_json, '$.thumb_160'), json_extract(raw_json, '$.thumb_80'),
+                json_extract(raw_json, '$.thumb_64')) IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM file_download_failures f
-                WHERE f.file_id = id AND f.preview = 1
+                WHERE f.file_id = files.id AND f.preview = 1
                 AND (f.permanent = 1 OR f.retry_after > unixepoch()))
-            AND url IS NOT NULL
             ORDER BY id
         ",
     )?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok(PendingDownload {
-                id: r.get(0)?,
-                name: Some(crate::files::PREVIEW_NAME.to_owned()),
-                mimetype: Some("image/png".to_owned()),
-                size: None,
-                url: r.get(1)?,
-                local_path: r.get(2)?,
-            })
-        })?
-        .collect::<Result<_, _>>()?;
-    Ok(rows)
+    let rows = stmt.query_map([], |r| {
+        let name: Option<String> = r.get(1)?;
+        let mime: Option<String> = r.get(2)?;
+        let path: Option<String> = r.get(3)?;
+        let raw: String = r.get(4)?;
+        let raw: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        let svg = matches!(
+            crate::files::viewer_kind(
+                std::path::Path::new(path.as_deref().or(name.as_deref()).unwrap_or_default()),
+                mime.as_deref(),
+            ),
+            Some(crate::files::ViewerKind::Svg)
+        );
+        let fields: &[&str] = if svg {
+            &[
+                "thumb_480",
+                "thumb_360",
+                "thumb_720",
+                "thumb_960",
+                "thumb_1024",
+                "thumb_160",
+                "thumb_80",
+                "thumb_64",
+            ]
+        } else {
+            &["thumb_pdf", "thumb_video"]
+        };
+        let url = fields.iter().find_map(|key| {
+            raw.get(key)
+                .and_then(Value::as_str)
+                .filter(|url| !url.is_empty())
+        });
+        let id = r.get(0)?;
+        let local_path = r.get(5)?;
+        Ok(url.map(|url| PendingDownload {
+            id,
+            name: Some(crate::files::PREVIEW_NAME.to_owned()),
+            mimetype: Some("image/png".to_owned()),
+            size: None,
+            url: url.to_owned(),
+            local_path,
+        }))
+    })?;
+    Ok(rows
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect())
 }
 
 pub fn set_preview_path(conn: &Connection, id: &str, path: &str) -> Result<()> {

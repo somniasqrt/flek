@@ -240,6 +240,7 @@ export const storedFiles = (): StoredFile[] =>
       can_open: f.can_open,
       viewer_kind: f.viewer_kind,
       local_path: f.local_path,
+      preview_path: f.preview_path,
       conversation_id: "C1",
       ts: m.ts,
       user_id: m.user_id,

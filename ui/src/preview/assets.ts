@@ -40,6 +40,7 @@ const emojiBadge =
   );
 export const svgFixture = '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="#3a76be"/><circle cx="160" cy="120" r="60" fill="#fff"/></svg>';
 const cached: Record<string, string> = {
+  "FSVG_THUMB/preview": "/preview-svg-thumb.png",
   "FJPEG": "/preview-image.jpg",
   "FJPEG_DOWNLOAD": "/preview-image.jpg",
   "FJPEG_DOWNLOAD/preview": "/preview-image.jpg",

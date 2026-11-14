@@ -104,14 +104,25 @@ pub(crate) async fn fetch_preview(
     f: &PendingDownload,
     max_bytes: Option<i64>,
 ) -> Result<(PathBuf, bool)> {
-    fetch_to(
+    let (path, fresh) = fetch_to(
         client,
         cache_dir,
         f,
         max_bytes,
         preview_path(cache_dir, &f.id),
     )
-    .await
+    .await?;
+    // Slack's thumbnails are PNG or JPEG; anything else is never kept or served.
+    use tokio::io::AsyncReadExt;
+    let mut file = tokio::fs::File::open(&path).await?;
+    let mut signature = [0; 4];
+    let image = file.read_exact(&mut signature).await.is_ok() && preview_type(&signature).is_some();
+    drop(file);
+    if !image {
+        tokio::fs::remove_file(&path).await?;
+        return Err(Error::File(NOT_A_PREVIEW.into()));
+    }
+    Ok((path, fresh))
 }
 
 async fn fetch_to(
@@ -148,6 +159,40 @@ async fn fetch_to(
         .download_bounded(&f.url, &dest, html_ok, limit)
         .await?;
     Ok((dest, true))
+}
+
+const NOT_A_PREVIEW: &str = "preview is not a PNG or JPEG image";
+
+/// Media type of a cached preview from its first bytes, so a JPEG thumbnail is
+/// never labelled PNG. The image decoder validates the rest of the body.
+pub fn preview_type(bytes: &[u8]) -> Option<&'static str> {
+    match bytes {
+        [0x89, b'P', b'N', b'G', ..] => Some("image/png"),
+        [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),
+        _ => None,
+    }
+}
+
+/// Inline SVG fallback bytes, never an active document or a network fetch.
+/// Both metadata and the stream enforce the tighter inline-preview budget.
+pub async fn read_inline_svg(path: &Path, mime: Option<&str>) -> Result<Vec<u8>> {
+    use tokio::io::AsyncReadExt;
+    const MAX_INLINE_SVG_BYTES: u64 = 1024 * 1024;
+    if !matches!(viewer_kind(path, mime), Some(ViewerKind::Svg)) {
+        return Err(Error::File("unsupported inline preview type".into()));
+    }
+    let file = tokio::fs::File::open(path).await?;
+    if file.metadata().await?.len() > MAX_INLINE_SVG_BYTES {
+        return Err(Error::File("inline_preview_too_large".into()));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_INLINE_SVG_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() as u64 > MAX_INLINE_SVG_BYTES {
+        return Err(Error::File("inline_preview_too_large".into()));
+    }
+    Ok(bytes)
 }
 
 /// Image proxy Slack's own clients load link-preview images through, so the
@@ -386,9 +431,10 @@ pub async fn fetch_stored(
     Ok(path)
 }
 
-/// Only definitive server refusals stop automatic attachment retries.
+/// Definitive server refusals and unsupported preview formats stop automatic retries.
 pub fn permanent_file_failure(error: &Error) -> bool {
     matches!(error, Error::HttpStatus(403 | 404 | 410))
+        || matches!(error, Error::File(message) if message == NOT_A_PREVIEW)
 }
 
 /// Policy/format/size refusals are definitive; I/O and transport errors are not.

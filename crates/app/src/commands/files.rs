@@ -70,6 +70,7 @@ async fn read_document(path: &Path) -> CmdResult<Vec<u8>> {
 pub async fn document_data(
     state: State<'_, AppState>,
     file_id: String,
+    inline_preview: Option<bool>,
 ) -> CmdResult<tauri::ipc::Response> {
     let file = state
         .store
@@ -81,7 +82,14 @@ pub async fn document_data(
     let path = document_path(&cache, &file)?;
     // Keep the app boundary's canonical cache gate as well.
     let path = crate::files::inside_cache(&path).ok_or("the file is outside the cache")?;
-    Ok(tauri::ipc::Response::new(read_document(&path).await?))
+    let bytes = if inline_preview.unwrap_or(false) {
+        flek_core::files::read_inline_svg(&path, file.mimetype.as_deref())
+            .await
+            .map_err(text)?
+    } else {
+        read_document(&path).await?
+    };
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Opens a link from a message in the default browser (never in Flek's

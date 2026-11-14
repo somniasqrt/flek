@@ -34,16 +34,25 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   types, a two-second blue MP4, a video download card, a huddle and an unsupported
   attachment. Downloads update the synthetic store and emit a message change.
 - The newest **general** messages also show a cached JPEG, an undownloaded JPEG
-  with a thumbnail, an SVG card and a JPEG that always fails to download. Click
+  with a thumbnail, two SVG previews and a JPEG that always fails to download. Click
   each in the timeline and **Files**; the existing thread includes the first
-  three and a cached video too. The JPEG download card has no permalink. Downloads have a 600 ms mock delay, then return a fresh synthetic
+  four and a cached video too. The JPEG download card has no permalink. Downloads have a 600 ms mock delay, then return a fresh synthetic
   stored-file view. The failure shows localized copy and remains retryable.
   Expand the inline MP4 using its filename or expand button, then close with Esc,
   backdrop or the close button. Inline playback pauses when the viewer opens;
   closing releases the viewer player. SVG uses the same bounded-IPC contract as
   documents and only an `<img>` Blob URL; the OS action records a reveal request.
-  `document_data` returns generated SVG bytes for FSVG. No new commands or
-  permission mocks are needed.
+  FSVG has no Slack thumbnail: it loads generated SVG bytes through
+  `document_data` with `inlinePreview=true` only near the viewport. FSVG_THUMB
+  has a cached Slack PNG thumbnail and no cached original; its tile uses
+  `/preview-svg-thumb.png` without a document IPC read, then downloads on click
+  before opening the viewer. Both have reserved 320×240 dimensions, appear in
+  threads and Files, and honor `image_previews`. Disable image previews to see
+  cards/icons and verify neither SVG shows the false cannot-open notice. The
+  viewer's OS action still reads “Show in Finder” on macOS. Toggle settings or
+  unmount the tile during IPC to check cleanup. Native IPC enforces the inline
+  1 MiB cap; this small synthetic fixture does not exercise that Rust limit.
+  No new commands or permission mocks are needed.
 - Use Command+K (Control+K on Windows/Linux) to filter channel, DM or group names;
   full display names of group members also match. Arrows select, Enter opens,
   Escape closes. Link formatting uses Command+Shift+U / Control+Shift+U.
@@ -63,7 +72,8 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
 
 The checked-in `ui/public/preview-image.jpg` is a generated 32×24 solid blue JPEG
 (about 650 bytes). It is used for FJPEG and FJPEG_DOWNLOAD; the cached thumbnail
-uses the same tiny JPEG. The SVG is generated in assets.ts.
+uses the same tiny JPEG. The SVG is generated in assets.ts. `preview-svg-thumb.png` is a generated
+320×240 PNG matching its blue background and white circle.
 
 The checked-in `ui/public/preview-video.mp4` is generated from a two-second,
 160x90 blue color source (H.264, no audio, no external content). The production

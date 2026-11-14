@@ -1,3 +1,5 @@
+import SvgPreview from "../components/SvgPreview";
+import { settings } from "../stores/settings";
 import FileSafety, { fileActionLabel } from "../components/FileSafety";
 import { isRasterImage, fileName } from "../models/file-presentation";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
@@ -160,11 +162,20 @@ export default function FileBrowser(props: {
                 onClick={() => act(f, "open")}
                 aria-label={fileName(f, t("Untitled file"))}
               >
-                <Show
-                  when={isRasterImage(f.mimetype) && f.local_path}
-                  fallback={fileType(f.mimetype) === "pdf" ? "PDF" : <Document size={26} />}
-                >
-                  <img src={fileUrl(f.id)} alt="" loading="lazy" />
+                <Show when={settings().image_previews && !f.hidden_by_limit}
+                  fallback={fileType(f.mimetype) === "pdf" ? "PDF" : <Document size={26} />}>
+                  <Show when={f.viewer_kind === "svg" && (f.preview_path || f.local_path)} fallback={
+                    <Show when={isRasterImage(f.mimetype) && f.local_path}
+                      fallback={fileType(f.mimetype) === "pdf" ? "PDF" : <Document size={26} />}>
+                      <img src={fileUrl(f.id)} alt="" loading="lazy" />
+                    </Show>
+                  }>
+                    <SvgPreview file={f} fallback={<Document size={26} />}>
+                      {(src, onError) => <Show when={src()} fallback={<Document size={26} />}>
+                        <img src={src()} alt="" loading="lazy" onError={onError} />
+                      </Show>}
+                    </SvgPreview>
+                  </Show>
                 </Show>
               </button>
               <div class="browser-file-text">

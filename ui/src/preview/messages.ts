@@ -374,13 +374,14 @@ messages.push(
 const mediaFiles = [
   file({ id: "FJPEG", name: "cached.JPG", mimetype: "image/jpeg", filetype: "jpg", local_path: "/synthetic/cached.JPG", can_open: true, width: 320, height: 240 }),
   file({ id: "FJPEG_DOWNLOAD", name: "download.jpg", permalink: null, mimetype: "image/jpeg", filetype: "jpg", preview_path: "/synthetic/thumb.png", can_open: true, width: 320, height: 240 }),
-  file({ id: "FSVG", name: "drawing.svg", mimetype: "image/svg+xml", filetype: "svg", local_path: "/synthetic/drawing.svg" }),
+  file({ id: "FSVG", name: "drawing.svg", mimetype: "image/svg+xml", filetype: "svg", local_path: "/synthetic/drawing.svg", width: 320, height: 240 }),
+  file({ id: "FSVG_THUMB", name: "thumbnail.svg", mimetype: "image/svg+xml", filetype: "svg", preview_path: "/synthetic/svg-thumb.png", width: 320, height: 240 }),
   file({ id: "FJPEG_FAIL", name: "unavailable.jpg", mimetype: "image/jpeg", filetype: "jpg", preview_path: "/synthetic/thumb.png", can_open: true }),
 ];
 messages.push(
-  ...mediaFiles.map((f, i) => msg(now - 14 + i, "U2", ["Cached JPEG", "JPEG thumbnail: download and open", "SVG in image context only", "Download failure: localized error"][i], { files: [f] })),
+  ...mediaFiles.map((f, i) => msg(now - 14 + i, "U2", ["Cached JPEG", "JPEG thumbnail: download and open", "SVG fallback in image context only", "SVG with a cached Slack PNG thumbnail", "Download failure: localized error"][i], { files: [f] })),
 );
-replies.push(msg(now - 9, "U2", "Media in a thread", { thread_ts: ROOT, files: [...mediaFiles.slice(0, 3), messages.find((m) => m.files.some((f) => f.id === "FVIDEO"))!.files[0]] }));
+replies.push(msg(now - 9, "U2", "Media in a thread", { thread_ts: ROOT, files: [...mediaFiles.slice(0, 4), messages.find((m) => m.files.some((f) => f.id === "FVIDEO"))!.files[0]] }));
 replies.push(msg(now - 15, "U2", "Office files in a thread", { thread_ts: ROOT, files: officeFiles }));
 replies.sort((a, b) => a.ts.localeCompare(b.ts));
 const officeRoot = messages.find((m) => m.ts === ROOT)!;

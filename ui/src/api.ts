@@ -232,6 +232,7 @@ export type StoredFile = {
   mimetype: string | null;
   size: number | null;
   local_path: string | null;
+  preview_path?: string | null;
   conversation_id: string | null;
   ts: string | null;
   user_id: string | null;
@@ -350,7 +351,7 @@ export const api = {
   /// Fetches the large photo if missing; its cache hash (see linkImageUrl).
   profilePhoto: (userId: string) => invoke<string | null>("profile_photo", { userId }),
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
-  documentData: (fileId: string) => invoke<ArrayBuffer>("document_data", { fileId }),
+  documentData: (fileId: string, inlinePreview = false) => invoke<ArrayBuffer>("document_data", { fileId, inlinePreview }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),

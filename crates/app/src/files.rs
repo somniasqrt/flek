@@ -95,6 +95,13 @@ async fn serve(
     let bytes = tokio::fs::read(&path)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
+    let mime = if preview {
+        flek_core::files::preview_type(&bytes)
+            .ok_or(StatusCode::FORBIDDEN)?
+            .to_owned()
+    } else {
+        mime
+    };
     Ok(file_response(Ok((bytes, mime))))
 }
 

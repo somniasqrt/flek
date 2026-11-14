@@ -180,6 +180,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `components/EmojiCategoryIcon.tsx` — Category SVG paths.
 - `components/EmojiPicker.tsx` — Category/search/frequency/tone selection.
 - `components/EmojiView.tsx` — Custom/standard emoji rendering and cached custom catalog.
+- `components/SvgPreview.tsx` — Lazy SVG image-context previews shared by attachments and FileBrowser.
 - `components/Files.tsx` — Message attachments and cached previews. `components/FileSafety.tsx` presents core launch decisions, warnings and platform file-manager labels.
 - `components/MessageMenu.tsx` — Message actions and reaction picker.
 - `components/MessageRow.tsx` — Author grouping, text, reactions, files and thread summary.
@@ -291,20 +292,33 @@ unsupported documents. Other Office formats retain their OS action.
 Core supplies `viewer_kind` independently of `can_open`: raster images, SVG,
 the existing narrow video set, PDF, XLSX and DOCX may use the viewer. SVG remains
 ineligible for OS launch; its OS action reveals it in the file manager. Missing
-viewer decisions fail closed in the UI. Timeline, threads and FileBrowser use
-one download/open action: `fetch_file` reconciles cache hits or uses the existing
+viewer decisions fail closed in the UI. The safety notice appears only when neither
+OS launch nor the viewer is supported; viewer-header OS labels still follow
+`can_open`. Timeline, threads and FileBrowser use one download/open action: `fetch_file` reconciles cache hits or uses the existing
 manual download path, then returns a fresh SQLite file view. It preserves manual
 caps, quarantine and retry/failure semantics. Busy/error state is keyed by file id
 so DB-driven thumbnail-to-image replacement cannot discard it. Hidden attachments
 remain disabled. Download, OS-action and rendering failures have localized copy.
 
-SVG bytes use the same 50 MiB metadata and streaming cap as other IPC documents.
-They become a temporary `image/svg+xml` Blob URL used only by `<img>`: no inline
-attachment SVG DOM, document navigation, iframe/object/embed or external loads.
+SVG viewer bytes use the same 50 MiB metadata and streaming cap as other IPC documents.
+Timeline, threads and FileBrowser honor `image_previews` and prefer a cached Slack
+raster thumbnail. The existing preview queue also selects SVG `thumb_*` URLs from
+stored `files.raw_json`, gated by core `viewer_kind`; no new derived state or resync
+is needed. Downloads retain the existing size limit, pacing, host policy, failure
+memory and pause flag. The preview slot checks the body signature (PNG or JPEG)
+before recording a path and before serving it; other bodies are skipped permanently.
+When no usable thumbnail exists and the SVG is cached, `document_data` with
+`inline_preview=true` delegates to core's SVG-only read, with metadata and streaming
+limits of 1 MiB. It never downloads. `SvgPreview` waits until the reserved tile is
+within 400 px of the viewport, and falls back to an ordinary card/icon on IPC or
+decode failure. Successful loads preserve the tile's reserved dimensions.
+
+Both viewer and inline SVG bytes become a temporary `image/svg+xml` Blob URL used
+only by `<img>`: no inline attachment SVG DOM, document navigation, iframe/object/embed or external loads.
 Image-context SVG disables scripts and external resources. The URL is revoked on
-close, and late IPC completion cannot create a URL after close. `blob:` is added
-only to CSP `img-src`; navigation guards, `frame-src`, `object-src`, media/connect
-sources, command names and main-only IPC permissions stay unchanged. `flekfile`
+cleanup (also on inline decode failure), and late IPC completion cannot create a
+URL after cleanup. CSP remains unchanged, with `blob:` allowed only in `img-src`; navigation guards,
+`frame-src`, `object-src`, media/connect sources, command names and main-only IPC permissions stay unchanged. `flekfile`
 continues to reject SVG, including MIME case/parameter variants.
 
 Inline video retains controls, with a viewer expand button and clickable filename.
@@ -475,13 +489,13 @@ M9 invariants to preserve (M9.3/M9.4 native owner checks remain pending):
 - Startup cleanup precedes session boot; sign-in retries a failed migration. The app-owned webview_cleanup_version setting is saved only after removal completes, and cannot be overwritten by UI preferences. Sign-out destroys signin and removes legacy Slack data even if credential deletion reports an error. Capture and sign-out share the maintenance lock. browsing_data.rs tests scope, completion-before-marker, failure and repeat behavior; core settings tests legacy defaults/restart persistence. See platforms.md for exactly what is removed.
 - Main never navigates outside tauri://localhost or http(s)://tauri.localhost (no custom port/userinfo); debug alone also permits the configured dev origin, including its exact port. Native popups are always denied; http(s) popup URLs go through open_url. Config disables automatic window creation so navigation.rs attaches both guards before main loads. Pure URL/config tests guard this; gestures require owner QA.
 - Message/unfurl/profile anchors have no href, cannot drag or expose native link context menus, and open only via open_url. role=link, tab focus, Enter, focus ring and URL titles preserve accessibility. There was no custom copy-link menu on these anchors. models/external-link.test.ts tests interactions and checks integration.
-- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No SVG attachment DOM or inline timeline/FileBrowser previews; the viewer uses bounded IPC bytes in an image-context Blob URL only. Trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs use document_data IPC and pdf.js canvas; XLSX/DOCX/SVG use the same bounded IPC and never flekfile; video/PDF thumbnails are PNGs, not embedded documents.
+- flekfile serves allowlisted raster images and a separate narrow video branch; videos must also pass core filename/MIME approval and canonical cache containment. Ranged video responses are bounded to 8 MiB, with protected 206/416/HEAD responses; large un-ranged reads fall back to file cards. All responses, including errors, carry nosniff and CSP `sandbox; default-src 'none'`. SVG/HTML/XHTML/XML/unknown types are refused (403), never rendered as documents. No SVG attachment DOM; SVG previews and the viewer use bounded IPC bytes in image-context Blob URLs only, with cached PNG thumbnails preferred for inline previews. Trusted code-owned UI SVG icons remain. files.rs tests active content rejection, headers and PNG/JPEG/PDF response preservation. PDFs use document_data IPC and pdf.js canvas; XLSX/DOCX/SVG use the same bounded IPC and never flekfile; video/PDF thumbnails are PNGs, not embedded documents.
 - UI has no direct third-party image fetch: cached images/proxy slack-imgs.com plus tauri.conf.json CSP. It also enforces object-src/base-uri/form-action/frame-src 'none'; no object/iframe/base or form actions are used (forms handle submit locally). tests/unfurls.rs guards proxy/cache parsing; config and UI source regressions guard directives and the PDF canvas path.
 
 - File session headers go only to HTTPS on port 443 at `slack.com`/`*.slack.com`, `slack-edge.com`/subdomains and `slack-files.com`/subdomains. Imported URLs are untrusted; userinfo is refused. The explicitly configured API base's exact origin is the only HTTP mock exception (host, scheme and effective port). RTM requires WSS `*.slack.com`; its mock exception maps WS/WSS to HTTP/HTTPS and still compares the exact origin. net_policy tests plus tests/network_security.rs and tests/rtm.rs guard rejection before requests and valid local handshakes.
 - API calls follow redirects only to the API base’s exact origin (scheme, host and effective port), at most five hops, so a multipart token cannot be forwarded to another Slack/CDN origin. File downloads use a separate HTTP client and retain their trusted Slack file-host policy or exact API-origin exception, also bounded to five hops; the Bearer header remains enabled for downloads. Cross-origin file redirects strip Cookie and Authorization in reqwest. Pure API policy and local two-origin network regressions cover refusal and same-origin behavior.
 - Public avatars, emoji, workspace icons, profile photos and link images use `files::ImageClient`, which cannot carry a session. Any public HTTPS host on port 443 is accepted, without userinfo; there is no CDN hostname allowlist. Link-preview sources are encoded through IMAGE_PROXY by callers. Image redirects are allowed with a five-hop limit; each destination must pass the same URL and public-IP checks. The reqwest resolver rejects an entire DNS answer containing any non-public IP (IPv4, IPv6, mapped IPv4); the connector uses that checked answer without a second lookup. Environment proxies are disabled. net_policy pure tests guard URL/IP boundaries; unfurls/emoji integration fixtures assert zero HTTP/private requests, with separate synthetic cache hydration checks.
-- Image bodies are bounded to 5 MiB before allocation/write using Content-Length and a stream counter. Automatic attachments and PDF/video previews use the smaller of max_file_bytes and declared size + 64 KiB. Manual fetch_stored bypasses the automatic size setting and retry gates: known sizes use declared size + 64 KiB, unknown/negative sizes use the existing default cap. A stored URL can be tried manually even for a hidden file. Convenience download/fetch APIs use the default cap; explicit automatic max_file_bytes=None with unknown size retains the owner's unlimited setting. Unique private TempPaths remove partial data on body, limit, I/O, quarantine or cancellation failures; completed files are quarantined before atomic rename. files::security_tests and tests/network_security.rs guard known/missing/lying lengths, limits and cleanup.
+- Image bodies are bounded to 5 MiB before allocation/write using Content-Length and a stream counter. Automatic attachments and PDF/video/SVG raster previews use the smaller of max_file_bytes and declared size + 64 KiB. Manual fetch_stored bypasses the automatic size setting and retry gates: known sizes use declared size + 64 KiB, unknown/negative sizes use the existing default cap. A stored URL can be tried manually even for a hidden file. Convenience download/fetch APIs use the default cap; explicit automatic max_file_bytes=None with unknown size retains the owner's unlimited setting. Unique private TempPaths remove partial data on body, limit, I/O, quarantine or cancellation failures; completed files are quarantined before atomic rename. files::security_tests and tests/network_security.rs guard known/missing/lying lengths, limits and cleanup.
 - Unix app-owned data/cache directories are 0700 and DB/WAL/SHM/settings/cache files are 0600, repaired on startup/use. Store precreates the DB privately, chmods sidecars after open/migrations and after writer calls/checkpoints; 0700 parent directories protect sidecars even during SQLite recreation. Shared OS parents are never chmodded. Cache permission repair walks each cache tree once per process; later passes validate/create only directories they use and write private files. Repair skips child symlinks and refuses a symlink root. The app logs that the cache is unavailable and still opens the local archive; cache fetch/read/open/maintenance gates refuse that root instead of following it. tests/network_security.rs checks creation, legacy mode repair and checkpoints. Windows ACL work remains in platforms.md.
 - Token-bearing Chromium LevelDB and cookie-database copies use RAII private copies created 0700 with the `flek-chromium-v1-` prefix and copied files 0600. The LevelDB copy is explicitly closed immediately after reading localConfig_v2, before decoding/parsing, cookie decryption/Keychain prompts or network validation. CLI/app startup removes only same-owner, non-symlink prefix directories at least five minutes old, skipping held .flek-import.lock leases. Five minutes gives local copy/lease setup ample grace; the process-held OS lock protects even a slower active importer and is released on SIGKILL. Legacy copies without a lease remain age-gated. Cleanup failure warns without aborting CLI startup. Normal success/error paths remove copies; crashes leave copies until a later scoped cleanup. Removal is not secure erasure. Generic historical `.tmp*` directories cannot safely be attributed to Flek and are never swept. See platforms.md for cleanup limits.
 

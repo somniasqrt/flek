@@ -14,6 +14,7 @@ pub struct File {
     pub permalink: Option<String>,
     pub hidden_by_limit: bool,
     pub title: Option<String>,
+    pub preview_path: Option<String>,
 }
 
 #[derive(Default)]
@@ -45,7 +46,7 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
     let mut stmt = c.prepare(
         "
             SELECT f.id, f.name, f.mimetype, f.size, f.local_path, m.conversation_id, m.ts, m.user_id,
-                t.url, f.hidden_by_limit, m.thread_ts, f.title
+                t.url, f.hidden_by_limit, m.thread_ts, f.title, f.preview_path
             FROM message_files mf
             JOIN files f ON f.id = mf.file_id
             JOIN messages m ON m.conversation_id = mf.conversation_id
@@ -141,6 +142,7 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
                 ts: Some(ts),
                 user_id: r.get(7)?,
                 hidden_by_limit: r.get(9)?,
+                preview_path: r.get(12)?,
                 title: r
                     .get::<_, Option<String>>(11)?
                     .as_deref()

@@ -299,7 +299,7 @@ mockIPC(
         (window as unknown as { __openedFile: string }).__openedFile = String(a.fileId);
         return;
       case "document_data":
-        if (a.fileId === "FSVG") return new TextEncoder().encode(svgFixture).buffer;
+        if (a.fileId === "FSVG" || a.fileId === "FSVG_THUMB") return new TextEncoder().encode(svgFixture).buffer;
         if (a.fileId === "FXLSX_LIMIT") throw "document_too_large";
         if (a.fileId === "FDOCX_BROKEN") return new Uint8Array([1, 2, 3]).buffer;
         if (a.fileId === "FDOCX" || a.fileId === "FDOCX_REMOTE") return wordFixture();

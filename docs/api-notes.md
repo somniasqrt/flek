@@ -439,3 +439,35 @@ Documented methods, **unverified with an `xoxc` session + `d` cookie**:
 - `conversations.history` on a public channel the user hasn't joined: one recent page for the read-only preview. Slack documents this as allowed for public channels; if it fails, the preview shows what is stored.
 - `conversations.join` returns the channel; Flek sets `is_member = 1` and catches the conversation up (a failed catch-up is a warning, not a failed join).
 - `conversations.create` (`name`, `is_private`) then optional `conversations.setPurpose`. Names are lowercased and whitespace becomes `-` before sending; letters of any script, ASCII digits, `-` and `_` are accepted, 80 characters at most (`crates/core/tests/fixtures/channel-names.json` is shared by the Rust and UI tests). Slack's own errors (`name_taken`, `invalid_name_*`, `restricted_action`) are shown translated.
+
+
+### Stored file thumbnails (`thumb_*`)
+
+- **Source:** optional fields of Slack file objects already stored in `files.raw_json`;
+  no additional endpoint or request parameters. Recorded file-download fixtures
+  cover `thumb_pdf`, `thumb_pdf_w` and `thumb_pdf_h`; the SVG cases are synthetic,
+  and availability/format of thumbnails on real SVG uploads remains unverified.
+- **Fields used:** PDF/video previews retain `thumb_pdf` / `thumb_video` and their
+  `_w` / `_h` dimensions. For files core recognizes as SVG, the existing preview
+  queue instead chooses the first nonempty URL in this order: `thumb_480`,
+  `thumb_360`, `thumb_720`, `thumb_960`, `thumb_1024`, `thumb_160`, `thumb_80`,
+  `thumb_64`. Size-specific thumbnail fields on other file types are not added
+  to the queue. Tile dimensions use `original_w` / `original_h`, or fixed defaults.
+- **Format:** the existing `_flek_preview.png` cache slot and
+  `flekfile://localhost/<id>/preview` hold a PNG or JPEG, recognized by the
+  body's signature and served with that type. Any other body is removed and
+  recorded as a permanent preview failure, and the scheme refuses such bodies
+  already in the cache. Image decoding can still reject a damaged image, in
+  which case the UI tries the cached SVG fallback.
+- **Policy:** same authenticated file downloader, trusted HTTPS Slack hosts,
+  redirect checks, byte cap, request pacing, per-preview retry memory and
+  `auto_download_paused` gate as PDF/video thumbnails. Existing rows are selected
+  directly from stored `raw_json` on the next eligible pass; no full resync or
+  derived-table migration is required.
+- **Fallback:** no usable cached PNG plus a cached SVG uses the existing
+  `document_data` command with `inline_preview=true`. Core checks the resolved
+  extension/MIME and caps both metadata and streamed bytes at 1 MiB. UI requests
+  it lazily by file id and uses only `<img src=blob:>`; oversized/broken SVGs keep
+  their ordinary card/icon and can still open in the existing 50 MiB viewer.
+- **Date checked:** 2026-11-14, source review and synthetic fixtures only; no live
+  Slack traffic.

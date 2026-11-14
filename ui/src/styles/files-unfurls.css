@@ -118,6 +118,10 @@
   overflow-wrap: anywhere;
   unicode-bidi: plaintext;
 }
+.svg-preview {
+  display: grid;
+  max-width: 100%;
+}
 .file-image {
   display: flex;
   flex-direction: column;
