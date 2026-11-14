@@ -1,3 +1,5 @@
+import { fileMenu } from "./file-menu";
+import { DownloadButton, downloading } from "./Download";
 import FileSafety from "./FileSafety";
 import SvgPreview from "./SvgPreview";
 import { documentKind } from "../models/document";
@@ -81,13 +83,14 @@ function Image(props: { f: FileRef; src?: string; single: boolean; busy: boolean
 
 function Attachment(props: { f: FileRef; from?: Sender; preview: boolean; image?: boolean; single?: boolean }) {
   const [failed, setFailed] = createSignal(false);
-  const busy = () => attachmentAction(props.f.id).busy;
+  const busy = () => attachmentAction(props.f.id).busy || downloading(props.f.id);
   const error = () => attachmentAction(props.f.id).error;
   const open = () => {
     if (!props.f.hidden_by_limit) void openAttachment(props.f.id, props.from);
   };
   return (
-    <div class="video-or-card" aria-busy={busy()}>
+    <div class="video-or-card" aria-busy={busy()} {...fileMenu(() => props.f, () => props.from)}>
+      <DownloadButton id={props.f.id} disabled={attachmentAction(props.f.id).busy} hidden={props.f.hidden_by_limit} />
       <Show when={props.image} fallback={
         <Show when={isInlineVideo(props.f) && !failed()} fallback={<Card {...props} busy={busy()} onOpen={open} />}>
           <video

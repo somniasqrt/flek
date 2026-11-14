@@ -294,11 +294,43 @@ the existing narrow video set, PDF, XLSX and DOCX may use the viewer. SVG remain
 ineligible for OS launch; its OS action reveals it in the file manager. Missing
 viewer decisions fail closed in the UI. The safety notice appears only when neither
 OS launch nor the viewer is supported; viewer-header OS labels still follow
-`can_open`. Timeline, threads and FileBrowser use one download/open action: `fetch_file` reconciles cache hits or uses the existing
+`can_open`. Timeline, threads and FileBrowser share the cache/open action: `fetch_file` reconciles cache hits or uses the existing
 manual download path, then returns a fresh SQLite file view. It preserves manual
 caps, quarantine and retry/failure semantics. Busy/error state is keyed by file id
 so DB-driven thumbnail-to-image replacement cannot discard it. Hidden attachments
 remain disabled. Download, OS-action and rendering failures have localized copy.
+
+Downloads are saved copies, distinct from opening a cached attachment. The main-only
+`download_file(file_id)` command resolves `dirs::download_dir` (Windows Known Folder,
+Linux XDG user directory, macOS Downloads), delegates cache reconciliation/manual
+fetch to `fetch_file`, then runs core `save_to_downloads` on a blocking task. There
+is no alternative network path or fallback directory. Core uses the stored real
+name, existing cache sanitization/bidi removal, portable Windows basename rules
+and bounded UTF-8 byte length. Collisions insert ` (n)` before the last extension;
+`create_new` claims each destination atomically, including against symlinks.
+Saved copies share `save_copy`'s protected-copy implementation: quarantine precedes
+byte copying and failures remove incomplete output. The cache copy stays intact.
+The original CLI `save_copy` replacement behavior is unchanged.
+
+The download result is an opaque session receipt, not a path. App state retains
+at most 100 receipt/path pairs and clears them on sign-out; `reveal_download(token)`
+can only reveal one of those app-produced destinations. UI never submits paths.
+Timeline/thread file tiles expose hover/focus download buttons, as does the viewer
+header; FileBrowser Download uses the same command. Localized status feedback offers
+the existing platform-specific reveal action. Hidden files have no download button.
+`reads::File.file_permalink` carries the stored attachment permalink independently
+of the existing message `permalink`.
+
+`ObjectMenus` shares the existing menu classes and keyboard conventions without
+changing message/conversation menus. File tiles, rows and viewer stages support
+right-click and Shift+F10/ContextMenu, with core-approved Open/default-app actions,
+Download, stored-file Copy link and exact message Open in Slack when available.
+Message/unfurl links use `data-external-url` with Open link/Copy link. One capture
+handler on the main document suppresses the webview context menu except inside
+editable fields or over a selected-text rectangle. Other message-menu targeting
+is preserved. Clipboard writes retain `navigator.clipboard` and need no new ACL.
+Message hover/focus uses the existing theme `--hover`; active/flash/outbox states
+keep precedence. Date pills shrink and ellipsize inside their pane.
 
 SVG viewer bytes use the same 50 MiB metadata and streaming cap as other IPC documents.
 Timeline, threads and FileBrowser honor `image_previews` and prefer a cached Slack

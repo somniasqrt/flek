@@ -246,6 +246,7 @@ export const storedFiles = (): StoredFile[] =>
       user_id: m.user_id,
       hidden_by_limit: f.hidden_by_limit,
       permalink: f.permalink,
+      file_permalink: f.permalink,
     })),
   );
 

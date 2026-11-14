@@ -4,6 +4,17 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "Download to Downloads": "Зберегти в «Завантаження»",
+  "Saved to Downloads": "Збережено в «Завантаження»",
+  "The system Downloads folder could not be found or accessed.": "Не вдалося знайти системну теку «Завантаження» або отримати доступ до неї.",
+  "Can't save to Downloads. Check folder permissions and free space.": "Не вдалося зберегти в «Завантаження». Перевірте права доступу до теки й вільне місце.",
+  "Can't download this file. It may be unavailable or too large.": "Не вдалося завантажити файл. Він може бути недоступним або завеликим.",
+  "Could not show the saved copy. Download it again and retry.": "Не вдалося показати збережену копію. Завантажте її ще раз і повторіть спробу.",
+  "File actions": "Дії з файлом",
+  "Link actions": "Дії з посиланням",
+  "Open link": "Відкрити посилання",
+  "Open in browser": "Відкрити в браузері",
+  "Could not complete the file or link action.": "Не вдалося виконати дію з файлом або посиланням.",
   "Can't download or open this file. It may be unavailable, too large or unsupported.": "Не вдалося завантажити або відкрити файл. Він може бути недоступним, завеликим або непідтримуваним.",
   "Open in viewer": "Відкрити в переглядачі",
   "Can't show this image here.": "Не вдалося показати це зображення.",

@@ -1,3 +1,5 @@
+import { fileMenu } from "./file-menu";
+import { DownloadButton } from "./Download";
 import FileSafety, { fileActionLabel } from "./FileSafety";
 import { fileName } from "../models/file-presentation";
 import { createSignal, For, lazy, onCleanup, onMount, Show, Suspense } from "solid-js";
@@ -12,11 +14,11 @@ const OfficeDocument = lazy(() => import("./OfficeDocument"));
 // In-app viewer for cached images, video, PDFs and Office documents.
 
 /// Who shared the file, for the header.
-export type Sender = { user_id: string | null; name: string; ts: string };
+export type Sender = { user_id: string | null; name: string; ts: string; conversation_id?: string };
 
 export type ViewerFile = Pick<FileRef,
   "id" | "name" | "mimetype" | "local_path" | "can_open" | "viewer_kind" | "hidden_by_limit"
->;
+> & { permalink?: string | null };
 type Viewing = { file: ViewerFile; from?: Sender };
 
 const [viewing, setViewing] = createSignal<Viewing | null>(null);
@@ -44,7 +46,7 @@ function Overlay(props: { v: Viewing }) {
     }
   };
   onMount(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onKey = (e: KeyboardEvent) => !e.defaultPrevented && e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
   });
@@ -86,6 +88,7 @@ function Overlay(props: { v: Viewing }) {
               <path d="M11 3h6v6M17 3l-8 8M8 4H4v12h12v-4" />
             </svg>
           </button>
+          <DownloadButton id={f.id} hidden={f.hidden_by_limit} class="viewer-btn" />
           <button class="viewer-btn" aria-label={t("Close (Esc)")} title={t("Close (Esc)")} onClick={close}>
             <svg viewBox="0 0 20 20" aria-hidden="true">
               <path d="M5 5l10 10M15 5L5 15" />
@@ -96,7 +99,7 @@ function Overlay(props: { v: Viewing }) {
           <p class="error" role="alert">{actionError()}</p>
         </Show>
         {/* A click on the empty stage closes, like Slack's viewer. */}
-        <div class="viewer-stage" onClick={(e) => e.target === e.currentTarget && close()}>
+        <div class="viewer-stage" tabIndex={0} {...fileMenu(() => f, () => props.v.from)} onClick={(e) => e.target === e.currentTarget && close()}>
           <Show when={f.viewer_kind === "pdf" || f.viewer_kind === "xlsx" || f.viewer_kind === "docx"}
             fallback={<Media file={f} onOpen={openDefault} />}>
             <Show when={f.viewer_kind === "pdf"} fallback={

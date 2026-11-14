@@ -20,7 +20,7 @@ export function externalLink(url: string | null, open: (url: string) => void) {
     onKeyDown: (event: KeyboardEvent) => {
       if (event.key === "Enter" && !event.repeat) activate(event);
     },
-    onContextMenu: prevent,
+    "data-external-url": url ?? undefined,
     onDragStart: prevent,
   };
 }

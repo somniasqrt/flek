@@ -187,6 +187,7 @@ export default function MessageRow(props: {
       class="msg"
       classList={{
         grouped: grouped(),
+        "menu-open": !!menu(),
         active: props.active,
         flash: props.flash,
         sending: m.pending === "sending",
@@ -309,7 +310,7 @@ export default function MessageRow(props: {
           <span class="muted edited">{t("(edited)")}</span>
         </Show>
         <Show when={m.files.length > 0}>
-          <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts }} />
+          <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts, conversation_id: props.conversationId }} />
         </Show>
         <Show when={settings().link_previews && m.unfurls.length > 0}>
           <Unfurls items={m.unfurls} />

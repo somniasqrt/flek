@@ -1,3 +1,5 @@
+import ObjectMenus from "./components/ObjectMenu";
+import DownloadNotice from "./components/Download";
 import { createSignal, Match, onCleanup, onMount, Switch } from "solid-js";
 import { Show } from "solid-js";
 import { api, onStatus, type Status } from "./api";
@@ -41,6 +43,8 @@ export default function App() {
 
   return (
     <>
+      <ObjectMenus />
+      <DownloadNotice />
       <Show when={preferencesOpen()}>
         <Preferences status={status()} />
       </Show>

@@ -41,6 +41,40 @@ async function sendMessage(a: Record<string, unknown>) {
   return { conversation_id: conv, ts, client_msg_id: m.client_msg_id, not_stored_locally: false };
 }
 
+const downloadPreview = window as unknown as {
+  __downloadCalls: string[];
+  __savedDownload?: { fileId: string; token: string };
+  __revealedDownload?: string;
+  __downloadFailure?: "directory" | "save";
+};
+downloadPreview.__downloadCalls = [];
+const downloadReceipts = new Map<string, string>();
+let nextReceipt = 0;
+
+async function fetchFile(fileId: string, reveal = false) {
+  await new Promise((r) => setTimeout(r, 600));
+  if (fileId === "FJPEG_FAIL") throw "file_unavailable";
+  const stored = storedFiles().find((f) => f.id === fileId);
+  if (stored?.hidden_by_limit) throw "file_unavailable";
+  for (const m of [...messages, ...bigMessages, ...replies]) for (const f of m.files) {
+    if (f.id !== fileId) continue;
+    f.local_path = `/synthetic/${f.name ?? "download"}`;
+    emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: m.ts } });
+  }
+  if (reveal)
+    (window as unknown as { __openedFile: string }).__openedFile = String(fileId);
+  const source = [...messages, ...bigMessages, ...replies].find((m) => m.files.some((f) => f.id === fileId));
+  const file = source?.files.find((f) => f.id === fileId);
+  if (!file || !source) throw "file_unavailable";
+  return structuredClone({
+    ...file,
+    file_permalink: file.permalink,
+    conversation_id: bigMessages.includes(source) ? "CBIG" : "C1",
+    ts: source.ts,
+    user_id: source.user_id,
+  });
+}
+
 export const query = new URLSearchParams(window.location.search);
 let previewSettings: Settings = {
   ...defaultSettings,
@@ -156,25 +190,24 @@ mockIPC(
         });
         return rows.slice(request.offset, request.offset + 100);
       }
-      case "fetch_file": {
-        await new Promise((r) => setTimeout(r, 600));
-        if (a.fileId === "FJPEG_FAIL") throw "file_unavailable";
-        for (const m of [...messages, ...bigMessages, ...replies]) for (const f of m.files) {
-          if (f.id !== a.fileId) continue;
-          f.local_path = `/synthetic/${f.name ?? "download"}`;
-          emit("flek://change", { type: "message", data: { conversation_id: "C1", ts: m.ts } });
-        }
-        if ((args as { reveal: boolean }).reveal)
-          (window as unknown as { __openedFile: string }).__openedFile = String(a.fileId);
-        const source = [...messages, ...bigMessages, ...replies].find((m) => m.files.some((f) => f.id === a.fileId));
-        const file = source?.files.find((f) => f.id === a.fileId);
-        if (!file || !source) throw "file_unavailable";
-        return structuredClone({
-          ...file,
-          conversation_id: bigMessages.includes(source) ? "CBIG" : "C1",
-          ts: source.ts,
-          user_id: source.user_id,
-        });
+      case "fetch_file": return fetchFile(String(a.fileId), Boolean((args as { reveal: boolean }).reveal));
+      case "download_file": {
+        const fileId = String(a.fileId);
+        downloadPreview.__downloadCalls.push(fileId);
+        if (downloadPreview.__downloadFailure === "directory") throw "downloads_unavailable";
+        await fetchFile(fileId);
+        if (downloadPreview.__downloadFailure === "save") throw "downloads_save_failed";
+        const token = `preview-download-${++nextReceipt}`;
+        downloadReceipts.set(token, fileId);
+        if (downloadReceipts.size > 100) downloadReceipts.delete(downloadReceipts.keys().next().value!);
+        downloadPreview.__savedDownload = { fileId, token };
+        return token;
+      }
+      case "reveal_download": {
+        const fileId = downloadReceipts.get(String(a.token));
+        if (!fileId) throw "unknown download receipt";
+        downloadPreview.__revealedDownload = fileId;
+        return;
       }
       case "open_url":
         // Inspect the last native-opener request without leaving the preview.

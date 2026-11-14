@@ -1,3 +1,5 @@
+import { fileMenu } from "../components/file-menu";
+import { downloadAttachment, downloading } from "../components/Download";
 import SvgPreview from "../components/SvgPreview";
 import { settings } from "../stores/settings";
 import FileSafety, { fileActionLabel } from "../components/FileSafety";
@@ -106,12 +108,13 @@ export default function FileBrowser(props: {
         }
         return;
       }
-      if (action === "download") await api.fetchFile(f.id, true);
+      if (action === "download") await downloadAttachment(f.id);
       else {
         const opened = await openAttachment(f.id, f.ts ? {
           user_id: f.user_id,
           name: people()[f.user_id ?? ""] ?? t("Unknown"),
           ts: f.ts,
+          conversation_id: f.conversation_id ?? undefined,
         } : undefined);
         if (!opened) return;
       }
@@ -154,7 +157,9 @@ export default function FileBrowser(props: {
       <div class="scroller">
         <For each={files()}>
           {(f) => (
-            <div class="browser-file">
+            <div class="browser-file" {...fileMenu(() => ({ ...f, permalink: f.file_permalink }), () => f.ts ? {
+              user_id: f.user_id, name: people()[f.user_id ?? ""] ?? t("Unknown"), ts: f.ts, conversation_id: f.conversation_id ?? undefined,
+            } : undefined)}>
               <button
                 class="browser-file-icon"
                 data-kind={fileType(f.mimetype)}
@@ -201,9 +206,9 @@ export default function FileBrowser(props: {
                 <button disabled={!available(f) || !!working()} onClick={() => act(f, "open")}>
                   {f.viewer_kind ? t("Open in viewer") : fileActionLabel(f)}
                 </button>
-                <button disabled={!available(f) || !!working()} onClick={() => act(f, "download")}>
-                  {t("Download")}
-                </button>
+                <Show when={available(f)}><button disabled={!!working() || downloading(f.id)} aria-busy={downloading(f.id)} onClick={() => act(f, "download")}>
+                  {downloading(f.id) ? t("Downloading…") : t("Download")}
+                </button></Show>
                 <button disabled={!!working()} onClick={() => act(f, "jump")}>
                   {t("Jump to message")}
                 </button>

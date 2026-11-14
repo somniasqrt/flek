@@ -17,6 +17,8 @@
     "allow-activity-seen",
     "allow-browse-files",
     "allow-fetch-file",
+    "allow-download-file",
+    "allow-reveal-download",
     "allow-status",
     "allow-progress",
     "allow-conversations",

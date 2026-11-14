@@ -52,7 +52,7 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   viewer's OS action still reads “Show in Finder” on macOS. Toggle settings or
   unmount the tile during IPC to check cleanup. Native IPC enforces the inline
   1 MiB cap; this small synthetic fixture does not exercise that Rust limit.
-  No new commands or permission mocks are needed.
+  The preview mocks `download_file` and `reveal_download` too.
 - Use Command+K (Control+K on Windows/Linux) to filter channel, DM or group names;
   full display names of group members also match. Arrows select, Enter opens,
   Escape closes. Link formatting uses Command+Shift+U / Control+Shift+U.
@@ -87,3 +87,30 @@ viewer with its localized failure and default-app action. To bound responder mem
 a request without a Range header for a video over 8 MiB also falls back to the
 card; ranged responses are at most 8 MiB. Protocol containment, extension/MIME
 checks, quarantine/download limits and active-document rejection remain in force.
+
+## Downloads, object menus and row feedback (M3.5.10)
+
+Use the same cached/uncached JPEG, both SVGs, inline MP4, document cards and thread
+fixtures. Hover/focus a tile for its top-right Download button, use the viewer
+header or Files Download, then choose the platform-specific reveal action on the
+“Saved to Downloads” notice. No real file is written. `window.__downloadCalls`
+records requested ids, `__savedDownload` records `{fileId, token}`, and
+`__revealedDownload` records the id revealed by a valid receipt. The existing
+`__openedFile` and `__openedUrl` still record OS/default-app/deep-link actions.
+`__downloadFailure = "directory"` simulates a missing Downloads folder; `"save"`
+simulates an unwritable/full folder. Set it to `undefined` to restore success.
+FJPEG_FAIL exercises fetch failure, and hidden files have no download control.
+
+Right-click file tiles, inline video, Files rows and the viewer stage; test
+Shift+F10/ContextMenu on their focused controls/stage, arrow keys, Home/End,
+Enter, Esc, outside click and window resize. Copy link only appears for stored
+file permalinks (FJPEG_DOWNLOAD has none). Open in Slack needs message context.
+Right-click message links and unfurl cards/images for Open link/Copy link.
+Unselected plain areas must never show the browser Reload/Inspect menu. The
+composer, other editable fields, and pointer hits on selected text keep native
+editing/Copy. An unrelated selection elsewhere must not enable a native menu.
+Message hover/focus-within should tint the row in both themes while active,
+jump-flash and outbox states retain precedence. Resize the timeline to a narrow
+pane with Ukrainian dates: both normal/sticky date pills remain centered and
+ellipsize. `?platform=windows` / `?platform=linux` exercises OS wording only;
+native Downloads resolution, disk errors/quarantine and reveal need native QA.

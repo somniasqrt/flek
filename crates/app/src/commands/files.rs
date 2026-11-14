@@ -196,6 +196,56 @@ pub async fn fetch_file(
         .map_err(text)
 }
 
+/// Return an opaque receipt, never a path supplied by the webview.
+#[tauri::command]
+pub async fn download_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file_id: String,
+) -> CmdResult<String> {
+    let directory = dirs::download_dir()
+        .ok_or("downloads_unavailable: system Downloads directory is unknown")?;
+    let file = fetch_file(app, state.clone(), file_id.clone(), false).await?;
+    let cache = flek_core::files::default_cache_dir().map_err(text)?;
+    let source = flek_core::files::stored_cached_path(&state.store, &cache, &file_id)
+        .await
+        .map_err(text)?
+        .ok_or("the file is not downloaded yet")?;
+    let name = file.file.name.unwrap_or_else(|| "file".into());
+    let path = tokio::task::spawn_blocking(move || {
+        flek_core::files::save_to_downloads(&source, &directory, &name)
+    })
+    .await
+    .map_err(text)?
+    .map_err(text)?;
+    let mut saved = state.saved_downloads.lock().map_err(text)?;
+    saved.next = saved
+        .next
+        .checked_add(1)
+        .ok_or("download receipt limit reached")?;
+    let token = saved.next.to_string();
+    saved.paths.push_back((token.clone(), path));
+    // Bound session memory; old receipts fail closed.
+    if saved.paths.len() > 100 {
+        saved.paths.pop_front();
+    }
+    Ok(token)
+}
+
+#[tauri::command]
+pub fn reveal_download(app: AppHandle, state: State<'_, AppState>, token: String) -> CmdResult<()> {
+    let path = state
+        .saved_downloads
+        .lock()
+        .map_err(text)?
+        .paths
+        .iter()
+        .find(|(saved, _)| saved == &token)
+        .map(|(_, path)| path.clone())
+        .ok_or("unknown download receipt")?;
+    app.opener().reveal_item_in_dir(path).map_err(text)
+}
+
 fn external_scheme_allowed(url: &tauri::Url) -> bool {
     matches!(url.scheme(), "http" | "https" | "mailto") || slack_channel_link(url)
 }

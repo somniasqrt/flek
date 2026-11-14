@@ -224,6 +224,7 @@ export type ActivityPage = {
 };
 
 export type StoredFile = {
+  file_permalink?: string | null;
   can_open?: boolean;
   viewer_kind?: "image" | "svg" | "video" | "pdf" | "xlsx" | "docx" | null;
   title: string | null;
@@ -316,6 +317,8 @@ export const api = {
     invoke<ActivityPage>("activity", { tab, unread, limit, offset }),
   browseFiles: (query: string, kind: string | null, sort: string, mine: boolean, offset: number) =>
     invoke<StoredFile[]>("browse_files", { query, kind, sort, mine, offset }),
+  downloadFile: (fileId: string) => invoke<string>("download_file", { fileId }),
+  revealDownload: (token: string) => invoke<void>("reveal_download", { token }),
   fetchFile: (fileId: string, reveal = false) => invoke<StoredFile>("fetch_file", { fileId, reveal }),
   presenceFor: (ids: string[]) => invoke<Presence[]>("presence_for", { ids }),
   statusesFor: (ids: string[]) => invoke<Record<string, CustomStatus>>("statuses_for", { ids }),

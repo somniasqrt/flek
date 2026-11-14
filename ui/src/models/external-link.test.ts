@@ -19,10 +19,12 @@ test("external links have no native destination and activate through the opener"
   props.onKeyDown({ ...event, key: "Enter", repeat: true } as KeyboardEvent);
   props.onAuxClick({ ...event, button: 1 } as MouseEvent);
   props.onAuxClick({ ...event, button: 2 } as MouseEvent);
-  props.onContextMenu(event);
   props.onDragStart(event);
   assert.deepEqual(opened, Array(3).fill(props.title));
-  assert.equal(prevented, 6);
+  assert.equal(prevented, 5);
+  // The shared document handler finds the link menu through this attribute.
+  assert.equal(props["data-external-url"], props.title);
+  assert.equal("onContextMenu" in props, false);
   const absent = externalLink(null, (url) => opened.push(url));
   absent.onClick(event);
   assert.equal(absent.tabIndex, -1);

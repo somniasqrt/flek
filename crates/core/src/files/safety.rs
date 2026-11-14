@@ -1,7 +1,6 @@
 //! Shared policy for opening untrusted attachments through the OS.
 use std::path::{Path, PathBuf};
 
-#[cfg(target_os = "macos")]
 use crate::Error;
 use crate::Result;
 
@@ -157,18 +156,112 @@ pub fn quarantine(_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// A portable basename, using the cache sanitizer before Windows restrictions.
+pub fn download_name(name: &str) -> String {
+    let clean: String = super::sanitize(name)
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | '"' | '|' | '?' | '*') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    // Leave room for collision suffixes within common 255-byte component limits.
+    let mut clean: String = clean
+        .chars()
+        .scan(0, |bytes, c| {
+            *bytes += c.len_utf8();
+            (*bytes <= 220).then_some(c)
+        })
+        .collect();
+    clean = clean.trim_end_matches(['.', ' ']).to_owned();
+    if clean.is_empty() {
+        return "file".into();
+    }
+    let stem = clean
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_ascii_uppercase();
+    if matches!(
+        stem.as_str(),
+        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+    ) || ["COM", "LPT"].iter().any(|prefix| {
+        stem.strip_prefix(prefix).is_some_and(|n| {
+            matches!(
+                n,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
+            )
+        })
+    }) {
+        clean.insert(0, '_');
+    }
+    clean
+}
+
+/// Collision suffix before the last extension; never produces path components.
+pub fn download_candidate(name: &str, collision: u64) -> String {
+    let name = download_name(name);
+    if collision == 0 {
+        return name;
+    }
+    match name.rsplit_once('.') {
+        Some((stem, ext)) => format!("{stem} ({collision}).{ext}"),
+        None => format!("{name} ({collision})"),
+    }
+}
+
+/// Save directly inside an existing Downloads directory, without replacing anything.
+pub fn save_to_downloads(source: &Path, directory: &Path, name: &str) -> Result<PathBuf> {
+    let directory = directory
+        .canonicalize()
+        .map_err(|e| Error::File(format!("downloads_unavailable: {e}")))?;
+    if !directory.is_dir() {
+        return Err(Error::File("downloads_unavailable: not a directory".into()));
+    }
+    for collision in 0..=u64::MAX {
+        let destination = directory.join(download_candidate(name, collision));
+        match save_copy_with(source, &destination, true) {
+            Ok(()) => return Ok(destination),
+            Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(Error::File(format!("downloads_save_failed: {e}"))),
+        }
+    }
+    Err(Error::File(
+        "downloads_save_failed: no available filename".into(),
+    ))
+}
+
 /// Save a downloaded attachment with OS protection, including on an old cache hit.
 pub fn save_copy(source: &Path, destination: &Path) -> Result<()> {
-    if source != destination {
-        std::fs::copy(source, destination)?;
+    save_copy_with(source, destination, false)
+}
+
+fn save_copy_with(source: &Path, destination: &Path, create_new: bool) -> Result<()> {
+    if source == destination && !create_new {
+        return quarantine(destination);
     }
-    if let Err(error) = quarantine(destination) {
-        if source != destination {
-            let _ = std::fs::remove_file(destination);
-        }
-        return Err(error);
+    let mut input = std::fs::File::open(source)?;
+    let mut output = std::fs::OpenOptions::new()
+        .write(true)
+        .create(!create_new)
+        .truncate(!create_new)
+        .create_new(create_new)
+        .open(destination)?;
+    // Quarantine before copying bytes; a failed copy never leaves an unprotected file.
+    let result = quarantine(destination).and_then(|()| {
+        std::io::copy(&mut input, &mut output)?;
+        output.sync_all()?;
+        Ok(())
+    });
+    if result.is_err() {
+        drop(output);
+        let _ = std::fs::remove_file(destination);
     }
-    Ok(())
+    result
 }
 
 #[cfg(test)]
@@ -285,6 +378,67 @@ mod tests {
         assert!(!can_read_document(Path::new("a.mp4"), Some("video/mp4")));
         assert_eq!(serde_json::to_value(Svg).unwrap(), "svg");
         assert_eq!(serde_json::to_value(Image).unwrap(), "image");
+    }
+    #[test]
+    fn download_names_are_portable_and_never_path_components() {
+        for (name, expected) in [
+            ("report.pdf", "report.pdf"),
+            ("../../etc/passwd", "_.._etc_passwd"),
+            ("a\\b:c<d>e\"f|g?h*i.txt", "a_b_c_d_e_f_g_h_i.txt"),
+            ("trailing. . ", "trailing"),
+            ("con", "_con"),
+            ("NUL.txt", "_NUL.txt"),
+            ("com1.log", "_com1.log"),
+            ("LPT9", "_LPT9"),
+            ("console.txt", "console.txt"),
+            ("com10.txt", "com10.txt"),
+            ("\u{202e}fdp.exe", "fdp.exe"),
+            ("...", "file"),
+            ("", "file"),
+        ] {
+            assert_eq!(download_name(name), expected, "{name:?}");
+        }
+        let long = download_name(&"я".repeat(300));
+        assert!(long.len() <= 220 && long.chars().all(|c| c == 'я'));
+        assert_eq!(download_candidate("a.tar.gz", 0), "a.tar.gz");
+        assert_eq!(download_candidate("a.tar.gz", 2), "a.tar (2).gz");
+        assert_eq!(download_candidate("README", 1), "README (1)");
+        for n in 0..3 {
+            let candidate = download_candidate("../x/y.txt", n);
+            assert_eq!(Path::new(&candidate).components().count(), 1);
+        }
+    }
+    #[test]
+    fn saving_to_downloads_never_overwrites_and_stays_in_the_folder() {
+        let cache = tempfile::tempdir().unwrap();
+        let downloads = tempfile::tempdir().unwrap();
+        let source = cache.path().join("cached");
+        std::fs::write(&source, b"new").unwrap();
+        std::fs::write(downloads.path().join("note.txt"), b"mine").unwrap();
+        std::fs::create_dir(downloads.path().join("note (1).txt")).unwrap();
+        let saved = save_to_downloads(&source, downloads.path(), "note.txt").unwrap();
+        let root = downloads.path().canonicalize().unwrap();
+        assert_eq!(saved, root.join("note (2).txt"));
+        assert_eq!(std::fs::read(&saved).unwrap(), b"new");
+        assert_eq!(
+            std::fs::read(downloads.path().join("note.txt")).unwrap(),
+            b"mine"
+        );
+        assert!(source.exists());
+        let escaped = save_to_downloads(&source, downloads.path(), "../../escape.txt").unwrap();
+        assert_eq!(escaped.parent().unwrap(), root);
+        #[cfg(target_os = "macos")]
+        assert!(xattr::get(&saved, "com.apple.quarantine")
+            .unwrap()
+            .is_some());
+        // A missing folder is an error, not a silent fallback elsewhere.
+        let missing = downloads.path().join("missing");
+        let error = save_to_downloads(&source, &missing, "note.txt").unwrap_err();
+        assert!(error.to_string().contains("downloads_unavailable"));
+        let error =
+            save_to_downloads(&cache.path().join("absent"), downloads.path(), "x.txt").unwrap_err();
+        assert!(error.to_string().contains("downloads_save_failed"));
+        assert!(!root.join("x.txt").exists());
     }
     #[test]
     fn strips_all_bidi_controls() {

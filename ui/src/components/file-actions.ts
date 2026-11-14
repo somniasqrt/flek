@@ -17,7 +17,7 @@ export async function openAttachment(id: string, from?: Sender): Promise<boolean
   try {
     // Cache hits are reconciled too; the return value is a fresh SQLite read.
     const file = await api.fetchFile(id);
-    if (canView(file)) openViewer(file, from);
+    if (canView(file)) openViewer({ ...file, permalink: file.file_permalink }, from);
     else await api.openFile(id);
     update(idle);
     return true;

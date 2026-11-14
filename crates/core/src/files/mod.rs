@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 
 mod safety;
 pub use safety::{
-    can_open, can_read_document, display_name, inside_cache, quarantine, save_copy, viewer_kind,
-    ViewerKind,
+    can_open, can_read_document, display_name, download_candidate, download_name, inside_cache,
+    quarantine, save_copy, save_to_downloads, viewer_kind, ViewerKind,
 };
 
 use crate::api::Client;

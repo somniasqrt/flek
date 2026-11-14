@@ -108,3 +108,13 @@
 .day button { pointer-events: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 4px 16px; font-size: 13px; font-weight: 600; color: inherit; cursor: pointer; }
 .jump-date-action { margin-left: auto; flex: none; }
 .date-picker form { display: flex; gap: 12px; padding: 16px; }
+
+/* Long localized dates must shrink inside even the narrowest pane. */
+.day { min-width: 0; padding-inline: 8px; }
+.day > button, .day > span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

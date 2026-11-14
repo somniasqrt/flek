@@ -30,7 +30,7 @@ function Card(props: { u: Unfurl }) {
     return { width: `${Math.round(w * k)}px`, "aspect-ratio": `${w} / ${h}` };
   };
   return (
-    <div class="unfurl" style={u.color ? { "--bar": u.color } : {}}>
+    <div class="unfurl" data-external-url={link ?? undefined} style={u.color ? { "--bar": u.color } : {}}>
       <div class="unfurl-body">
         <Show when={u.service || u.author}>
           <div class="unfurl-site">
@@ -59,7 +59,7 @@ function Card(props: { u: Unfurl }) {
           </div>
         </Show>
         <Show when={u.image && !u.thumb}>
-          <button class="unfurl-image" style={size()} onClick={() => open(link)}>
+          <button class="unfurl-image" style={size()} {...externalLink(link, open)}>
             <img src={linkImageUrl(u.image!)} alt="" loading="lazy" />
             <Show when={u.video}>
               <span class="play" aria-hidden="true">

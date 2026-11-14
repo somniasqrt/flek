@@ -28,6 +28,8 @@ const COMMANDS: &[&str] = &[
     "activity_seen",
     "browse_files",
     "fetch_file",
+    "download_file",
+    "reveal_download",
     "status",
     "progress",
     "conversations",

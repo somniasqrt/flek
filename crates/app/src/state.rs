@@ -40,7 +40,14 @@ pub enum Status {
     },
 }
 
+#[derive(Default)]
+pub struct SavedDownloads {
+    pub next: u64,
+    pub paths: std::collections::VecDeque<(String, std::path::PathBuf)>,
+}
+
 pub struct AppState {
+    pub saved_downloads: Mutex<SavedDownloads>,
     pub maintenance: tokio::sync::Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
     pub settings: Arc<Mutex<flek_core::settings::Settings>>,
@@ -66,6 +73,7 @@ impl AppState {
     pub fn new(store: Store) -> Self {
         let settings = startup_settings(flek_core::settings::default_path());
         Self {
+            saved_downloads: Mutex::new(SavedDownloads::default()),
             maintenance: tokio::sync::Mutex::new(()),
             generation: std::sync::atomic::AtomicU64::new(0),
             settings: Arc::new(Mutex::new(settings)),
@@ -98,6 +106,11 @@ impl AppState {
     }
 
     pub fn forget_session(&self) {
+        self.saved_downloads
+            .lock()
+            .expect("downloads lock")
+            .paths
+            .clear();
         *self.session.lock().expect("session lock") = None;
         *self.client.lock().expect("client lock") = None;
         *self.progress.lock().expect("progress lock") = None;

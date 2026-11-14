@@ -85,6 +85,8 @@ fn main() {
             commands::activity_seen,
             commands::browse_files,
             commands::fetch_file,
+            commands::download_file,
+            commands::reveal_download,
             commands::status,
             commands::progress,
             commands::conversations,

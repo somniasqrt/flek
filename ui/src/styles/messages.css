@@ -8,7 +8,7 @@
 .msg.grouped {
   padding-top: 1px;
 }
-.msg:hover {
+.msg:not(.active):not(.flash):not(.sending):not(.failed):is(:hover, :focus-within, .menu-open) {
   background: var(--hover);
 }
 .gutter {
@@ -40,7 +40,8 @@ img.avatar {
   text-align: right;
   padding-top: 3px;
 }
-.msg:hover .hover-time {
+.msg:hover .hover-time,
+.msg:focus-within .hover-time {
   visibility: visible;
 }
 .body {
