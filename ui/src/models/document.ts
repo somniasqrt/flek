@@ -44,7 +44,46 @@ export function viewerFailure(error: unknown): ViewerFailure {
 }
 
 export type CellValue = string | number | boolean | Date | null;
-export type Sheet = { name: string; rows: CellValue[][]; truncated: boolean };
+export type SheetBorder = {
+  style: "solid" | "dashed" | "dotted" | "double";
+  width: number;
+  color: string;
+};
+export type SheetStyle = {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fontSize?: number;
+  color?: string;
+  fill?: string;
+  left?: SheetBorder;
+  right?: SheetBorder;
+  top?: SheetBorder;
+  bottom?: SheetBorder;
+  horizontal?: "left" | "center" | "right" | "justify";
+  vertical?: "top" | "middle" | "bottom";
+  wrap?: boolean;
+};
+export type SheetMerge = {
+  row: number;
+  column: number;
+  endRow: number;
+  endColumn: number;
+};
+export type SheetLayout = {
+  columnWidths: number[];
+  rowHeights: number[];
+  styles: SheetStyle[];
+  // Sparse cell indexes use the fixed preview stride, not the sheet width.
+  cellStyles: Record<number, number>;
+  merges: SheetMerge[];
+};
+export type Sheet = {
+  name: string;
+  rows: CellValue[][];
+  truncated: boolean;
+  layout?: SheetLayout;
+};
 export type OfficeResult =
   | { kind: "xlsx"; sheets: Sheet[] }
   | { kind: "docx"; html: string };

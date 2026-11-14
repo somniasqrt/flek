@@ -325,10 +325,40 @@ cannot allocate from attacker-controlled ZIP length declarations or spawn blob
 workers. SAX filtering removes worksheet rows/columns beyond 1000 × 100 before
 the spreadsheet reader allocates dense arrays, including sparse hostile addresses.
 The read-excel-file parser uses saved values only: it does not evaluate formulas,
-run macros, follow hyperlinks or fetch external references. It does not expose
-merged-cell metadata, so merged ranges display their stored top-left value.
-Sheets use accessible keyboard tabs and fixed-height windowed table rows. Intl
-formats dates (calendar dates in UTC), numbers and localized booleans.
+run macros, follow hyperlinks or fetch external references. Intl formats dates
+(calendar dates in UTC), numbers and localized booleans.
+
+`models/spreadsheet-layout.ts` reads presentation from those same validated XML
+entries inside the worker, without a second ZIP expansion. Column widths use the
+Excel character-width approximation (7 px per character plus 5 px padding;
+sub-character widths use 12 px per character), with a 64 px fallback. Point sizes
+use 96/72 CSS px per point. Sheet defaults, explicit row heights, hidden dimensions
+and merged ranges are preserved at 100%. Cell XFs select validated fonts, solid
+fills, four borders, alignment and wrapping; RGB, indexed and theme colours resolve
+to six-digit hex, including HSL luminance tint. Font families are ignored in favour
+of the viewer's fixed system font. Unsupported colours/styles use defaults. No
+file CSS, font files, hyperlinks or external resources reach the DOM.
+
+Optional presentation has separate caps: 2,048 entries per style collection,
+20,000 XML nodes for styles/theme, 1,024 column ranges and 1,024 merges per sheet.
+Overlapping merges also discard the sheet's presentation. Excessive styles fall
+back to default styles; excessive worksheet metadata falls back to plain layout,
+while saved values remain available. Trailing styled empty cells and merge extents
+can extend the value grid only within the existing per-sheet 1000 × 100 and shared
+1,000,000-cell budgets. Merges crossing the preview boundary are clipped and mark
+the sheet truncated. Only bounded arrays, sparse style indexes, numeric pixel
+sizes, hex colours and enumerated style keywords cross the worker boundary.
+
+Sheets retain keyboard tabs, a focusable scroll region and explicit ARIA row and
+column indexes. A positioned ARIA table uses row-height prefix sums and binary
+search for its visible rows, with overscan; intersecting merged anchors stay
+mounted when their first row scrolls away. Hidden dimensions occupy zero space.
+Column letters and row numbers stay sticky. Text nodes spill across following
+empty cells when left-aligned and unwrapped, stopping at the next occupied cell
+or merge; wrapped/merged/aligned cells clip within their own rectangle. Unstyled
+cells use a white sheet and light grid lines in both app themes. Custom number
+formats, conditional formatting, rich text runs, automatic row-height measurement,
+images/charts and exact Excel font metrics are outside this presentation subset.
 
 Mammoth disables external file access and embedded style maps. Only raster embedded
 images become data URIs. Its output (at most 2 MiB) passes DOMPurify with a narrow

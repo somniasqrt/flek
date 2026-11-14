@@ -202,14 +202,17 @@
 .viewer-truncated p { margin: 0 0 8px; }
 .viewer-truncated { flex: none; padding: 12px 20px; margin: 0; font-size: 13px; }
 .viewer-sheet-scroll { flex: 1; min-height: 0; overflow: auto; background: #fff; color: #202124; }
-.viewer-sheet { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 13px; }
-.viewer-sheet td, .viewer-sheet th { box-sizing: border-box; height: 32px; padding: 0 8px; border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; }
-.viewer-sheet td { min-width: 120px; max-width: 240px; }
-.viewer-sheet td span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 224px; }
-.viewer-sheet th { background: #eef1f4; font-weight: 500; min-width: 48px; }
-.viewer-sheet thead th { position: sticky; top: 0; z-index: 2; }
-.viewer-sheet th[scope="row"] { position: sticky; left: 0; z-index: 1; }
-.viewer-sheet tr[aria-hidden="true"] td { padding: 0; border: 0; height: inherit; }
+.viewer-sheet { position: relative; font: 14.6667px Arial, sans-serif; isolation: isolate; }
+.viewer-sheet-head { position: sticky; top: 0; height: 24px; z-index: 5; background: #eef1f4; }
+.viewer-sheet-head > div { position: absolute; top: 0; height: 24px; text-align: center; }
+.viewer-sheet-head > div, .viewer-sheet-row-number { box-sizing: border-box; background: #eef1f4; border-right: 1px solid #c9ced3; border-bottom: 1px solid #c9ced3; font: 12px/24px Arial, sans-serif; overflow: hidden; }
+.viewer-sheet-head .viewer-sheet-corner { position: sticky; left: 0; width: 48px; z-index: 6; }
+.viewer-sheet-body { position: relative; }
+.viewer-sheet-row { position: absolute; left: 0; width: 100%; }
+.viewer-sheet-row-number { position: sticky; left: 0; width: 48px; height: 100%; text-align: center; z-index: 4; }
+.viewer-sheet-cell { position: absolute; top: 0; box-sizing: border-box; border-right: 1px solid #e2e2e2; border-bottom: 1px solid #e2e2e2; background: #fff; }
+.viewer-sheet-cell-text { position: absolute; left: 0; top: 0; box-sizing: border-box; display: flex; padding: 0 3px; line-height: normal; overflow: hidden; z-index: 2; pointer-events: auto; }
+.viewer-sheet-cell-text > span { display: block; width: 100%; flex: none; }
 
 .viewer-video {
   max-width: 100%;

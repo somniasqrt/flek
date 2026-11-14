@@ -1,4 +1,5 @@
 import { boundedArchive } from "../models/document-archive";
+import { spreadsheetPresentation } from "../models/spreadsheet-layout";
 import {
   limitSheet,
   cellValue,
@@ -18,13 +19,20 @@ self.onmessage = async (
       const sheets = await read(archive.data, { trim: false });
       if (!sheets.length || sheets.length > 100)
         throw new Error("document_limit");
+      const presentation = spreadsheetPresentation(
+        archive.files,
+        archive.sheetPaths,
+        sheets.reduce((n, s) => n + s.data.length * (s.data[0]?.length ?? 0), 0),
+      );
       result = {
         kind,
         sheets: sheets.map((s) =>
-          limitSheet(
-            s.sheet,
-            s.data.map((row) => row.map(cellValue)),
-            archive.truncatedSheets.has(s.sheet),
+          presentation(
+            limitSheet(
+              s.sheet,
+              s.data.map((row) => row.map(cellValue)),
+              archive.truncatedSheets.has(s.sheet),
+            ),
           ),
         ),
       };

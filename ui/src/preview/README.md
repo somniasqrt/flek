@@ -19,7 +19,14 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   card in the timeline and **Files**, plus the files in the existing thread.
   Test sheet Left/Right/Home/End keys, scrolling to row 1000, Esc, both languages
   and themes. The XLSX has a cached formula result, never formula evaluation;
-  the Word hyperlink becomes inert text. `window.__openedFile` records mocked
+  the Word hyperlink becomes inert text. The Budget sheet demonstrates narrow
+  file column widths (F is hidden), a merged title at A4:H5, a hidden row 6,
+  bordered tables with bold blue headers, theme/indexed colours, wrapped text at
+  A7:C7 and text spilling from A9 up to H9. Saved row heights remain visible while
+  scrolling; Notes demonstrates the default 64 px columns. Verify column letters
+  and row numbers remain sticky in both scroll directions. The large fixture
+  shares this layout and reaches row 1000 / column CV (100 columns) with the
+  truncation notice. `window.__openedFile` records mocked
   “Open in default app” actions. Fixtures are generated locally in documents.ts;
   no fixture fetch or real IPC is needed. Native WebKit worker loading, layout
   and default-app launching remain owner QA.

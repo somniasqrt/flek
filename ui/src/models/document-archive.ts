@@ -201,5 +201,8 @@ export function boundedArchive(data: ArrayBuffer, spreadsheet: boolean) {
       .filter(([, id]) => truncatedPaths.has(sheetTargets.get(id) ?? ""))
       .map(([name]) => name),
   );
-  return { data: archive.buffer as ArrayBuffer, truncatedSheets };
+  const sheetPaths = new Map(
+    [...sheetNames].map(([name, id]) => [name, sheetTargets.get(id) ?? ""]),
+  );
+  return { data: archive.buffer as ArrayBuffer, truncatedSheets, files, sheetPaths };
 }
