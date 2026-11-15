@@ -211,6 +211,7 @@ fn write_messages_in_transaction(
                 add_reaction.execute(params![conversation_id, r.ts, name, user])?;
             }
             if mode == Mode::Import && r.files.is_empty() {
+                crate::store::materials::refresh(tx, conversation_id, &r.ts)?;
                 continue;
             }
             clear_files.execute(params![conversation_id, r.ts])?;
@@ -218,6 +219,7 @@ fn write_messages_in_transaction(
                 files::upsert_file(tx, f)?;
                 link_file.execute(params![conversation_id, r.ts, f.id])?;
             }
+            crate::store::materials::refresh(tx, conversation_id, &r.ts)?;
         }
     }
     Ok(total)

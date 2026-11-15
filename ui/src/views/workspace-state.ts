@@ -111,6 +111,7 @@ export function useWorkspace(props: { status: Ready }) {
   });
   // The query whose results fill the main pane, and the message to reveal
   // after opening a result (a fresh object per click, so it re-triggers).
+  const [searchMaterials, setSearchMaterials] = createSignal(false);
   const [searching, setSearching] = createSignal<string | null>(null);
   const [jump, setJump] = createSignal<Jump | null>(null);
   const [searchRequest, setSearchRequest] = createSignal<SearchRequest | null>(null);
@@ -387,7 +388,7 @@ export function useWorkspace(props: { status: Ready }) {
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest('input, textarea, select, [role="dialog"], [role="alertdialog"], [role="menu"]')) return;
       const c = current();
-      if (!c?.latest_ts || !hasUnread(c) || browsing() || searching() || view() === "files") return;
+      if (!c?.latest_ts || !hasUnread(c) || browsing() || searching() !== null || view() === "files") return;
       api.markRead(c.id, c.latest_ts).catch((err) => setActionError(String(err)));
     };
     window.addEventListener("keydown", onKey);
@@ -464,7 +465,7 @@ export function useWorkspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame: (el: HTMLDivElement) => { frame = el; },

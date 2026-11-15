@@ -220,3 +220,24 @@ pub async fn set_reaction(
     }
     Ok(())
 }
+
+/// Indexed local materials catalogue; no network or sync priority side effects.
+#[tauri::command]
+pub async fn search_materials(
+    state: State<'_, AppState>,
+    query: String,
+    sort: flek_core::reads::MaterialSort,
+    limit: usize,
+    cursor: Option<String>,
+) -> CmdResult<flek_core::reads::MaterialPage> {
+    let team = state
+        .team_id()
+        .ok_or_else(|| "no active workspace".to_owned())?;
+    state
+        .store
+        .read(move |c| {
+            flek_core::reads::materials(c, &team, &query, sort, limit, cursor.as_deref())
+        })
+        .await
+        .map_err(text)
+}

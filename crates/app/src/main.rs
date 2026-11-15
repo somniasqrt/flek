@@ -120,6 +120,7 @@ fn main() {
             commands::document_data,
             commands::open_url,
             commands::search,
+            commands::search_materials,
             commands::send_message,
             commands::set_reaction,
             commands::presence_for,

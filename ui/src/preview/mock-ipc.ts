@@ -5,6 +5,8 @@ import { fileType } from "../models/rail-model";
 import type { Conversation, NotificationTarget, Status } from "../api";
 import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
+import { materialPage } from "./materials";
+import type { MaterialSort } from "../api";
 import { pdf, svgFixture } from "./assets";
 import { spreadsheetFixture, wordFixture } from "./documents";
 
@@ -460,6 +462,8 @@ mockIPC(
       }
       case "send_message":
         return sendMessage(a);
+      case "search_materials":
+        return materialPage(String(a.query ?? ""), (a.sort ?? "newest") as MaterialSort, Number(a.limit ?? 100), a.cursor);
       case "search": {
         const q = String(a.query ?? "");
         if (q.includes("before:2024-")) throw 'bad date "2024-", expected YYYY-MM-DD';

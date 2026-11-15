@@ -56,6 +56,7 @@ const COMMANDS: &[&str] = &[
     "document_data",
     "open_url",
     "search",
+    "search_materials",
     "send_message",
     "set_reaction",
     "presence_for",

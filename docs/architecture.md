@@ -71,6 +71,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `reads/channel.rs` — Cached metadata, members and pins, including never-fetched versus empty.
 - `reads/files.rs` — File filters, share context, downloadable metadata and cached file lookup.
 - `reads/history.rs` — Bounded timeline/thread windows, opaque cursors and message context.
+- `reads/materials.rs` — Indexed local material search, shared filters and keyset pagination.
 - `reads/mentions.rs` — FTS mention candidate source shared with rail activity.
 - `reads/mod.rs` — Stable offline read facade (reads::users/history/etc. remain functions).
 - `reads/unread.rs` — Known unread conversations and separate unknown read-marker results.
@@ -92,6 +93,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `store/directory/users.rs` — Directory user upserts, partial live merges and display-name lookup.
 - `store/emoji.rs` — Workspace (custom) emoji from `emoji.list` and their cached images.
 - `store/files.rs` — File metadata and the local cache path.
+- `store/materials.rs` — HTTP(S) link extraction and transactional material catalogue refresh/backfill.
 - `store/messages/cache.rs` — Cached file and preview paths by file id.
 - `store/messages/display.rs` — Timeline hydration with files, unfurls and own reactions.
 - `store/messages/mod.rs` — Public facade for store/messages; grouped implementations are re-exported here.
@@ -126,7 +128,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `views/text.rs` — Timestamp rendering and Slack reference/entity resolution.
 - `views/users.rs` — Hydrated user output including stored presence and DND.
 - `views/version.rs` — Machine-view schema version (independent of SQLite version).
-- `store/migrations/` — append-only SQL 0001–0021; schema evolution described below.
+- `store/migrations/` — append-only SQL 0001–0023; schema evolution described below.
 
 ### crates/cli/src
 
@@ -267,6 +269,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `views/Preferences.tsx` — Preferences shell, state loading, sections and confirmation routing.
 - `views/ProfilePanel.tsx` — Cached profile, local clock, presence and DM navigation.
 - `views/Rail.tsx` — Workspace navigation and self account-menu anchor.
+- `views/MaterialResults.tsx` — Material table, sort controls, cursor paging and existing message jumps.
 - `views/Search.tsx` — SearchBar, search results and message jump conversion.
 - `views/Sidebar.tsx` — Member conversation groups, muted/starred sections and context-menu targets.
 - `views/Thread.tsx` — Thread reads, change reconciliation and reply composer.
@@ -446,7 +449,7 @@ The synthetic preview supports `?settingsError&preferences` and live failure/rec
 
 Migrations are compiled by store/migrations.rs from numbered SQL files. Startup inspects schema_version, then rechecks under an IMMEDIATE transaction before applying pending files. Foreign keys are off during rebuilds, checked using pragma_foreign_key_check afterwards, then re-enabled. No checksum is stored; applied text is nevertheless immutable. For future schema work append a numbered file and MIGRATIONS entry, include old-schema/backfill tests, and rebuild any message-derived data from existing raw_json. Migration 0018 adds conversation activity_seen and local thread_reads cursors. Migration 0019 adds a nullable thread_sync.retry_after deadline; existing successful progress is unchanged.
 
-Every table (schema through 0021), with its writer and notable semantics:
+Every table (schema through 0023), with its writer and notable semantics:
 - `schema_version`: migration runner; version primary key and applied_at, separate from JSON v1.
 - `teams`: directory/auth sync; identity, self_user_id, workspace raw_json/icon; self change recounts unread.
 - `users`: directory/live/import; names, bot/deleted flags and raw_json profile fields.
@@ -460,6 +463,7 @@ Every table (schema through 0021), with its writer and notable semantics:
 - `thread_sync`: thread backfill; fetched latest_reply and synced_at per conversation/root. Non-auth request failures set retry_after for an hour without advancing fetched progress; background walks, including full resync, defer that root until then. Explicit thread refresh bypasses the delay, and a successful fetch clears it.
 - `thread_reads`: local thread panel/live thread_marked cursors; per-conversation/root last_read for Activity. conversations.activity_seen tracks the separate Activity visit cursor (0018).
 - `messages_fts`: FTS5 external content over messages.text, stable content_rowid=id, unicode61 tokenizer. INSERT/DELETE/text UPDATE triggers maintain it; migration 0005 rebuilds existing text.
+- `search_materials`, `materials_fts`: one link/file per message share, derived after message merge guards; 0023 backfills stored history atomically. Sort/filter indexes feed bounded pages before message hydration. Soft deletion clears material rows; file metadata triggers update earlier shares. Keep `materials_message_deleted` when rebuilding messages.
 - `link_images`: file/image sync; URL hash, source URL, local_path, fetched_at, failure_count, last_failure_at and retry_after. The failed flag now means a definitive refusal.
 - `media_message_changes`: insert/content-update triggers; one increasing position per changed message, initially seeded from existing messages.
 - `media_images`, `media_emoji`: incremental media scan; image URLs and emoji names per message, with cascading deletion. Names are independent of the emoji catalog, so catalog changes can resolve previously unknown names without rereading message text.

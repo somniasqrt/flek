@@ -20,6 +20,21 @@ export const en = {
   "Slack rejected this session. Copy fresh values from the same signed-in workspace and retry.": "Slack rejected this session. Copy fresh values from the same signed-in workspace and retry.",
   "Could not validate the session. Check your connection and retry with fresh values.": "Could not validate the session. Check your connection and retry with fresh values.",
   "Could not save the session in the system credential store. Check access permissions and retry.": "Could not save the session in the system credential store. Check access permissions and retry.",
+  // Search materials (M5.1.4).
+  "Search mode": "Search mode",
+  "Messages": "Messages",
+  "Links and files": "Links and files",
+  "Browse links and files": "Browse links and files",
+  "All materials": "All materials",
+  "Oldest": "Oldest",
+  "Material": "Material",
+  "Conversation": "Conversation",
+  "Author": "Author",
+  "Link": "Link",
+  "No materials found": "No materials found",
+  "Try fewer words or other filters.": "Try fewer words or other filters.",
+  "Links and files from your local archive. Use in:, from:, after: and before: to filter.": "Links and files from your local archive. Use in:, from:, after: and before: to filter.",
+
   // Conversation header.
   "Unstar channel": "Unstar channel",
   "Star conversation": "Star conversation",

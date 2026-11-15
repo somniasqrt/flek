@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-search-materials"
+description = "Enables the search_materials command without any pre-configured scope."
+commands.allow = ["search_materials"]
+
+[[permission]]
+identifier = "deny-search-materials"
+description = "Denies the search_materials command without any pre-configured scope."
+commands.deny = ["search_materials"]

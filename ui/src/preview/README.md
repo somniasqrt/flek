@@ -139,3 +139,28 @@ native Downloads resolution, disk errors/quarantine and reveal need native QA.
 - Check light/dark themes, English/Ukrainian, long names and narrow panes, keyboard
   arrows/Home/End/Escape, focus return, menu clamping and avatar loading without
   layout shift. Header/menu membership reads never request fresh data.
+
+## Search materials (M5.1.4)
+
+Focus global search, select **Links and files**, then choose **Browse links and
+files** with an empty field to see the whole local catalogue. Enter and the normal
+query row also submit filters/words in this mode. Results can switch back to
+**Messages** without changing the submitted query.
+
+- Try `in:#general`, `from:U2`, `has:link`, `has:file`, `practice`, and
+  `in:#timeline-10000 after:2025-01-01`; date filters use UTC day boundaries as
+  message search does. Combine `in:`/`from:`/`after:`/`before:` filters.
+- The fixture adds 125 labelled links to actual **timeline-10000** messages,
+  alongside file shares and general/thread materials. Use **Load more**, all
+  three sort orders and changes of query/sort while loading.
+- Click a material name or activate it with Enter/Space: the existing timeline
+  jump should reveal the source message, opening the thread for a reply. Hidden
+  archive materials can still jump; this table does not download or open files.
+- Check empty/error states (`before:2024-`), English/Ukrainian, both themes,
+  narrow panes, long URLs/filenames and keyboard access to the mode/sort controls.
+  A synthetic `__reply()` change refreshes the catalogue through the existing
+  workspace revision. There is no new remote endpoint or image fetch.
+
+The preview filters are synthetic approximations; parser, FTS stemming and cursor
+correctness belong to the core. Native capability delivery and visual interaction
+remain owner QA.

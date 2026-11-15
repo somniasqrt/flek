@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { t, errorMessage, locale, clock24, plural } from "../i18n/index";
 import { api, tsDate, type Conversation, type Hit } from "../api";
+import MaterialResults from "./MaterialResults";
 import Avatar from "../components/Avatar";
 import T from "../i18n/T";
 import { Hash, Lock, People, Search } from "../components/icons";
@@ -39,6 +40,8 @@ const FILTERS = () => [
 
 export function SearchBar(props: {
   team: string;
+  materials: boolean;
+  onModeChange: (materials: boolean) => void;
   conversations: Conversation[];
   /// A fresh object per keypress, so the same request focuses again.
   request: SearchRequest | null;
@@ -79,9 +82,12 @@ export function SearchBar(props: {
   let timer: number | undefined;
   let asked = 0;
   createEffect(
-    on(query, (q) => {
+    on([query, () => props.materials], ([q, materials]) => {
       window.clearTimeout(timer);
-      if (!q.trim()) return setQuick([]);
+      if (!q.trim() || materials) {
+        ++asked;
+        return setQuick([]);
+      }
       timer = window.setTimeout(async () => {
         const n = ++asked;
         const hits = await api.search(q, false, QUICK).catch(() => [] as Hit[]);
@@ -97,7 +103,7 @@ export function SearchBar(props: {
   };
   const submit = () => {
     const q = query().trim();
-    if (!q) return;
+    if (!q && !props.materials) return;
     props.onSubmit(q);
     close();
   };
@@ -135,13 +141,20 @@ export function SearchBar(props: {
       </label>
       <Show when={open()}>
         <div class="search-panel">
+          <SearchMode materials={props.materials} onChange={props.onModeChange} />
+          <Show when={props.materials && !query().trim()}>
+            <button class="search-row submit" onClick={submit}>
+              <Search size={15} />
+              <span>{t("Browse links and files")}</span>
+            </button>
+          </Show>
           <Show when={query().trim()}>
             <button class="search-row submit" onClick={submit}>
               <Search size={15} />
               <span class="grow">{query().trim()}</span>
               <span class="muted small">Enter</span>
             </button>
-            <For each={quick()}>
+            <For each={props.materials ? [] : quick()}>
               {(h) => (
                 <button
                   class="search-row quick"
@@ -182,6 +195,9 @@ export function SearchBar(props: {
 /// Full results in the main pane.
 export function SearchResults(props: {
   query: string;
+  revision: number;
+  materials: boolean;
+  onModeChange: (materials: boolean) => void;
   conversations: Conversation[];
   onOpen: (hit: Hit) => void;
   onClose: () => void;
@@ -202,10 +218,11 @@ export function SearchResults(props: {
   });
 
   createEffect(
-    on([() => props.query, recent], async ([q, r]) => {
+    on([() => props.query, recent, () => props.materials], async ([q, r, materials]) => {
       const n = ++asked;
       setHits(null);
       setError(null);
+      if (materials) return;
       try {
         const list = await api.search(q, r, FULL);
         if (n === asked) setHits(list);
@@ -228,91 +245,119 @@ export function SearchResults(props: {
       <header class="conv-header">
         <h2>
           <Search size={18} />
-          <span class="search-title">{props.query}</span>
+          <span class="search-title">{props.query || (props.materials ? t("All materials") : t("Messages"))}</span>
         </h2>
-        <Show when={hits() && !error()}>
+        <Show when={!props.materials && hits() && !error()}>
           <span class="muted small">{count()}</span>
         </Show>
         <div class="grow" />
-        <div class="sort" role="group" aria-label={t("Sort")}>
-          <button classList={{ on: !recent() }} onClick={() => setRecent(false)}>
-            {t("Most relevant")}
-          </button>
-          <button classList={{ on: recent() }} onClick={() => setRecent(true)}>
-            {t("Newest")}
-          </button>
-        </div>
+        <SearchMode materials={props.materials} onChange={props.onModeChange} />
+        <Show when={!props.materials}>
+          <div class="sort" role="group" aria-label={t("Sort")}>
+            <button classList={{ on: !recent() }} onClick={() => setRecent(false)}>
+              {t("Most relevant")}
+            </button>
+            <button classList={{ on: recent() }} onClick={() => setRecent(true)}>
+              {t("Newest")}
+            </button>
+          </div>
+        </Show>
         <button class="close" title={t("Close search (Esc)")} onClick={props.onClose}>
           ×
         </button>
       </header>
-      <div class="scroller results">
-        <Show when={hits()} fallback={<div class="spinner" />}>
-          {(list) => (
-            <Show
-              when={list().length > 0}
-              fallback={
-                <div class="no-results">
-                  <Show
-                    when={error()}
-                    fallback={
-                      <>
-                        <h3>{t("No results for “{query}”", { query: props.query })}</h3>
-                        <p class="muted">
-                          <T
-                            k="Flek searches the messages it has synced or imported. Try fewer words, a prefix like <code>word*</code>, or other filters."
-                            tags={{ code: (text) => <code>{text}</code> }}
-                          />
-                        </p>
-                      </>
-                    }
-                  >
-                    {(e) => (
-                      <>
-                        <h3>{t("Can't search for that")}</h3>
-                        <p class="muted">{errorMessage(e())}</p>
-                      </>
-                    )}
-                  </Show>
-                </div>
-              }
-            >
-              <For each={list()}>
-                {(h) => (
-                  <button class="hit" onClick={() => props.onOpen(h)}>
-                    <div class="hit-where muted small">
-                      <Where hit={h} conversations={props.conversations} />
-                      <span>·</span>
-                      <span>{dateLabel(h.ts)}</span>
-                      <Show when={h.thread_ts && h.thread_ts !== h.ts}>
-                        <span>· {t("In a thread")}</span>
-                      </Show>
-                    </div>
-                    <div class="hit-body">
-                      <Avatar id={h.user_id} name={h.author ?? "?"} />
-                      <div class="body">
-                        <div class="meta">
-                          <span class="author">{h.author ?? t("unknown")}</span>
-                          <time class="muted">{timeLabel(h.ts)}</time>
-                          <Show when={h.hidden_by_limit}>
-                            <span
-                              class="tag"
-                              title={t("Slack hides this message on the Free plan")}
-                            >
-                              {t("from archive")}
-                            </span>
-                          </Show>
-                        </div>
-                        <Snippet hit={h} />
+      <Show when={props.materials} fallback={
+        <div class="scroller results">
+          <Show when={hits()} fallback={<div class="spinner" />}>
+            {(list) => (
+              <Show
+                when={list().length > 0}
+                fallback={
+                  <div class="no-results">
+                    <Show
+                      when={error()}
+                      fallback={
+                        <>
+                          <h3>{t("No results for “{query}”", { query: props.query })}</h3>
+                          <p class="muted">
+                            <T
+                              k="Flek searches the messages it has synced or imported. Try fewer words, a prefix like <code>word*</code>, or other filters."
+                              tags={{ code: (text) => <code>{text}</code> }}
+                            />
+                          </p>
+                        </>
+                      }
+                    >
+                      {(e) => (
+                        <>
+                          <h3>{t("Can't search for that")}</h3>
+                          <p class="muted">{errorMessage(e())}</p>
+                        </>
+                      )}
+                    </Show>
+                  </div>
+                }
+              >
+                <For each={list()}>
+                  {(h) => (
+                    <button class="hit" onClick={() => props.onOpen(h)}>
+                      <div class="hit-where muted small">
+                        <Where hit={h} conversations={props.conversations} />
+                        <span>·</span>
+                        <span>{dateLabel(h.ts)}</span>
+                        <Show when={h.thread_ts && h.thread_ts !== h.ts}>
+                          <span>· {t("In a thread")}</span>
+                        </Show>
                       </div>
-                    </div>
-                  </button>
-                )}
-              </For>
-            </Show>
-          )}
-        </Show>
-      </div>
+                      <div class="hit-body">
+                        <Avatar id={h.user_id} name={h.author ?? "?"} />
+                        <div class="body">
+                          <div class="meta">
+                            <span class="author">{h.author ?? t("unknown")}</span>
+                            <time class="muted">{timeLabel(h.ts)}</time>
+                            <Show when={h.hidden_by_limit}>
+                              <span
+                                class="tag"
+                                title={t("Slack hides this message on the Free plan")}
+                              >
+                                {t("from archive")}
+                              </span>
+                            </Show>
+                          </div>
+                          <Snippet hit={h} />
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </For>
+              </Show>
+            )}
+          </Show>
+        </div>
+      }>
+        <MaterialResults query={props.query} revision={props.revision} onOpen={props.onOpen} />
+      </Show>
+    </div>
+  );
+}
+
+function SearchMode(props: { materials: boolean; onChange: (materials: boolean) => void }) {
+  return (
+    <div class="sort search-mode" role="group" aria-label={t("Search mode")}>
+      <button
+        classList={{ on: !props.materials }}
+        aria-pressed={!props.materials}
+        onClick={() => props.onChange(false)}
+      >
+        {t("Messages")}
+      </button>
+      <button
+        classList={{ on: props.materials }}
+        aria-pressed={props.materials}
+        onClick={() => props.onChange(true)}
+      >
+        {t("Links and files")}
+      </button>
     </div>
   );
 }

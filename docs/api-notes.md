@@ -559,3 +559,35 @@ in Windows logs are **not verified on a real workspace**. `v10` follows Chromium
 source; unsupported encryption (including app-bound `v20`) and locked stores fail
 with webview sign-in available. Do not add an undocumented endpoint or invent a
 desktop user agent to work around an unavailable local profile.
+
+## Local search materials (M5.1.4)
+
+`reads::materials` / the main-window-only `search_materials` command read SQLite
+only. No Slack endpoint or additional credential access is used. Migration 0023
+creates a material catalogue and its FTS5 index, then atomically backfills all
+stored messages in bounded batches via `store::materials`. Message writes refresh
+it after hidden/edited/import merge guards, inside the same transaction. File
+metadata updates refresh previous shares; message deletion removes catalogue rows.
+
+Links come from HTTP(S) text/mrkdwn, documented rich-text `link` elements and Block
+Kit text, and the already-used attachment `original_url` / `from_url` / `title_link`
+and title fields (see the existing unfurl reader). Attachment text/pretext and
+blocks are included. Image URLs, service icons and `link_images` cache entries are
+not material shares. No arbitrary JSON URL recursion or third-party fetch occurs.
+One URL is deduplicated within a message; separate shares retain their own message
+and thread context. File rows reuse `message_files` and `files`, and display real
+filenames with extensions. Files have no new download/open path here.
+
+An empty query browses all materials. Existing `in:`, `from:`, `after:` and
+`before:` parsing and UTC bounds apply; free text also matches material names,
+URLs and the surrounding message text. `has:link` and `has:file` select material
+kinds; using both includes both kinds. Sorts are newest, oldest and name (SQLite
+case folding, deterministic row-id tie breaks). The core clamps pages to 1–200,
+uses indexed keyset cursors bound to the team/query/sort, and hydrates only the
+selected page. It does not compute a full result count. UI catalogue invalidation
+resets pagination when the workspace revision changes; cursors are not database
+snapshots during concurrent edits.
+
+No new live Slack compatibility assumptions are introduced. Visual/native QA is
+not verified on a real workspace; use the synthetic preview recipe in
+`ui/src/preview/README.md` first.

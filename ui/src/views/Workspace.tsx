@@ -49,7 +49,7 @@ export default function Workspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame,
@@ -63,6 +63,8 @@ export default function Workspace(props: { status: Ready }) {
           team={props.status.team}
           conversations={conversations}
           request={searchRequest()}
+          materials={searchMaterials()}
+          onModeChange={setSearchMaterials}
           onSubmit={setSearching}
           onOpen={openHit}
         />
@@ -165,10 +167,10 @@ export default function Workspace(props: { status: Ready }) {
               />
             }>
             <Show
-              when={view() === "files" && !searching()}
+              when={view() === "files" && searching() === null}
               fallback={
                 <Show
-                  when={searching()}
+                  when={searching() !== null}
                   fallback={
                     <Show
                       when={current()}
@@ -213,14 +215,15 @@ export default function Workspace(props: { status: Ready }) {
                     </Show>
                   }
                 >
-                  {(q) => (
                     <SearchResults
-                      query={q()}
+                      query={searching() ?? ""}
+                      revision={revision()}
+                      materials={searchMaterials()}
+                      onModeChange={setSearchMaterials}
                       conversations={conversations}
                       onOpen={openHit}
                       onClose={() => setSearching(null)}
                     />
-                  )}
                 </Show>
               }
             >

@@ -153,6 +153,10 @@ export type Hit = {
   hidden_by_limit: boolean;
 };
 
+export type MaterialSort = "newest" | "oldest" | "name";
+export type Material = Hit & { kind: "link" | "file"; key: string; title: string; url: string | null };
+export type MaterialPage = { items: Material[]; next_cursor: string | null };
+
 /// Workspace emoji (core `store::emoji::CustomEmoji`): `name → cached image
 /// hash` (custom aliases resolved) and `name → standard emoji name`.
 export type CustomEmoji = {
@@ -371,6 +375,8 @@ export const api = {
   openFile: (fileId: string) => invoke<void>("open_file", { fileId }),
   documentData: (fileId: string, inlinePreview = false) => invoke<ArrayBuffer>("document_data", { fileId, inlinePreview }),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
+  searchMaterials: (query: string, sort: MaterialSort, limit: number, cursor: string | null = null) =>
+    invoke<MaterialPage>("search_materials", { query, sort, limit, cursor }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),
   setReaction: (conversationId: string, ts: string, name: string, on: boolean) =>

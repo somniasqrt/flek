@@ -25,6 +25,21 @@ export const uk = {
   "Slack rejected this session. Copy fresh values from the same signed-in workspace and retry.": "Slack відхилив сесію. Скопіюйте свіжі значення з того самого робочого простору, де ви ввійшли, і спробуйте ще раз.",
   "Could not validate the session. Check your connection and retry with fresh values.": "Не вдалося перевірити сесію. Перевірте з’єднання та спробуйте ще раз зі свіжими значеннями.",
   "Could not save the session in the system credential store. Check access permissions and retry.": "Не вдалося зберегти сесію в системному сховищі облікових даних. Перевірте дозволи доступу та спробуйте ще раз.",
+  // Search materials (M5.1.4).
+  "Search mode": "Режим пошуку",
+  "Messages": "Повідомлення",
+  "Links and files": "Посилання і файли",
+  "Browse links and files": "Переглянути посилання і файли",
+  "All materials": "Усі матеріали",
+  "Oldest": "Найстаріші",
+  "Material": "Матеріал",
+  "Conversation": "Розмова",
+  "Author": "Автор",
+  "Link": "Посилання",
+  "No materials found": "Матеріалів не знайдено",
+  "Try fewer words or other filters.": "Спробуйте менше слів або інші фільтри.",
+  "Links and files from your local archive. Use in:, from:, after: and before: to filter.": "Посилання і файли з локального архіву. Фільтруйте за допомогою in:, from:, after: та before:.",
+
   // Conversation header.
   "Unstar channel": "Прибрати канал з обраного",
   "Star conversation": "Додати розмову до обраного",

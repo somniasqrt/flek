@@ -24,3 +24,6 @@ pub fn team_ids(conn: &rusqlite::Connection) -> crate::Result<Vec<String>> {
         .collect::<std::result::Result<_, _>>()?;
     Ok(ids)
 }
+
+mod materials;
+pub use materials::*;

@@ -36,6 +36,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
         include_str!("migrations/0021_notification_explicit.sql"),
     ),
     (22, include_str!("migrations/0022_events.sql")),
+    (23, include_str!("migrations/0023_search_materials.sql")),
 ];
 
 /// Latest schema version this build knows.
@@ -111,6 +112,9 @@ pub fn migrate_to(conn: &mut Connection, target: u32) -> Result<Vec<u32>> {
         .filter(|(v, _)| *v > current && *v <= target)
     {
         tx.execute_batch(sql)?;
+        if version == 23 {
+            super::materials::backfill(&tx)?;
+        }
         tx.execute(
             "
                 INSERT INTO schema_version(VERSION, applied_at)
