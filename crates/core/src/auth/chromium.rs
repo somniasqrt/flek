@@ -80,6 +80,8 @@ fn cleanup_stale_in(root: &Path, min_age: std::time::Duration) -> Result<()> {
     let probe = tempfile::Builder::new()
         .prefix("flek-cleanup-probe-")
         .tempdir_in(root)?;
+    #[cfg(not(unix))]
+    let _ = &probe;
     #[cfg(unix)]
     let owner = {
         use std::os::unix::fs::MetadataExt;
@@ -207,12 +209,30 @@ pub fn read_cookie(cookies_db: &Path, hosts: &[&str], name: &str) -> Result<Opti
     read_cookie_copy(cookies_db, hosts, name, private_temp()?)
 }
 
+/// Like `read_cookie`, retaining the selected host for Windows host-hash validation.
+pub fn read_cookie_with_host(
+    cookies_db: &Path,
+    hosts: &[&str],
+    name: &str,
+) -> Result<Option<(String, StoredCookie)>> {
+    read_cookie_record(cookies_db, hosts, name, private_temp()?)
+}
+
 fn read_cookie_copy(
     cookies_db: &Path,
     hosts: &[&str],
     name: &str,
     tmp: PrivateCopy,
 ) -> Result<Option<StoredCookie>> {
+    Ok(read_cookie_record(cookies_db, hosts, name, tmp)?.map(|(_, value)| value))
+}
+
+fn read_cookie_record(
+    cookies_db: &Path,
+    hosts: &[&str],
+    name: &str,
+    tmp: PrivateCopy,
+) -> Result<Option<(String, StoredCookie)>> {
     let file_name = cookies_db
         .file_name()
         .ok_or_else(|| Error::DesktopData("cookie store path has no file name".into()))?;
@@ -249,11 +269,11 @@ fn read_cookie_copy(
         }
         let value: String = row.get(1)?;
         if !value.is_empty() {
-            return Ok(Some(StoredCookie::Plain(value)));
+            return Ok(Some((host, StoredCookie::Plain(value))));
         }
         let encrypted: Vec<u8> = row.get(2)?;
         if !encrypted.is_empty() {
-            return Ok(Some(StoredCookie::Encrypted(encrypted)));
+            return Ok(Some((host, StoredCookie::Encrypted(encrypted))));
         }
     }
     Ok(None)

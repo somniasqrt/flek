@@ -50,7 +50,12 @@ fn main() {
         .expect("cannot open the Flek database");
 
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A duplicate login-start request must not reveal the existing
+            // Windows tray process. An ordinary launch restores and focuses it.
+            if cfg!(target_os = "windows") && args.iter().any(|arg| arg == HIDDEN_ARG) {
+                return;
+            }
             show_main(app)
         }))
         .plugin(tauri_plugin_opener::init())

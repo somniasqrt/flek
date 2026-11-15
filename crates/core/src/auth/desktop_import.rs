@@ -1,4 +1,6 @@
-//! Import the session from the installed Slack desktop app (macOS only so far).
+//! Import the session from the installed Slack desktop app on macOS and Windows.
+
+pub mod windows;
 
 use std::path::{Path, PathBuf};
 
@@ -36,9 +38,33 @@ pub struct DesktopSession {
     pub cookie: Secret,
 }
 
-/// Whether this build can read the Slack desktop session. Only macOS can for
-/// now; Windows (DPAPI + AES-GCM) and Linux (Secret Service) are ROADMAP M7.1.2.
-pub const IMPORT_SUPPORTED: bool = cfg!(target_os = "macos");
+/// Linux cookie import is not implemented; webview sign-in remains available.
+pub const IMPORT_SUPPORTED: bool = cfg!(any(target_os = "macos", target_os = "windows"));
+
+/// Current-user profile candidates, including redirected Windows Known Folders.
+pub fn current_roots() -> Vec<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut roots = Vec::new();
+        if let Some(roaming) = dirs::data_dir() {
+            roots.push(roaming.join("Slack"));
+        }
+        if let Some(local) = dirs::data_local_dir() {
+            roots
+                .push(local.join("Packages/91750D7E.Slack_8she8kybcnzg4/LocalCache/Roaming/Slack"));
+        }
+        roots
+    }
+    #[cfg(not(target_os = "windows"))]
+    dirs::home_dir()
+        .map(|home| candidate_roots(&home))
+        .unwrap_or_default()
+}
+
+/// Locate the current user's desktop profile without assuming AppData is on C:.
+pub fn locate_current() -> Result<DesktopPaths> {
+    locate_roots(current_roots())
+}
 
 /// Profile directories to check on the running OS, most likely first.
 pub fn candidate_roots(home: &Path) -> Vec<PathBuf> {
@@ -80,7 +106,10 @@ fn linux_roots(home: &Path) -> Vec<PathBuf> {
 
 /// Finds the first candidate root with both Local Storage and a cookie store.
 pub fn locate(home: &Path) -> Result<DesktopPaths> {
-    let roots = candidate_roots(home);
+    locate_roots(candidate_roots(home))
+}
+
+fn locate_roots(roots: Vec<PathBuf>) -> Result<DesktopPaths> {
     let mut any_root = false;
     for root in &roots {
         if !root.is_dir() {
@@ -186,11 +215,17 @@ pub fn read_cookie(cookies_db: &Path, password: impl FnOnce() -> Result<Secret>)
 /// Full import from the Slack desktop profile of the current user. Blocking:
 /// reads files and may show the macOS keychain prompt.
 pub fn import() -> Result<DesktopSession> {
-    let home =
-        dirs::home_dir().ok_or_else(|| Error::DesktopData("home directory is unknown".into()))?;
-    let paths = locate(&home)?;
+    if !IMPORT_SUPPORTED {
+        return Err(Error::Unsupported(
+            "Slack desktop session import on this OS",
+        ));
+    }
+    let paths = locate_current()?;
     tracing::info!(root = %paths.root.display(), "reading Slack desktop profile");
     let teams = read_teams(&paths.leveldb)?;
+    #[cfg(target_os = "windows")]
+    let cookie = windows::read_cookie(&paths)?;
+    #[cfg(not(target_os = "windows"))]
     let cookie = read_cookie(&paths.cookies, super::keychain::slack_safe_storage_password)?;
     Ok(DesktopSession { teams, cookie })
 }

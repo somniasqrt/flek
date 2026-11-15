@@ -1,8 +1,9 @@
 # Platforms
 
-Flek is built and used on macOS today. Windows is planned (ROADMAP M7.1) and Linux
-may follow. Everything OS-specific is collected in two places so the rest of the code
-stays platform-neutral:
+Flek is built and used on macOS today. Windows support (ROADMAP M7.1.1–M7.1.5)
+is implemented with CI builds; native Windows verification is still pending
+(M7.1.6 / M7.2). Linux may follow. OS-specific presentation is collected in two
+places so the rest of the code stays platform-neutral:
 
 - UI: `ui/src/platform.ts`. `initPlatform()` asks the app shell (`platform` command,
   `std::env::consts::OS`) before the first render, falls back to the navigator in the
@@ -45,29 +46,137 @@ Resolved with the `dirs` crate:
 
 ## Credentials
 
-Sessions are stored with `keyring` (service `flek`, account = team id). Only the macOS
-backend (`apple-native`) is enabled in `Cargo.toml`. On Windows and Linux `keyring` needs
-`windows-native` / a Secret Service feature, otherwise it silently uses an in-memory mock
-store (ROADMAP M7.1.3).
+Sessions are stored with `keyring` (service `flek`, account = team id; `_teams`
+holds the index). Target-specific Cargo features select `apple-native` on macOS,
+`windows-native` on Windows and `sync-secret-service` + `crypto-rust` on Linux
+(M7.1.3). Linux requires libdbus development packages to build and a running,
+unlocked Secret Service on the user's session bus to persist credentials. It does
+not silently fall back to an in-memory credential store on these targets. See the
+[keyring feature definitions](https://docs.rs/crate/keyring/3.6.3/source/Cargo.toml).
 
 ## Slack desktop session import
 
-`flek_core::auth::desktop_import::IMPORT_SUPPORTED` is true on macOS only. Elsewhere the
-app never reports the desktop app as installed, so onboarding goes straight to the webview
-sign-in and the macOS Keychain wording is not shown. Profile directory candidates are
-already per OS (`candidate_roots`: macOS, `%APPDATA%\Slack` and the Store build, `~/.config/Slack`
-plus Snap and Flatpak); reading the token (LevelDB) works everywhere, the cookie needs:
+`flek_core::auth::desktop_import::IMPORT_SUPPORTED` is true on macOS and Windows.
+Linux continues directly to webview sign-in: its desktop cookie decryption is not
+implemented. `candidate_roots(home)` is deterministic for fixtures;
+`current_roots()` uses Windows Known Folders through `dirs` to support redirected
+Roaming/Local AppData. Windows candidates, in priority order:
 
-- Windows: DPAPI-protected AES key from `Local State`, AES-256-GCM cookies (M7.1.2).
-- Linux: Secret Service password for "Slack Safe Storage", `v11` cookies (M7).
+- `%APPDATA%\Slack` (normal desktop build).
+- `%LOCALAPPDATA%\Packages\91750D7E.Slack_8she8kybcnzg4\LocalCache\Roaming\Slack`
+  (Microsoft Store build).
+
+Both use `Local Storage\leveldb`, `Local State`, and either `Network\Cookies`
+or `Cookies`. LevelDB is privately copied and decoded with the existing
+Latin-1/UTF-16 handling. The Windows importer decodes the base64
+`os_crypt.encrypted_key`, requires its `DPAPI` marker, unwraps the rest with
+current-user DPAPI and requires a 32-byte key. Cookie layout is version + 12-byte
+nonce + AES-256-GCM ciphertext + 16-byte tag, with empty associated data. `v10`
+and `v11` are accepted. A SHA-256 prefix must exactly match the selected host
+before removal; unhashed older cookies are also accepted. The resulting session
+must start with `xoxd-` and be printable ASCII; URL encoding is preserved.
+Keys/plaintext buffers are zeroized on drop and errors never quote profile values.
+The DPAPI call uses the safe [windows-dpapi wrapper](https://docs.rs/windows-dpapi/0.2.0/windows_dpapi/fn.decrypt_data.html);
+core retains `forbid(unsafe_code)`.
+
+The `v10` format follows [Chromium's Windows os_crypt implementation](https://raw.githubusercontent.com/chromium/chromium/130.0.6723.58/components/os_crypt/sync/os_crypt_win.cc).
+TODO: Windows Slack profile paths, `v11`, log-derived client identity and current
+cookie schema are **not verified on a real workspace**. Unknown/legacy formats
+(including app-bound `v20`), unavailable keys and locked cookie files fail import
+and leave webview sign-in available. Flek does not stop Slack, bypass file locks,
+request elevation or bypass app-bound encryption. Fully quitting Slack may be
+necessary before retrying import. No new Slack endpoint is involved.
+
+## Windows desktop and installers (M7.1.1 / M7.1.4 / M7.1.5)
+
+The existing single-instance plugin is registered first. An ordinary second launch
+restores, unminimizes and focuses the main window; a duplicate Windows `--hidden`
+login launch leaves the existing instance hidden. Window close respects the existing
+keep-in-tray preference. Windows uses the colour application icon in the system
+tray: left-click opens the main window, right-click opens the translated menu.
+macOS keeps its template icon and menu-bar click behavior.
+
+Launch-at-login remains opt-in through the existing settings/tray actions. The
+autostart plugin registers the current executable with `--hidden` in the current
+user's `Software\Microsoft\Windows\CurrentVersion\Run` key. It needs no administrator
+rights. Windows uses native window decorations; Dock/reopen calls stay macOS-only.
+Native behavior still needs M7.1.6 verification.
+
+`.github/workflows/ci.yml` runs formatting, workspace clippy, Rust tests and UI
+check/test/build on `macos-latest` and `windows-latest`. A dependent Windows job
+runs Tauri's release build and uploads both MSI (WiX) and EXE (NSIS) installers as
+`flek-windows-x64-installers` for 14 days. Pushes to main, pull requests and manual
+workflow dispatches trigger it. Nothing is published as a release.
+
+`tauri.windows.conf.json` overrides only Windows packaging: MSI/NSIS targets,
+current-user NSIS installation and a WebView2 download bootstrapper if needed.
+The installer may need network access for that runtime. Artifacts are unsigned;
+code signing and native installer/upgrade checks remain release work. Existing
+macOS app/DMG configuration is unchanged. To build on Windows with Rust/MSVC,
+Visual Studio C++ Build Tools and Node installed: `npm ci`, then
+`npm run tauri -- build --target x86_64-pc-windows-msvc --bundles msi,nsis --ci`.
+
+### Tests and checks for M7.1
+
+Automated: `crates/core/tests/desktop_import_windows.rs` covers `unwrap_key` (with an
+injected unprotect function, so no DPAPI) and `decrypt_cookie` on any host, using the
+independent Node-made vectors below plus synthetic AES-GCM records built in the test:
+`v10`/`v11`, host-hash binding, wrong host/key, corrupted nonce/ciphertext/tag,
+truncation, unknown versions (`v20`), non-session plaintext, error messages that never
+quote inputs, and `read_cookie_with_host` against a temporary Cookies SQLite database.
+Windows code is compile-checked from macOS with
+`cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings`
+(needs `rustup target add x86_64-pc-windows-gnu` and `brew install mingw-w64`). This
+does not run Windows tests; the CI Windows job does, but its first run is unverified.
+
+Remaining recipe (not automated yet):
+
+- `desktop_import::windows::unwrap_key`: pass JSON with base64 of
+  `DPAPI` + synthetic bytes, inject an unprotect closure, assert it receives only
+  the bytes after the marker and returns exactly 32 key bytes. Cover malformed
+  JSON/types/base64, missing fields, empty/wrong marker, unwrap failure, 16/31/33
+  byte keys and errors that never contain the input values. No OS store needed.
+- `desktop_import::windows::decrypt_cookie`: key bytes `00..1f`, nonce bytes
+  `00..0b`, empty AAD, synthetic value `xoxd-synthetic%2Fcookie`. Independent
+  Node `crypto.createCipheriv('aes-256-gcm', key, nonce)` vectors (whole `v10`
+  record in hex):
+
+  ```text
+  unhashed:
+  763130000102030405060708090a0b3f6dae7fe896bb75f929f2ffd88a5d5fc5b5e85b9b123a3a636a525564f1b4119ddf5ace25854f
+  SHA-256('.slack.com') + value:
+  763130000102030405060708090a0bd61ea55f68b9e855e5b292b4a9274bd39c7f27c00711cc980423b90374aea2ca797fd69882b26bf600cc1a99e1e40d0aa83a0fe231bfc66967fb53fec807a71359cf21ac3fbc41
+  ```
+
+  Both must return that exact synthetic value for host `.slack.com`; changing
+  the version bytes to `v11` must also work. Cover tag/ciphertext/nonce corruption,
+  wrong key/host, truncated records at every boundary, unknown `v20`, empty,
+  non-ASCII and non-session plaintext. Errors/Debug must not quote inputs.
+- Temporary SQLite/LevelDB only: extend `tests/desktop_import.rs` to cover both
+  Windows roots, old/new cookie locations, selected-host propagation, host
+  filtering/expiry ordering, WAL copies, plain cookies without Local State,
+  incomplete profiles and cleanup on failure. Keep the existing macOS CBC vectors.
+  Windows-only synthetic DPAPI roundtrip can wrap the fixed key with user scope;
+  never read an installed Slack profile or Credential Manager in automated tests.
+- `CredentialStore` remains covered through `MemoryBackend`; use `cargo tree -e
+  features --target <triple> -i keyring` to verify actual per-target backend features.
+  No new wiremock route is needed; existing mocked `auth.test` validation/recovery
+  coverage must continue to pass.
+- Owner on real Windows: install each CI artifact; check initial launch, native
+  frame/icon and WebView2, close-to-tray/left-click/right-click, minimized-window
+  restore, ordinary duplicate launch, `--hidden` duplicate launch, opt-in login
+  launch after reboot and disable. Verify session persistence/sign-out in Credential
+  Manager, normal and Store import (retry after fully quitting Slack if locked),
+  unsupported-key webview fallback, upgrade/uninstall, and the M7.2 webview checklist.
+  Automated native installer/runtime verification is not claimed here.
 
 ## Left for M7
 
-- Credential backends for `keyring` on Windows and Linux (M7.1.3).
-- Session import for Windows and Linux (M7.1.2).
+- Verify Windows session import against normal and Store builds (M7.1.6).
+- Linux desktop session import (Secret Service Safe Storage key, Linux cookie format).
 - Optional custom window buttons on Windows and Linux instead of the native title bar.
-- Tray icon, autostart and single-instance verification on a real Windows machine
-  (M7.1.4, M7.1.6); Linux tray behaviour varies by desktop environment.
+- Tray icon, autostart, single-instance and installer verification on a real Windows
+  machine (M7.1.6); Linux tray behaviour varies by desktop environment.
 - UI says "Preferences" everywhere; Windows and Linux may prefer "Settings".
 
 ## Download quarantine (M9.1)

@@ -546,3 +546,16 @@ workspace with an `xoxc` session; fixtures are synthetic.
 - **Fallback:** none needed beyond the Open in Slack deep link; errors surface
   as typed CLI errors (`auth`, `rate_limited`, `network`).
 - **Date checked:** 2026-11-15, source review and wiremock fixtures only.
+
+## Windows desktop import (M7.1.2)
+
+No new endpoint is used. Session validation retains the existing `auth.test` path.
+Local-profile assumptions and Windows fallback behavior are in
+[platforms.md](platforms.md#slack-desktop-session-import).
+
+TODO: normal/Store profile paths, `Local State` key availability, `v11` AES-GCM
+cookies, cookie host hashes and the availability of a complete desktop user agent
+in Windows logs are **not verified on a real workspace**. `v10` follows Chromium
+source; unsupported encryption (including app-bound `v20`) and locked stores fail
+with webview sign-in available. Do not add an undocumented endpoint or invent a
+desktop user agent to work around an unavailable local profile.

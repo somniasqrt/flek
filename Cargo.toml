@@ -11,6 +11,8 @@ publish = false
 flek-core = { path = "crates/core" }
 
 aes = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 cbc = { version = "0.1", features = ["alloc"] }
@@ -20,7 +22,7 @@ dirs = "6"
 fastrand = "2"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 indicatif = "0.18"
-keyring = { version = "3", features = ["apple-native"] }
+keyring = { version = "3", default-features = false }
 plist = "1"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 percent-encoding = "2"

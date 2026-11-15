@@ -354,7 +354,7 @@ fn client_for(creds: &Credentials, base_url: &str) -> Result<Client> {
 /// (reads logs, maybe the Electron binary); `None` when it cannot be told.
 pub fn desktop_origin() -> Option<SessionOrigin> {
     let home = dirs::home_dir()?;
-    let root = desktop_import::locate(&home).ok()?.root;
+    let root = desktop_import::locate_current().ok()?.root;
     let app = desktop_profile::find_app(&home);
     match desktop_profile::read(app.as_deref(), &root) {
         Ok(p) => {

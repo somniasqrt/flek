@@ -67,11 +67,32 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         ],
     )?;
 
+    // macOS uses a monochrome template; Windows needs a colour icon that stays
+    // visible on both light and dark taskbars.
+    let icon = if cfg!(target_os = "windows") {
+        Image::from_bytes(include_bytes!("../icons/32x32.png"))?
+    } else {
+        Image::from_bytes(include_bytes!("../icons/tray.png"))?
+    };
     TrayIconBuilder::with_id("main")
-        .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
-        .icon_as_template(true)
+        .icon(icon)
+        .icon_as_template(cfg!(target_os = "macos"))
         .tooltip("Flek")
         .menu(&menu)
+        .show_menu_on_left_click(!cfg!(target_os = "windows"))
+        .on_tray_icon_event(|tray, event| {
+            #[cfg(target_os = "windows")]
+            if let tauri::tray::TrayIconEvent::Click {
+                button: tauri::tray::MouseButton::Left,
+                button_state: tauri::tray::MouseButtonState::Up,
+                ..
+            } = event
+            {
+                crate::show_main(tray.app_handle());
+            }
+            #[cfg(not(target_os = "windows"))]
+            let _ = (tray, event);
+        })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => crate::show_main(app),
             "autostart" => {

@@ -7,6 +7,8 @@ publish.workspace = true
 [dependencies]
 toml = "1"
 aes.workspace = true
+aes-gcm.workspace = true
+base64.workspace = true
 chrono.workspace = true
 cbc.workspace = true
 dirs.workspace = true
@@ -22,6 +24,7 @@ rusty-leveldb.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha1.workspace = true
+sha2.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -31,13 +34,20 @@ tracing-subscriber.workspace = true
 zeroize.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
 security-framework.workspace = true
 xattr.workspace = true
 uuid.workspace = true
 
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+windows-dpapi = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-sha2.workspace = true
 wiremock.workspace = true
 
 [lints]

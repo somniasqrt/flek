@@ -344,11 +344,9 @@ async fn import_desktop_with_policy(app: AppHandle, explicit: bool) {
 pub(crate) fn desktop_installed() -> bool {
     // Where import is not implemented, sign-in is the only path.
     auth::desktop_import::IMPORT_SUPPORTED
-        && dirs::home_dir().is_some_and(|home| {
-            auth::desktop_import::candidate_roots(&home)
-                .iter()
-                .any(|p| p.is_dir())
-        })
+        && auth::desktop_import::current_roots()
+            .iter()
+            .any(|p| p.is_dir())
 }
 
 /// Session ready: show it, start syncing in the background.
