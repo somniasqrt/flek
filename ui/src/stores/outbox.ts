@@ -1,6 +1,7 @@
 // Messages being sent. The database stays the source of truth: a pending
 // entry only fills the gap until the stored message (matched by
 // client_msg_id, or by ts once Slack answered) shows up in a list.
+import { clearUploads, pendingUploadsFor, retryUpload, removeAttachment } from "./uploads";
 import { createStore, produce } from "solid-js/store";
 import { api, type Message } from "../api";
 import type { RichBlock } from "../models/rich-compose";
@@ -31,6 +32,7 @@ let me: string | null = null;
 export const setMe = (id: string) => (me = id);
 
 export function clearOutbox() {
+  clearUploads();
   setEntries([]);
   me = null;
 }
@@ -90,11 +92,14 @@ async function deliver(id: string) {
 }
 
 export const retry = (id: string) => {
+  if (retryUpload(id)) return;
   if (entries.find((e) => e.client_msg_id === id)?.state === "failed") return deliver(id);
 };
 
-export const discard = (id: string) =>
+export const discard = (id: string) => {
+  if (removeAttachment(id)) return;
   setEntries((list) => list.filter((e) => e.client_msg_id !== id));
+};
 
 /// Optimistic copies for a list, as messages: the channel timeline
 /// (`threadTs` null: top-level messages and broadcasts) or one thread.
@@ -130,5 +135,5 @@ export function pendingFor(conversationId: string, threadTs: string | null, stor
       error: e.error,
     });
   }
-  return out;
+  return [...out, ...pendingUploadsFor(conversationId, threadTs, stored, me)];
 }

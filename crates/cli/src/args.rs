@@ -139,6 +139,8 @@ pub(super) enum Command {
     },
     #[command(flatten)]
     Write(crate::write_commands::WriteCommand),
+    /// Upload one file as you (guarded like send).
+    Upload(crate::upload_commands::UploadOptions),
     /// List conversations from the local database.
     Channels {
         /// Include archived channels.

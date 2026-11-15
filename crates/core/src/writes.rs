@@ -12,6 +12,8 @@ use crate::{
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::path::PathBuf;
+use tokio::sync::watch;
 
 #[derive(Clone, Copy)]
 pub enum MessageAction {
@@ -640,4 +642,195 @@ pub fn validate_schedule(at: i64, now: i64) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+/// What an upload would share. File bytes never appear here, only metadata.
+#[derive(Clone, Serialize)]
+pub struct UploadPlan {
+    pub filename: String,
+    pub size: u64,
+    pub channel: String,
+    pub thread_ts: Option<String>,
+    pub comment: String,
+}
+
+/// One file shared to one conversation (or one thread). Prepared offline from a
+/// stat of the file and the local database; the file is only read after the policy
+/// check and the rate-limit reservation succeeded.
+#[derive(Serialize)]
+pub struct PreparedUpload {
+    pub action: ActionDescriptor,
+    pub upload: UploadPlan,
+    #[serde(skip)]
+    path: PathBuf,
+}
+
+/// Upload receipt: the guard fields plus the file identity. `message` is always
+/// read from SQLite and `ts` stays null until a real history/live message exists.
+#[derive(Default, Serialize)]
+pub struct UploadReceipt {
+    pub action: String,
+    pub channel: Option<String>,
+    pub conversation_id: String,
+    pub file_id: String,
+    pub ts: Option<String>,
+    pub permalink: Option<String>,
+    pub not_stored_locally: bool,
+    /// The final response was ambiguous and no stored message was found: an
+    /// uncertain remote write, never a reason to upload again.
+    pub completion_unknown: bool,
+    pub warning: Option<&'static str>,
+    pub message: Option<views::Message>,
+}
+
+const MAX_UPLOAD_COMMENT_CHARS: usize = 40_000;
+
+impl PreparedUpload {
+    pub const ACTION: &'static str = "upload";
+
+    pub fn prepare(
+        c: &Connection,
+        team: &str,
+        path: &std::path::Path,
+        channel: &str,
+        thread_ts: Option<String>,
+        comment: &str,
+        config: &AgentConfig,
+    ) -> Result<Self> {
+        config.validate()?;
+        let channel = exact_channel(c, team, channel)?;
+        if thread_ts
+            .as_deref()
+            .is_some_and(|t| !references::valid_ts(t))
+        {
+            return Err(Error::Usage("invalid thread timestamp".into()));
+        }
+        let metadata = std::fs::metadata(path)?;
+        if !metadata.is_file() {
+            return Err(Error::Usage("upload requires a regular file".into()));
+        }
+        let filename = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| Error::Usage("upload filename must be UTF-8".into()))?
+            .to_owned();
+        crate::sync::upload::validate_file(&filename, metadata.len())?;
+        let mut comment = comment.to_owned();
+        if let Some(signature) = &config.signature {
+            if !comment.trim().is_empty() {
+                comment.push_str("\n\n");
+            }
+            comment.push_str(signature);
+        }
+        if comment.chars().count() > MAX_UPLOAD_COMMENT_CHARS {
+            return Err(Error::Usage("upload comment is too long".into()));
+        }
+        let action = ActionDescriptor {
+            action: Self::ACTION.into(),
+            team_id: team.into(),
+            targets: vec![channel.clone()],
+        };
+        action.validate()?;
+        Ok(Self {
+            action,
+            upload: UploadPlan {
+                filename,
+                size: metadata.len(),
+                channel,
+                thread_ts,
+                comment,
+            },
+            path: path.to_owned(),
+        })
+    }
+
+    /// Same contract as [`PreparedWrite::dry_run_report`]: no credentials, network,
+    /// file read, log entry or rate-limit slot.
+    pub fn dry_run_report(&self, config: &AgentConfig, yes: bool) -> Value {
+        json!({
+            "dry_run": true,
+            "authorized": config.authorize(&self.action, yes).is_ok(),
+            "write": self,
+        })
+    }
+
+    /// Policy and rate limit first, then the private local snapshot, then the
+    /// session. An ambiguous completion leaves the log entry `pending` (the file
+    /// may already be shared) instead of recording it as accepted.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn run_guarded<F, Fut>(
+        &self,
+        log: &ActionLog,
+        config: &AgentConfig,
+        yes: bool,
+        store: &Store,
+        cancel: watch::Receiver<bool>,
+        progress: crate::sync::upload::Progress,
+        session: F,
+    ) -> Result<UploadReceipt>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<WriteSession>>,
+    {
+        let reservation = log.reserve(config, &self.action, yes)?;
+        let result = async {
+            let mut upload = crate::sync::upload::Upload::from_path(&self.path).await?;
+            let session = session().await?;
+            if session.team_id != self.action.team_id {
+                return Err(Error::Forbidden);
+            }
+            let uploaded = upload
+                .send(
+                    &session.client,
+                    store,
+                    crate::sync::upload::Destination {
+                        conversation_id: self.upload.channel.clone(),
+                        thread_ts: self.upload.thread_ts.clone(),
+                        comment: self.upload.comment.clone(),
+                        blocks: None,
+                    },
+                    cancel,
+                    progress,
+                )
+                .await?;
+            let channel = uploaded.conversation_id.clone();
+            let message = match &uploaded.ts {
+                Some(ts) => store
+                    .with_read(|c| views::message(c, &channel, ts))
+                    .ok()
+                    .flatten(),
+                None => None,
+            };
+            let permalink = match (&uploaded.ts, &message) {
+                (Some(_), Some(m)) if m.permalink.is_some() => m.permalink.clone(),
+                (Some(ts), _) => session.client.chat_get_permalink(&channel, ts).await.ok(),
+                _ => None,
+            };
+            Ok(UploadReceipt {
+                action: Self::ACTION.into(),
+                channel: Some(channel.clone()),
+                conversation_id: channel,
+                file_id: uploaded.file_id,
+                ts: uploaded.ts,
+                permalink,
+                not_stored_locally: message.is_none(),
+                completion_unknown: uploaded.completion_unknown,
+                warning: uploaded
+                    .completion_unknown
+                    .then_some("completion_unconfirmed_check_history_before_retrying"),
+                message,
+            })
+        }
+        .await;
+        match &result {
+            Ok(receipt) if receipt.completion_unknown => drop(reservation),
+            other => {
+                let status = other.as_ref().map(|_| ()).map_err(Error::kind);
+                if reservation.finish(status).is_err() {
+                    tracing::warn!("action-log completion unavailable; entry remains pending");
+                }
+            }
+        }
+        result
+    }
 }

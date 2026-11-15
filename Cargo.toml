@@ -26,7 +26,7 @@ keyring = { version = "3", default-features = false }
 plist = "1"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 percent-encoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 rusty-leveldb = "3"
 security-framework = "3"

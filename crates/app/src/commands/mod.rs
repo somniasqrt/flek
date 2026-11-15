@@ -24,3 +24,6 @@ fn text(e: impl std::fmt::Display) -> String {
 
 /// Largest page the UI may ask for.
 const MAX_PAGE: usize = 500;
+
+mod uploads;
+pub use uploads::*;

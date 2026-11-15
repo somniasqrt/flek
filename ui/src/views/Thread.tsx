@@ -1,3 +1,4 @@
+import { fileDragOver, dropFiles } from "../stores/uploads";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { t } from "../i18n/index";
@@ -98,7 +99,7 @@ export default function Thread(props: {
   const kind = () => props.conversation.kind;
 
   return (
-    <aside class="thread-panel" aria-label={t("Thread")}>
+    <aside onDragOver={fileDragOver} onDrop={e => { if (props.conversation.is_member !== false && !props.conversation.is_archived) dropFiles(e, props.conversation.id, props.ts); else e.preventDefault(); }} class="thread-panel" aria-label={t("Thread")}>
       <header class="thread-header">
         <h3>{t("Thread")}</h3>
         <span class="thread-channel muted">

@@ -164,3 +164,15 @@ query row also submit filters/words in this mode. Results can switch back to
 The preview filters are synthetic approximations; parser, FTS stemming and cursor
 correctness belong to the core. Native capability delivery and visual interaction
 remain owner QA.
+
+File upload preview (M6.1.2): attach a local synthetic file with the + button,
+drop onto the timeline or the existing thread, or paste a clipboard image into
+the editor. Files remain local to the preview; the mock does not retain bytes.
+Send with/without formatted text, remove a chip before sending, cancel during
+progress, navigate between channel/thread drafts and verify the stored mock
+message replaces its optimistic row. A filename containing `fail` fails the
+first transfer and succeeds on Retry; `uncertain` simulates a lost completion
+response with no automatic retry. Empty/>100 MiB files and an eleventh queued
+file produce localized validation errors. Use both `?lang=en`/`?lang=uk`, narrow
+panels and both themes. Native OS drop/file chooser/clipboard behavior and real
+Slack scan/share delays require owner checks; the preview cannot verify them.

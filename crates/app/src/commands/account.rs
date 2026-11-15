@@ -48,6 +48,7 @@ pub async fn manual_sign_in(app: AppHandle, token: String, cookie: String) -> Cm
 #[tauri::command]
 pub async fn sign_out(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
     let _maintenance = state.maintenance.lock().await;
+    state.uploads.clear().await;
     state.stop_and_wait().await;
     let signed_out = purge_stored(
         &state.creds,

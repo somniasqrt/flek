@@ -576,6 +576,19 @@ export const en = {
     "Choose how Flek looks. System follows Windows.",
   "Choose how Flek looks. System follows your system.":
     "Choose how Flek looks. System follows your system.",
+  "Attach files": "Attach files",
+  "Attachments": "Attachments",
+  "Uploading file": "Uploading file",
+  "Ready to upload": "Ready to upload",
+  "Confirming upload…": "Confirming upload…",
+  "Remove attachment {name}": "Remove attachment {name}",
+  "Empty files cannot be uploaded.": "Empty files cannot be uploaded.",
+  "Files must be 100 MiB or smaller.": "Files must be 100 MiB or smaller.",
+  "This filename cannot be uploaded.": "This filename cannot be uploaded.",
+  "Attach up to 10 files at a time.": "Attach up to 10 files at a time.",
+  "Upload failed. Check your connection and retry.": "Upload failed. Check your connection and retry.",
+  "Upload confirmation is pending. Check the conversation before uploading again.": "Upload confirmation is pending. Check the conversation before uploading again.",
+  "File replies cannot be broadcast to the channel.": "File replies cannot be broadcast to the channel.",
 } as const;
 export type Key = keyof typeof en;
 export type Dictionary = { [K in Key]: string };

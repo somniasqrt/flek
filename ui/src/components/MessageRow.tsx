@@ -309,6 +309,14 @@ export default function MessageRow(props: {
         <Show when={m.edited}>
           <span class="muted edited">{t("(edited)")}</span>
         </Show>
+        <Show when={m.upload_name}>
+          <div class="upload-pending">
+            {m.upload_name?.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")}
+            <Show when={m.upload_progress !== undefined}>
+              <progress max="100" value={m.upload_progress} aria-label={t("Uploading file")} />
+            </Show>
+          </div>
+        </Show>
         <Show when={m.files.length > 0}>
           <Files files={m.files} from={{ user_id: m.user_id, name: author(m), ts: m.ts, conversation_id: props.conversationId }} />
         </Show>
@@ -327,7 +335,7 @@ export default function MessageRow(props: {
           </div>
         </Show>
         <Show when={m.pending === "sent"}>
-          <div class="send-reason">{t("Sent to Slack; local copy will sync later.")}</div>
+          <div class="send-reason">{m.upload_uncertain ? t("Upload confirmation is pending. Check the conversation before uploading again.") : t("Sent to Slack; local copy will sync later.")}</div>
         </Show>
         <Show when={m.pending === "failed" && m.client_msg_id}>
           {(id) => (

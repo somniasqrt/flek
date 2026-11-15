@@ -441,3 +441,10 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+.compose-attachments { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+.compose-attachment { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; max-width: 100%; }
+.compose-attachment-name { overflow-wrap: anywhere; white-space: pre-wrap; }
+.compose-attachment small { color: var(--muted); }
+.compose-attachment progress, .upload-pending progress { width: 90px; height: 6px; }
+.upload-pending { display: flex; align-items: center; gap: 12px; padding: 8px 0; overflow-wrap: anywhere; }

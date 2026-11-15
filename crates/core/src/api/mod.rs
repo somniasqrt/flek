@@ -37,4 +37,5 @@ pub mod team;
 mod channel_browser;
 pub use channel_browser::ChannelDirectory;
 
+pub mod upload;
 pub mod write;

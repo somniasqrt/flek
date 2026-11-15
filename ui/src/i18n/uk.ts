@@ -583,4 +583,17 @@ export const uk = {
     "Оберіть вигляд Flek. Системна тема повторює налаштування Windows.",
   "Choose how Flek looks. System follows your system.":
     "Оберіть вигляд Flek. Системна тема повторює налаштування вашої системи.",
+  "Attach files": "Прикріпити файли",
+  "Attachments": "Вкладення",
+  "Uploading file": "Надсилання файлу",
+  "Ready to upload": "Готовий до надсилання",
+  "Confirming upload…": "Підтвердження надсилання…",
+  "Remove attachment {name}": "Прибрати вкладення {name}",
+  "Empty files cannot be uploaded.": "Порожні файли не можна надсилати.",
+  "Files must be 100 MiB or smaller.": "Розмір файлу має бути не більше 100 MiB.",
+  "This filename cannot be uploaded.": "Файл із такою назвою не можна надіслати.",
+  "Attach up to 10 files at a time.": "Можна прикріпити до 10 файлів одночасно.",
+  "Upload failed. Check your connection and retry.": "Не вдалося надіслати файл. Перевірте з’єднання та повторіть спробу.",
+  "Upload confirmation is pending. Check the conversation before uploading again.": "Очікуємо підтвердження надсилання файлу. Перевірте розмову, перш ніж надсилати його знову.",
+  "File replies cannot be broadcast to the channel.": "Відповіді з файлами не можна також надіслати в канал.",
 } satisfies Dictionary;

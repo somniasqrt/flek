@@ -24,6 +24,7 @@ The table lists payload fields alongside the common `schema_version: integer`.
 | `history <conversation>` | `conversation`: Conversation; `messages`: Message[] (oldest first) |
 | `search <query>` | `results`: Message[] with an additional `snippet: string` on each result (`**` marks matches); ordering follows relevance or `--recent` |
 | `send <conversation> [text]` and the other write commands | Guarded writes; see "Agent writes" below for the receipt (`action`, `channel`, `ts`, `permalink`, `message`, ...) and the `--dry-run` report |
+| `upload <file> --channel <conversation> [--thread <root-ts>] [--comment <text>]` | `file_id`, `conversation_id`: strings; `message`: Message or null from SQLite; `ts`: string or null; `not_stored_locally`, `completion_unknown`: booleans; guarded, see "Agent writes" |
 | `import <path>` | `summary`: `{format: string, read: integer, written: integer, unknown_channels: string[]}` |
 | `export --obsidian <vault>` | `summary`: `{directory: string, conversations: integer, messages: integer, links: integer, files: integer, notes_written: integer, notes_unchanged: integer, attachments_copied: integer, attachments_unchanged: integer, attachments_unavailable: integer}`; see [offline Obsidian export](obsidian-export.md) |
 | `sync` | `summary`: `{conversations: integer, messages: integer, deleted: integer, failed: integer, files_downloaded: integer}` |
@@ -473,6 +474,7 @@ are always allowed; the commands below are the only writers in the CLI.
 | `channel topic` / `purpose` / `rename <channel> <text>` | `conversations.setTopic` / `setPurpose` / `rename` | `channel-topic` / `channel-purpose` / `channel-rename` |
 | `channel archive <channel>` | `conversations.archive` | `channel-archive` |
 | `status set <text>` / `status clear` | `users.profile.set` | `status-set` / `status-clear` |
+| `upload <file> --channel REF [--thread TS] [--comment TEXT]` | `files.getUploadURLExternal`, upload host, `files.completeUploadExternal` | `upload` |
 
 Guard targets (what allow rules list under `channels`): message and channel
 actions use the resolved conversation id; `dm` the recipient user ids;
@@ -486,7 +488,7 @@ target, so there are no mass writes.
 Slack timestamp (`flek react general 1700000000.123456 --emoji tada`). Channels
 and people resolve with the exact matcher from the local database only: a
 prefix or fuzzy match is reported as `ambiguous`/`not_found`, never guessed.
-No command opens a DM implicitly; run `flek dm` first. Edit, delete, upload and
+No command opens a DM implicitly; run `flek dm` first. Edit, delete and
 forward are not part of this layer yet; when they are added they must call the
 same guard (`writes::guarded`) with their own action name.
 
@@ -744,3 +746,46 @@ name, archived flag and own membership update both indexed columns and stored
 raw metadata. Status merges the returned profile using the same core path as
 M6.7. Confirmed writes emit directory invalidation; join also emits history
 invalidation. No channel write advances history sync markers itself.
+
+## Upload (M8.4.4, guarded)
+
+`flek upload <file> --channel <exact-reference> [--thread <root-ts>] [--comment <text>]`
+is a write like `send` and follows "Agent writes" above: action `upload`, the
+policy target is the destination channel (a thread reply is still one target),
+`--dry-run`, `--yes`, the shared rate limit and the action log all apply. The
+channel resolves with the exact matcher from the local database only (no network
+directory refresh). The file is only `stat`ed while preparing: name, size (1 byte
+to 100 MiB), regular file. Its bytes are copied into a private snapshot after the
+policy and rate-limit checks and before the session is read from the Keychain.
+`agent.toml`'s `signature`, when set, is appended to the comment (or is the
+comment); the comment is escaped like message text.
+
+`--dry-run` prints the prepared form and whether the policy would authorize it,
+never file bytes or the local path:
+
+```json
+{"schema_version":1,"dry_run":true,"authorized":false,"write":{"action":{"action":"upload","team_id":"T0FAKE","targets":["C0FAKE"]},"upload":{"filename":"notes.txt","size":27,"channel":"C0FAKE","thread_ts":null,"comment":""}}}
+```
+
+Receipt (one schema-versioned object; `message` always comes from SQLite; `ts`
+can be null even after remote acceptance because external completion supplies
+no authoritative message timestamp):
+
+```json
+{"schema_version":1,"action":"upload","channel":"CEXAMPLE","conversation_id":"CEXAMPLE","file_id":"FEXAMPLE","ts":null,"permalink":null,"not_stored_locally":true,"completion_unknown":false,"warning":null,"message":null}
+```
+
+`not_stored_locally: true` means normal sync must recover the shared message.
+`completion_unknown: true` means the final response was ambiguous and no matching
+stored message was found; this is an uncertain remote write, not permission to
+retry as a new upload: the receipt carries
+`warning: "completion_unconfirmed_check_history_before_retrying"` and the action
+log entry stays `pending` instead of `accepted`. Check the conversation before
+uploading again. Both fields may be true; a confirmed/locally hydrated upload sets
+both false. This partial result exits successfully to preserve the file id.
+Definitive Slack refusals use the existing typed failure envelope/exits and a
+`failed:<exit code>` log entry. Ctrl+C cancels ticket/byte work; after completion
+starts it waits for the result because the file may already have been shared.
+Progress goes only to stderr in human mode. The upload host receives only the
+file bytes: never the token, the cookie or any `Authorization` header, and
+redirects from it are not followed. See api-notes.md for the transport and limits.

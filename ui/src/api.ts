@@ -1,6 +1,6 @@
 // Typed wrappers over the Rust commands and events (crates/app/src).
 import type { Presence, CustomStatus } from "./models/presence";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { platform } from "./platform";
 
@@ -127,6 +127,9 @@ export type Message = {
   /// Id the sending client chose (matches an optimistic copy).
   client_msg_id?: string | null;
   /// UI only: an optimistic copy not stored yet (see outbox.ts).
+  upload_name?: string;
+  upload_progress?: number;
+  upload_uncertain?: boolean;
   pending?: "sending" | "failed" | "sent";
   /// UI only: why a pending copy failed.
   error?: string;
@@ -381,6 +384,14 @@ export const api = {
     invoke<Hit[]>("search", { query, recent, limit }),
   setReaction: (conversationId: string, ts: string, name: string, on: boolean) =>
     invoke<void>("set_reaction", { conversationId, ts, name, on }),
+  prepareUpload: (name: string, size: number) => invoke<string>("prepare_upload", { name, size }),
+  appendUpload: (id: string, offset: number, bytes: Uint8Array) => invoke<void>("append_upload", { id, offset, bytes: Array.from(bytes) }),
+  discardUpload: (id: string) => invoke<void>("discard_upload", { id }),
+  sendUpload: (id: string, conversationId: string, threadTs: string | null, comment: string, progress: (p: import("./models/upload-model").UploadProgress) => void, blocks?: import("./models/rich-compose").RichBlock[]) => {
+    const onProgress = new Channel<import("./models/upload-model").UploadProgress>();
+    onProgress.onmessage = progress;
+    return invoke<{ file_id: string; conversation_id: string; ts: string | null; not_stored_locally: boolean; completion_unknown: boolean }>("send_upload", { id, destination: { conversation_id: conversationId, thread_ts: threadTs, comment, blocks }, onProgress });
+  },
   sendMessage: (
     conversationId: string,
     text: string,

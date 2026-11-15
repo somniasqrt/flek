@@ -14,7 +14,7 @@ use crate::{Error, Result, Secret};
 
 pub const DEFAULT_BASE_URL: &str = "https://slack.com/api";
 
-const MAX_RETRIES: u32 = 3;
+pub(super) const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_WAIT: Duration = Duration::from_secs(120);
 
 /// Talks to Slack as the user: `xoxc` token plus the `d` cookie.
@@ -121,6 +121,18 @@ impl Client {
             ));
         }
         Ok(())
+    }
+
+    /// Upload tickets may address Slack file hosts or the exact configured mock origin.
+    pub(super) fn validate_upload_url(&self, value: &str) -> Result<reqwest::Url> {
+        let url =
+            reqwest::Url::parse(value).map_err(|_| Error::File("invalid upload URL".into()))?;
+        let base = reqwest::Url::parse(&self.base_url)
+            .map_err(|_| Error::File("invalid API URL".into()))?;
+        if !crate::net_policy::slack_file(&url) && !crate::net_policy::same_origin(&url, &base) {
+            return Err(Error::File("untrusted upload URL".into()));
+        }
+        Ok(url)
     }
 
     pub fn profile(&self) -> &ClientProfile {
@@ -325,7 +337,7 @@ fn session_headers(cookie: &Secret, profile: &ClientProfile) -> Result<HeaderMap
     Ok(headers)
 }
 
-fn retry_after(headers: &HeaderMap) -> Duration {
+pub(super) fn retry_after(headers: &HeaderMap) -> Duration {
     headers
         .get(RETRY_AFTER)
         .and_then(|v| v.to_str().ok())

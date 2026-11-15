@@ -14,6 +14,7 @@ mod read_commands;
 mod search_commands;
 mod send_commands;
 mod sync_commands;
+mod upload_commands;
 mod write_commands;
 
 use args::{Cli, Global};

@@ -508,3 +508,163 @@ fn missing_database_or_team_is_reported_not_written() {
     assert_eq!(v["error"]["code"], "not_found");
     assert!(!Path::new(&dir.path().join("log.db")).exists());
 }
+
+const UPLOAD_BYTES: &str = "UPLOAD-BODY-MUST-NOT-APPEAR";
+
+fn upload_file(env: &Env) -> String {
+    let p = env.path("notes.txt");
+    std::fs::write(&p, UPLOAD_BYTES).unwrap();
+    p.to_str().unwrap().to_owned()
+}
+
+#[test]
+fn upload_is_denied_by_default_before_any_session_or_log_entry() {
+    let env = Env::new();
+    let file = upload_file(&env);
+    let err = env.fail(&["upload", &file, "--channel", "general"], 8);
+    assert_eq!(err["code"], "forbidden");
+    assert!(err["message"].as_str().unwrap().contains("agent.toml"));
+    assert!(!env.path("log.db").exists());
+    // An allow rule for another action or channel does not authorize it.
+    env.config(
+        r#"
+[[allow]]
+team = "T1"
+channels = ["C1"]
+actions = ["send"]
+[[allow]]
+team = "T1"
+channels = ["C2"]
+actions = ["upload"]
+"#,
+    );
+    env.fail(&["upload", &file, "--channel", "general"], 8);
+    assert!(!env.path("log.db").exists());
+}
+
+#[test]
+fn upload_dry_run_reports_metadata_only_and_touches_nothing() {
+    let env = Env::new();
+    let file = upload_file(&env);
+    let expected = |authorized: bool| {
+        json!({
+            "schema_version": 1, "dry_run": true, "authorized": authorized,
+            "write": {
+                "action": {"action": "upload", "team_id": "T1", "targets": ["C1"]},
+                "upload": {"filename": "notes.txt", "size": UPLOAD_BYTES.len(),
+                    "channel": "C1", "thread_ts": TS, "comment": "see this"}
+            }
+        })
+    };
+    let args = [
+        "--dry-run",
+        "upload",
+        &file,
+        "--channel",
+        "#general",
+        "--thread",
+        TS,
+        "--comment",
+        "see this",
+    ];
+    assert_eq!(env.ok(&args), expected(false));
+    let out = env.cmd().args(args).assert().success().get_output().clone();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(!text.contains(UPLOAD_BYTES) && !text.contains(env.dir.path().to_str().unwrap()));
+    // --yes and a matching allow rule both authorize, still without any I/O.
+    let mut yes = vec!["--yes"];
+    yes.extend(args);
+    assert_eq!(env.ok(&yes), expected(true));
+    env.config("[[allow]]\nteam = \"T1\"\nchannels = [\"C1\"]\nactions = [\"upload\"]\n");
+    assert_eq!(env.ok(&args), expected(true));
+    assert!(!env.path("log.db").exists());
+}
+
+#[test]
+fn upload_human_dry_run_is_the_same_report_without_secrets() {
+    let env = Env::new();
+    let file = upload_file(&env);
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("flek"));
+    let human = cmd
+        .arg("--db")
+        .arg(env.path("fixture.db"))
+        .args(["--team", "T1", "--dry-run", "--agent-config"])
+        .arg(env.path("agent.toml"))
+        .arg("--agent-log")
+        .arg(env.path("log.db"))
+        .env("HOME", env.dir.path())
+        .args(["upload", &file, "--channel", "general"])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let human: Value = serde_json::from_slice(&human.stdout).unwrap();
+    assert_eq!(human["write"]["upload"]["filename"], "notes.txt");
+    assert!(human.get("schema_version").is_none());
+    assert!(!human.to_string().contains(UPLOAD_BYTES));
+}
+
+#[test]
+fn upload_invalid_input_is_a_typed_error_before_the_policy_or_session() {
+    let env = Env::new();
+    let file = upload_file(&env);
+    let dir = env.dir.path().to_str().unwrap().to_owned();
+    let empty = env.path("empty");
+    std::fs::write(&empty, b"").unwrap();
+    let empty = empty.to_str().unwrap().to_owned();
+    let big = env.path("big.bin");
+    std::fs::File::create(&big)
+        .unwrap()
+        .set_len(100 * 1024 * 1024 + 1)
+        .unwrap();
+    let big = big.to_str().unwrap().to_owned();
+    for (args, code) in [
+        (vec!["upload", &file, "--channel", "nope"], 3),
+        (
+            vec!["upload", &file, "--channel", "general", "--thread", "x"],
+            2,
+        ),
+        (vec!["upload", &dir, "--channel", "general"], 2),
+        (vec!["upload", &empty, "--channel", "general"], 2),
+        (vec!["upload", &big, "--channel", "general"], 2),
+    ] {
+        // Not even --yes gets past local validation, and no session is needed to say so.
+        let mut all = vec!["--yes"];
+        all.extend(args.clone());
+        env.fail(&all, code);
+    }
+    let missing = env.path("missing.txt");
+    env.cmd()
+        .args([
+            "--yes",
+            "upload",
+            missing.to_str().unwrap(),
+            "--channel",
+            "general",
+        ])
+        .assert()
+        .failure();
+    assert!(!env.path("log.db").exists());
+}
+
+#[test]
+fn upload_rate_limit_is_enforced_before_the_session() {
+    let env = Env::new();
+    let file = upload_file(&env);
+    env.config("writes_per_minute = 1\n");
+    let log = env.log();
+    let cfg = AgentConfig::load(&env.path("agent.toml")).unwrap();
+    log.reserve(
+        &cfg,
+        &ActionDescriptor {
+            action: "send".into(),
+            team_id: "T1".into(),
+            targets: vec!["C1".into()],
+        },
+        true,
+    )
+    .unwrap();
+    let err = env.fail(&["--yes", "upload", &file, "--channel", "general"], 6);
+    assert_eq!(err["code"], "rate_limited");
+    assert_eq!(log.entries(10).unwrap().len(), 1);
+}

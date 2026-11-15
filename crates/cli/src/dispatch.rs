@@ -56,6 +56,7 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
         Command::Import { path, channel } => import_archive(g, &path, channel.as_deref()),
         Command::Send { channel, options } => send(&store, g, &channel, options, None).await,
         Command::Write(command) => crate::write_commands::run(command, &store, g).await,
+        Command::Upload(options) => crate::upload_commands::run(options, &store, g).await,
         Command::Channels {
             archived,
             include_non_member,

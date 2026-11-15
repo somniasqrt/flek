@@ -1,3 +1,5 @@
+import Attachments from "./composer/Attachments";
+import { draftAttachments, queueAttachments, fileDragOver, dropFiles } from "../stores/uploads";
 import { For, Show } from "solid-js";
 import { t } from "../i18n/index";
 import Avatar from "./Avatar";
@@ -56,8 +58,13 @@ export default function Composer(props: ComposerProps) {
     onCompositionStart,
     onCompositionEnd,
   } = createComposer(props);
+  let picker!: HTMLInputElement;
+  const canSubmit = () => hasText() || draftAttachments(props.conversationId, props.threadTs).some(e => e.state === "ready");
+  const hasAttachments = () => draftAttachments(props.conversationId, props.threadTs).length > 0;
   return (
-    <div class="composer">
+    <div class="composer" onDragOver={fileDragOver} onDrop={e => dropFiles(e, props.conversationId, props.threadTs ?? null)}>
+      <input ref={picker} type="file" multiple hidden aria-label={t("Attach files")}
+        onChange={e => { queueAttachments(props.conversationId, props.threadTs ?? null, Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ""; }} />
       <div
         class="composer-box"
         ref={setBox}
@@ -217,23 +224,20 @@ export default function Composer(props: ComposerProps) {
           onKeyDown={onKeyDown}
           onPaste={(e) => {
             e.preventDefault();
-            insert(e.clipboardData?.getData("text/plain") ?? "");
+            const images = Array.from(e.clipboardData?.files ?? []).filter(f => f.type.startsWith("image/"));
+            if (images.length) queueAttachments(props.conversationId, props.threadTs ?? null, images);
+            else insert(e.clipboardData?.getData("text/plain") ?? "");
           }}
           onDrop={(e) => {
             e.preventDefault();
           }}
         />
+        <Attachments conversationId={props.conversationId} threadTs={props.threadTs} />
         <div class="composer-bar" role="toolbar" aria-label={t("Message actions")}>
-          <span title={t("File uploads are planned")}>
-            <button
-              type="button"
-              class="compose-tool compose-add"
-              aria-label={t("Attach file (coming soon)")}
-              disabled
-            >
-              <ComposeIcon name="plus" />
-            </button>
-          </span>
+          <button type="button" class="compose-tool compose-add" title={t("Attach files")}
+            aria-label={t("Attach files")} onClick={() => picker.click()}>
+            <ComposeIcon name="plus" />
+          </button>
           <button
             type="button"
             class="compose-tool"
@@ -303,7 +307,7 @@ export default function Composer(props: ComposerProps) {
             </button>
           </span>
           <div class="composer-spacer" />
-          <div class="composer-send-group" classList={{ ready: hasText() }}>
+          <div class="composer-send-group" classList={{ ready: canSubmit() }}>
             <button
               type="button"
               class="composer-send"
@@ -311,7 +315,7 @@ export default function Composer(props: ComposerProps) {
                 key: modEnter() ? keyCombo([modKeyLabel(), "Enter"]) : "Enter",
               })}
               aria-label={t("Send")}
-              disabled={!hasText()}
+              disabled={!canSubmit()}
               onClick={submit}
             >
               <ComposeIcon name="send" />
@@ -332,7 +336,9 @@ export default function Composer(props: ComposerProps) {
           <label class="composer-broadcast">
             <input
               type="checkbox"
-              checked={broadcast()}
+              checked={hasAttachments() ? false : broadcast()}
+              disabled={hasAttachments()}
+              title={hasAttachments() ? t("File replies cannot be broadcast to the channel.") : undefined}
               onChange={(e) => setBroadcast(e.currentTarget.checked)}
             />
             {props.broadcastLabel}

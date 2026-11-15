@@ -47,6 +47,7 @@ pub struct SavedDownloads {
 }
 
 pub struct AppState {
+    pub uploads: crate::commands::Uploads,
     pub saved_downloads: Mutex<SavedDownloads>,
     pub maintenance: tokio::sync::Mutex<()>,
     generation: std::sync::atomic::AtomicU64,
@@ -73,6 +74,7 @@ impl AppState {
     pub fn new(store: Store) -> Self {
         let settings = startup_settings(flek_core::settings::default_path());
         Self {
+            uploads: crate::commands::Uploads::default(),
             saved_downloads: Mutex::new(SavedDownloads::default()),
             maintenance: tokio::sync::Mutex::new(()),
             generation: std::sync::atomic::AtomicU64::new(0),

@@ -1,4 +1,5 @@
 import { attachTimelineProbe } from "../dev/performance";
+import { fileDragOver, dropFiles } from "../stores/uploads";
 import { dayLabel, JoinChannelBar } from "./timeline-parts";
 import {
   createEffect,
@@ -576,7 +577,7 @@ export default function Timeline(props: {
   };
 
   return (
-    <div class="timeline">
+    <div class="timeline" onDragOver={fileDragOver} onDrop={e => { if (props.conversation.is_member !== false && !props.conversation.is_archived) dropFiles(e, props.conversation.id, null); else e.preventDefault(); }}>
       <header class="conv-header conversation-header">
         <button class="conv-header-icon conv-star" classList={{ starred: !!props.conversation.starred }}
           title={starLabel()} aria-label={starLabel()} aria-pressed={!!props.conversation.starred}

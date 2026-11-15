@@ -1,3 +1,4 @@
+import { uploadIPC } from "./uploads";
 import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { defaultSettings, type Settings } from "../models/settings-model";
@@ -115,6 +116,7 @@ let notificationTarget: NotificationTarget | null = null;
 mockIPC(
   async (cmd, args) => {
     const a = args as Record<string, string | null>;
+    if (["prepare_upload", "append_upload", "send_upload", "discard_upload"].includes(cmd)) return uploadIPC(cmd, args as Record<string, unknown>);
     switch (cmd) {
       case "notification_context":
         (window as unknown as { __notificationContext: string | null }).__notificationContext = a.conversationId;

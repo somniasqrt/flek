@@ -627,3 +627,81 @@ snapshots during concurrent edits.
 No new live Slack compatibility assumptions are introduced. Visual/native QA is
 not verified on a real workspace; use the synthetic preview recipe in
 `ui/src/preview/README.md` first.
+
+## External file uploads (M6.1.1, M8.4.4)
+
+Documented API shapes, checked against Slack's public documentation on 2026-11-15:
+
+1. [`files.getUploadURLExternal`](https://docs.slack.dev/reference/methods/files.getUploadURLExternal/)
+   takes `filename` and exact byte `length`; success supplies `file_id` and
+   `upload_url`. Flek keeps the ticket in memory with redacted Debug output.
+2. POST raw bytes with `Content-Type: application/octet-stream` and Content-Length
+   to that URL. HTTP success acknowledges the transfer; the body is not a Web API
+   `ok` envelope. Slack's [file guide](https://docs.slack.dev/messaging/working-with-files/)
+   shows **no authentication headers on this POST**. Flek uses a separate sessionless
+   reqwest client: no Cookie, Authorization, token body, cookie jar, proxies or
+   redirects. Destinations must satisfy the existing HTTPS Slack file-host policy
+   (443, no userinfo), or the configured API base's exact origin for local mocks.
+   Signed URLs never cross IPC, enter SQLite/logs or appear in transport errors.
+   Uploads never use Client's authenticated download client.
+3. [`files.completeUploadExternal`](https://docs.slack.dev/reference/methods/files.completeUploadExternal/)
+   takes JSON-encoded `files: [{id,title}]`, `channel_id`, optional root `thread_ts`,
+   and `initial_comment` for CLI text. Composer rich text uses documented `blocks`
+   instead (Slack ignores blocks when initial_comment is present). Success may
+   contain only file ids/titles, **not a message timestamp**.
+
+The two Web API calls retain Flek's existing session transport. All three stages
+honour bounded 429/Retry-After retries. Byte retries reopen the same immutable
+snapshot; definitive completion refusals retain that file ticket for retry.
+Completion is documented as callable only once: transport/JSON/server/timeout
+ambiguity becomes `completion_unknown`, with no automatic re-finalization or new
+upload. API-level `internal_error`, `fatal_error`, `request_timeout` and
+`service_unavailable` are also ambiguous. A confirmed failure remains available for explicit retry. Cancellation
+interrupts ticket requests, byte streams and their backoff. Once completion starts,
+it must settle; cancellation never claims to retract an already shared file.
+
+After completion, core runs bounded normal conversation/thread catch-up, then
+reads `message_files` and the stored message. No locally invented file_share is
+inserted. A missing local message is partial success (`not_stored_locally`),
+recovered by normal live/catch-up sync. UI receipts match real DB messages by
+file id or confirmed timestamp; they never render completion response objects as
+messages. Each selected file is shared separately; only the first receives the
+composer comment. File replies have no broadcast parameter, so the composer
+explicitly disables that checkbox for attachments.
+
+Flek's initial upload policy is 1 byte–100 MiB per file, at most ten queued files,
+independent of download settings. IPC stages 256 KiB chunks into private RAII temp
+snapshots; network streaming uses 64 KiB chunks. Byte progress measures data handed
+to HTTP, followed by a separate confirming/syncing state, not remote processing
+percentage. Draft file handles remain in memory across conversation/thread visits,
+and clear on sign-out; they do not survive process restart. App receipts survive
+lost IPC answers until acknowledged/discarded. Normal drop/error/sign-out removes
+snapshots; a process crash can leave an OS temporary upload snapshot (no session
+credentials) for normal OS temp cleanup.
+
+**TODO — not verified on a real workspace:** `xoxc` + `d` permission for both
+methods, actual upload host/response handling, rich blocks on a user-session upload,
+file scan/share visibility delay and thread sharing. No undocumented fallback or
+authenticated upload-host retry is enabled. Owner should verify a harmless small
+file before larger uploads; if rejected, open the conversation in the official
+client and attach there. Any newly discovered internal method must first be
+documented and capability-gated in `api/internal.rs`.
+
+CLI uploads go through the M8.7 write guard (`writes::PreparedUpload`, action
+`upload`, see docs/cli-json.md "Upload"): offline preparation, deny by default,
+rate limit, then snapshot, then session. An ambiguous completion keeps the action
+log entry `pending`. The desktop app's UI path is not guarded (the human clicks).
+
+Tests: `crates/core/tests/upload.rs` (wiremock: three steps, zero credentials and
+no redirect following on the upload host, hostile upload URLs, at-most-once
+completion, same-ticket retry after a definitive refusal, cancellation, 429 on all
+stages, staging bounds), `upload_snapshot_permissions.rs` (0600 snapshots, removal),
+`upload_guard.rs` (policy, dry run without bytes, log categories, rate limit, lazy
+session) and the `upload_*` tests in `crates/cli/tests/agent_writes.rs`. Still to
+cover by tests:
+
+- IPC lifecycle: main-only permissions, chunk/queue bounds, receipt replay,
+  concurrent send rejection, cancellation and sign-out cleanup.
+- UI pure models `uploadFileError`, `uploadPercent`, `uploadDisplayName`; draft
+  destination isolation, first-file comment, frozen retry payload, optimistic
+  matching by file id/ts and teardown of browser File references.

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-discard-upload"
+description = "Enables the discard_upload command without any pre-configured scope."
+commands.allow = ["discard_upload"]
+
+[[permission]]
+identifier = "deny-discard-upload"
+description = "Denies the discard_upload command without any pre-configured scope."
+commands.deny = ["discard_upload"]

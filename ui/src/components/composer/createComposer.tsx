@@ -36,6 +36,7 @@ import {
   type EditAction,
 } from "../../models/shortcuts";
 import { people, channels } from "../../stores/people";
+import { draftAttachments, sendAttachments } from "../../stores/uploads";
 import { send } from "../../stores/outbox";
 
 // Rich message editor shared by conversations and threads.
@@ -334,8 +335,10 @@ export function createComposer(props: ComposerProps) {
   const submit = () => {
     const blocks = editorBlocks(editor),
       text = blocksText(blocks, people());
-    if (!text) return;
-    send(props.conversationId, text, props.threadTs ?? null, broadcast(), blocks);
+    const files = draftAttachments(props.conversationId, props.threadTs).filter(e => e.state === "ready");
+    if (!text && !files.length) return;
+    if (files.length) sendAttachments(props.conversationId, props.threadTs ?? null, text, blocks);
+    else send(props.conversationId, text, props.threadTs ?? null, broadcast(), blocks);
     editor.replaceChildren();
     savedRange = null;
     history = [""];
