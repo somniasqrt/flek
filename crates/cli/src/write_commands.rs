@@ -25,6 +25,27 @@ pub(super) struct MessageTarget {
 }
 #[derive(Subcommand)]
 pub(super) enum WriteCommand {
+    /// Replace the text of one of your own messages (Slack mrkdwn).
+    Edit {
+        /// Exact channel name or id, or a message permalink.
+        reference: String,
+        /// Message timestamp; omit when the reference is a permalink.
+        ts: Option<String>,
+        /// Replacement text (omit to read piped stdin; '-' explicitly reads stdin).
+        #[arg(long, conflicts_with_all = ["file", "stdin"])]
+        text: Option<String>,
+        /// Read UTF-8 replacement text from a file.
+        #[arg(long, conflicts_with = "stdin")]
+        file: Option<PathBuf>,
+        /// Read UTF-8 replacement text from stdin.
+        #[arg(long)]
+        stdin: bool,
+    },
+    /// Delete one of your own messages (not undoable).
+    Delete {
+        #[command(flatten)]
+        target: MessageTarget,
+    },
     /// Add one emoji reaction to a message.
     React {
         #[command(flatten)]
@@ -125,6 +146,29 @@ pub(super) async fn run(command: WriteCommand, creds: &CredentialStore, g: &Glob
     let db = open_db(g)?;
     let team = default_team(&db, g)?;
     let prepared = match command {
+        WriteCommand::Edit {
+            reference,
+            ts,
+            text,
+            file,
+            stdin,
+        } => {
+            // A permalink carries its own ts, so a lone positional is the reference.
+            let text = send_commands::read_text(text, file, stdin, false)?;
+            db.with_read(|c| {
+                PreparedWrite::own_message(c, &team, false, &reference, ts.as_deref(), Some(&text))
+            })?
+        }
+        WriteCommand::Delete { target } => db.with_read(|c| {
+            PreparedWrite::own_message(
+                c,
+                &team,
+                true,
+                &target.reference,
+                target.ts.as_deref(),
+                None,
+            )
+        })?,
         WriteCommand::Dm { people } => db.with_read(|c| PreparedWrite::dm(c, &team, &people))?,
         other => {
             let (action, target, emoji) = match other {

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-last-own-message"
+description = "Enables the last_own_message command without any pre-configured scope."
+commands.allow = ["last_own_message"]
+
+[[permission]]
+identifier = "deny-last-own-message"
+description = "Denies the last_own_message command without any pre-configured scope."
+commands.deny = ["last_own_message"]

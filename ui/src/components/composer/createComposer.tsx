@@ -63,6 +63,13 @@ export type ComposerProps = {
   placeholder: string;
   broadcastLabel?: string;
   onSent?: () => void;
+  onEditLast?: () => void;
+  edit?: {
+    draft: string;
+    busy: boolean;
+    onSave: (text: string, blocks: import("../../models/rich-compose").RichBlock[]) => void;
+    onCancel: () => void;
+  };
 };
 
 export function createComposer(props: ComposerProps) {
@@ -177,7 +184,7 @@ export function createComposer(props: ComposerProps) {
   const refresh = () => {
     const text = blocksText(editorBlocks(editor), people());
     setHasText(!!text);
-    writeDraft(key(), text ? JSON.stringify({ version: 1, html: editor.innerHTML }) : "");
+    if (!props.edit) writeDraft(key(), text ? JSON.stringify({ version: 1, html: editor.innerHTML }) : "");
   };
   const selectionChanged = () => {
     const selection = window.getSelection();
@@ -223,6 +230,7 @@ export function createComposer(props: ComposerProps) {
     }
   };
   const exec = (command: string, value?: string) => {
+    if (props.edit?.busy) return;
     focusSelection();
     // execCommand emits input too. Record it once, separately from typed text,
     // so completion Undo restores the literal trigger instead of coalescing it.
@@ -335,6 +343,11 @@ export function createComposer(props: ComposerProps) {
   const submit = () => {
     const blocks = editorBlocks(editor),
       text = blocksText(blocks, people());
+    if (props.edit) {
+      if (!text || props.edit.busy) return;
+      props.edit.onSave(text, blocks);
+      return;
+    }
     const files = draftAttachments(props.conversationId, props.threadTs).filter(e => e.state === "ready");
     if (!text && !files.length) return;
     if (files.length) sendAttachments(props.conversationId, props.threadTs ?? null, text, blocks);
@@ -397,6 +410,17 @@ export function createComposer(props: ComposerProps) {
       setPopover(null);
       return;
     }
+    if (e.key === "Escape" && props.edit) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!props.edit.busy) props.edit.onCancel();
+      return;
+    }
+    if (e.key === "ArrowUp" && !hasText() && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && props.onEditLast) {
+      e.preventDefault();
+      props.onEditLast();
+      return;
+    }
     if (e.key === "Enter" && !e.altKey) {
       e.preventDefault();
       if (!e.shiftKey && (!modEnter() || primaryModifier(e, mac))) submit();
@@ -414,7 +438,7 @@ export function createComposer(props: ComposerProps) {
   };
   createEffect(
     on(key, (k) => {
-      restoreEditor(editor, readDraft(k));
+      restoreEditor(editor, props.edit?.draft ?? readDraft(k));
       hydrateEmoji();
       setBroadcast(false);
       setCompletion(null);

@@ -73,6 +73,9 @@ export function errorMessage(error: unknown): string {
   const code = raw.match(
     /^(?:Slack API error: )?([a-z]+(?:_[a-z0-9]+)+)(?: \(needed scope: [a-z:,]+\))?$/,
   )?.[1];
+  if (raw === "operation forbidden") return t("You can only edit or delete your own messages.");
+  if (code === "message_not_found" || raw === "Message is not stored in this workspace") return t("This message is no longer available.");
+  if (["cant_update_message", "cant_delete_message", "edit_window_closed"].includes(code ?? "")) return t("The workspace does not allow this message to be changed.");
   if (code === "name_taken") return t("A channel with this name already exists.");
   if (code === "invalid_name_required") return t("Enter a channel name");
   if (code === "invalid_name_maxlength") return t("Channel names can have at most 80 characters");

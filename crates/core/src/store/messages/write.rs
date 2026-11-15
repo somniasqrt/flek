@@ -124,6 +124,8 @@ fn write_messages_in_transaction(
         (messages.hidden_by_limit = 1
             OR messages.edited_ts IS NULL
             OR excluded.edited_ts >= messages.edited_ts)
+        AND (json_extract(messages.raw_json, '$._flek_edit_pending') IS NOT 1
+            OR excluded.edited_ts > messages.edited_ts)
     ";
     let mut total = 0;
     {

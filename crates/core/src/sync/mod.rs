@@ -8,6 +8,7 @@ pub mod files;
 pub mod follow;
 pub mod import;
 pub mod live;
+pub mod message_actions;
 pub mod reactions;
 pub mod send;
 pub mod threads;

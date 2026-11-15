@@ -383,6 +383,17 @@ messages.push(
 );
 replies.push(msg(now - 9, "U2", "Media in a thread", { thread_ts: ROOT, files: [...mediaFiles.slice(0, 4), messages.find((m) => m.files.some((f) => f.id === "FVIDEO"))!.files[0]] }));
 replies.push(msg(now - 15, "U2", "Office files in a thread", { thread_ts: ROOT, files: officeFiles }));
+// Own-message fixtures are visible immediately, including a rich-text round trip.
+messages.push(msg(now - 8, "U3", "Editable message for @Olena", {
+  reactions: ":wave: 1", own_reactions: ["wave"], files: [mediaFiles[0]],
+  blocks: [{ type: "rich_text", elements: [
+    { type: "rich_text_section", elements: [
+      { type: "text", text: "Editable ", style: { bold: true } },
+      { type: "text", text: "message for " }, { type: "user", user_id: "U1" },
+    ] },
+  ] }],
+}));
+replies.push(msg(now - 7, "U3", "My editable reply with *formatting* and <@U1>.", { thread_ts: ROOT }));
 replies.sort((a, b) => a.ts.localeCompare(b.ts));
 const officeRoot = messages.find((m) => m.ts === ROOT)!;
 officeRoot.reply_count = replies.length;

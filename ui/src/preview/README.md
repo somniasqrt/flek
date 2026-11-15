@@ -176,3 +176,19 @@ response with no automatic retry. Empty/>100 MiB files and an eleventh queued
 file produce localized validation errors. Use both `?lang=en`/`?lang=uk`, narrow
 panels and both themes. Native OS drop/file chooser/clipboard behavior and real
 Slack scan/share delays require owner checks; the preview cannot verify them.
+
+## Own-message writes (M4.5, M4.7.5, M4.7.11)
+
+Messages by **Me** expose Edit and
+Delete in the message menu. Hover a message with focus outside an input and press
+E or Delete (Backspace also works on macOS); menu shortcuts use physical keys.
+Up-arrow in an empty timeline/thread composer finds the latest own message in
+that pane, including outside a timeline page. Inline editing reuses the rich
+composer, its Enter preference, Shift+Enter, formatting and autocomplete. Esc or
+Cancel discards only the edit; the normal composer draft remains intact. Saving
+text containing `fail` simulates an edit-window error and retains the draft.
+Delete opens an alert dialog with the message preview and Cancel initially
+focused. Confirmed changes mutate the synthetic store before emitting change
+notifications. There is no real Slack request. Verify English/Ukrainian, both
+themes, timeline plus thread root/replies, files/reactions surviving an edit,
+confirmation cancel/Esc/Tab, and absence of both menu actions on other authors.

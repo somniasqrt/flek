@@ -9,7 +9,7 @@ use crate::{
     sync::live,
     views, Error, Result,
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -281,6 +281,64 @@ impl PreparedWrite {
         )
     }
 
+    /// Edit or delete one of your own stored messages. Ownership is checked
+    /// offline here (and again before HTTP) so a refusal never needs credentials.
+    pub fn own_message(
+        c: &Connection,
+        team: &str,
+        delete: bool,
+        reference: &str,
+        ts: Option<&str>,
+        text: Option<&str>,
+    ) -> Result<Self> {
+        let (channel, ts) = match ts {
+            Some(ts) => (exact_channel(c, team, reference)?, ts.to_owned()),
+            None => {
+                let parsed = references::parse_permalink(reference).ok_or_else(|| {
+                    Error::Usage("provide a message permalink or CHANNEL TS".into())
+                })?;
+                exact_channel(c, team, &parsed.conversation_id)?;
+                (parsed.conversation_id, parsed.ts)
+            }
+        };
+        if !references::valid_ts(&ts) {
+            return Err(Error::Usage(
+                "expected seconds.microseconds timestamp".into(),
+            ));
+        }
+        let user = c
+            .query_row(
+                "SELECT self_user_id FROM teams WHERE id = ?1",
+                [team],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .ok_or_else(|| Error::NotFound("No stored self identity; sync first".into()))?;
+        crate::store::messages::require_own_message(c, team, &user, &channel, &ts)?;
+        let request = if delete {
+            WriteRequest::new("chat.delete", &[("channel", &channel), ("ts", &ts)])
+        } else {
+            let text = text.unwrap_or_default();
+            if text.trim().is_empty() {
+                return Err(Error::Usage("The message is empty".into()));
+            }
+            let text = mention_text(c, team, text)?;
+            WriteRequest::new(
+                "chat.update",
+                &[("channel", &channel), ("ts", &ts), ("text", &text)],
+            )
+        };
+        Self::new(
+            if delete { "delete" } else { "edit" },
+            team,
+            vec![channel],
+            request,
+            false,
+            None,
+        )
+    }
+
     pub fn dm(c: &Connection, team: &str, people: &[String]) -> Result<Self> {
         if people.is_empty() || people.len() > 8 {
             return Err(Error::Usage(
@@ -363,6 +421,9 @@ impl PreparedWrite {
                 ..Default::default()
             });
         }
+        if matches!(self.action.action.as_str(), "edit" | "delete") {
+            return self.execute_own_message(client, store, user).await;
+        }
         let raw = self.request.execute(client).await?;
         let mut receipt = WriteReceipt {
             action: self.action.action.clone(),
@@ -423,6 +484,56 @@ impl PreparedWrite {
                     .is_err();
             }
             _ => return Err(Error::Forbidden),
+        }
+        Ok(receipt)
+    }
+
+    /// `chat.update` / `chat.delete` run through the same own-message path as the
+    /// app: ownership re-checked before HTTP, result applied like the RTM echo.
+    async fn execute_own_message(
+        &self,
+        client: &Client,
+        store: &Store,
+        user: &str,
+    ) -> Result<WriteReceipt> {
+        let team = &self.action.team_id;
+        let channel = self.action.targets[0].clone();
+        let ts = self.request.params["ts"].clone();
+        let mut receipt = WriteReceipt {
+            action: self.action.action.clone(),
+            channel: Some(channel.clone()),
+            ts: Some(ts.clone()),
+            ..Default::default()
+        };
+        if self.action.action == "delete" {
+            let changed =
+                crate::sync::message_actions::delete(client, store, team, user, &channel, &ts)
+                    .await?;
+            receipt.not_stored_locally = changed.not_stored_locally;
+            return Ok(receipt);
+        }
+        let changed = crate::sync::message_actions::edit(
+            client,
+            store,
+            team,
+            user,
+            api::chat::UpdateMessage {
+                channel: channel.clone(),
+                ts: ts.clone(),
+                text: self.request.params["text"].clone(),
+                blocks: None,
+                text_escaped: true,
+            },
+        )
+        .await?;
+        receipt.not_stored_locally = changed.not_stored_locally;
+        if !receipt.not_stored_locally {
+            receipt.message = store
+                .with_read(|c| views::message(c, &channel, &ts))
+                .ok()
+                .flatten();
+            receipt.not_stored_locally = receipt.message.is_none();
+            receipt.permalink = receipt.message.as_ref().and_then(|m| m.permalink.clone());
         }
         Ok(receipt)
     }

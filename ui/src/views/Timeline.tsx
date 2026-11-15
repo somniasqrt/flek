@@ -66,6 +66,7 @@ export default function Timeline(props: {
     const request = ++headerRequest;
     if (id !== headerConversation) {
       headerConversation = id;
+      setEditTs(null);
       setHeaderMembers(null);
       setHeaderMenu(null);
     }
@@ -97,6 +98,7 @@ export default function Timeline(props: {
   const [rows, setRows] = createStore<Message[]>([]);
   const show = (list: Message[]) => setRows(reconcile(list, { key: "ts" }));
   const current = () => unwrap(rows).slice();
+  const [editTs, setEditTs] = createSignal<string | null>(null);
   const [loading, setLoading] = createSignal(false);
   const [hasNewer, setHasNewer] = createSignal(false);
   const [datePicker, setDatePicker] = createSignal<string | null>(null);
@@ -376,6 +378,16 @@ export default function Timeline(props: {
       seeking = null;
       setFlash(null);
     }, 2500);
+  };
+
+  const editLast = async () => {
+    const id = props.conversation.id;
+    try {
+      const ts = await api.lastOwnMessage(id);
+      if (!ts || !alive || id !== props.conversation.id) return;
+      await reveal({ conversation_id: id, ts, thread_ts: null });
+      if (id === props.conversation.id) setEditTs(ts);
+    } catch (e) { if (id === props.conversation.id) setTimelineError(String(e)); }
   };
 
   const loadOlder = async () => {
@@ -727,6 +739,8 @@ export default function Timeline(props: {
                   <MessageRow
                     readOnly={props.conversation.is_member === false}
                     m={m}
+                    editRequested={editTs() === m.ts}
+                    onEditEnd={() => setEditTs(null)}
                     conversationId={props.conversation.id}
                     prev={
                       dayStarts().has(m.ts) ? undefined : items()[(layout.index(m.ts) ?? 0) - 1]
@@ -752,6 +766,7 @@ export default function Timeline(props: {
             name: (isChannel(props.conversation) ? "#" : "") + props.conversation.label,
           })}
           onSent={sent}
+          onEditLast={editLast}
         />
       </Show>
     </div>

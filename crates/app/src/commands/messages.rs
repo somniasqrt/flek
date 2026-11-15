@@ -241,3 +241,101 @@ pub async fn search_materials(
         .await
         .map_err(text)
 }
+
+/// Replace only your own message. The bus announces committed DB content.
+#[tauri::command]
+pub async fn edit_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    ts: String,
+    text: String,
+    blocks: Option<Vec<serde_json::Value>>,
+) -> CmdResult<flek_core::sync::message_actions::ChangedMessage> {
+    let (
+        Some(client),
+        Status::Ready {
+            team_id, user_id, ..
+        },
+    ) = (state.client(), state.status())
+    else {
+        return Err("not signed in to Slack".into());
+    };
+    let changed = flek_core::sync::message_actions::edit(
+        &client,
+        &state.store,
+        &team_id,
+        &user_id,
+        flek_core::api::chat::UpdateMessage {
+            channel: conversation_id,
+            ts,
+            text,
+            blocks,
+            text_escaped: false,
+        },
+    )
+    .await
+    .map_err(super::text)?;
+    if let Some(change) = changed.change.clone() {
+        let _ = state.bus.send(change);
+    }
+    Ok(changed)
+}
+
+#[tauri::command]
+pub async fn delete_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    ts: String,
+) -> CmdResult<flek_core::sync::message_actions::ChangedMessage> {
+    let (
+        Some(client),
+        Status::Ready {
+            team_id, user_id, ..
+        },
+    ) = (state.client(), state.status())
+    else {
+        return Err("not signed in to Slack".into());
+    };
+    let changed = flek_core::sync::message_actions::delete(
+        &client,
+        &state.store,
+        &team_id,
+        &user_id,
+        &conversation_id,
+        &ts,
+    )
+    .await
+    .map_err(text)?;
+    if let Some(change) = changed.change.clone() {
+        let _ = state.bus.send(change);
+    }
+    Ok(changed)
+}
+
+/// Local-only lookup for Up-arrow in an empty composer, beyond its UI page.
+#[tauri::command]
+pub async fn last_own_message(
+    state: State<'_, AppState>,
+    conversation_id: String,
+    thread_ts: Option<String>,
+) -> CmdResult<Option<String>> {
+    let Status::Ready {
+        team_id, user_id, ..
+    } = state.status()
+    else {
+        return Ok(None);
+    };
+    state
+        .store
+        .read(move |c| {
+            messages::last_own_message(
+                c,
+                &team_id,
+                &user_id,
+                &conversation_id,
+                thread_ts.as_deref(),
+            )
+        })
+        .await
+        .map_err(text)
+}

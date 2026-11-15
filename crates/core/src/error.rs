@@ -150,6 +150,32 @@ impl Error {
                 ErrorKind::RateLimited
             }
             Self::HttpStatus(429) => ErrorKind::RateLimited,
+            Self::Slack { code, .. }
+                if matches!(
+                    code.as_str(),
+                    "cant_update_message"
+                        | "cant_delete_message"
+                        | "edit_window_closed"
+                        | "restricted_action"
+                        | "no_permission"
+                        | "access_denied"
+                ) =>
+            {
+                ErrorKind::Forbidden
+            }
+            Self::Slack { code, .. } if code == "message_not_found" => ErrorKind::NotFound,
+            Self::Slack { code, .. }
+                if matches!(
+                    code.as_str(),
+                    "no_text"
+                        | "msg_too_long"
+                        | "invalid_ts"
+                        | "invalid_blocks"
+                        | "invalid_blocks_format"
+                ) =>
+            {
+                ErrorKind::Usage
+            }
             Self::Slack { .. }
             | Self::Http(_)
             | Self::HttpStatus(_)

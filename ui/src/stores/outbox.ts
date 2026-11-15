@@ -29,6 +29,7 @@ const [entries, setEntries] = createStore<Entry[]>([]);
 let me: string | null = null;
 
 /// The signed-in user: the author of optimistic copies.
+export const currentUser = () => me;
 export const setMe = (id: string) => (me = id);
 
 export function clearOutbox() {

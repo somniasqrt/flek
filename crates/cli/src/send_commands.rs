@@ -44,27 +44,33 @@ fn read_bounded(mut reader: impl Read) -> Result<String> {
     Ok(value)
 }
 
+/// Text from the argument, a file, or stdin (explicit, '-', or piped when omitted).
+/// `blocks_stdin` marks another input already claiming stdin.
+pub(super) fn read_text(
+    text: Option<String>,
+    file: Option<PathBuf>,
+    stdin: bool,
+    blocks_stdin: bool,
+) -> Result<String> {
+    let text_stdin = stdin
+        || text.as_deref() == Some("-")
+        || (text.is_none() && file.is_none() && !io::stdin().is_terminal() && !blocks_stdin);
+    if blocks_stdin && text_stdin {
+        return Err(Error::Usage("stdin can supply either text or blocks, not both".into()).into());
+    }
+    Ok(if let Some(path) = file {
+        read_bounded(std::fs::File::open(path)?)?
+    } else if text_stdin {
+        read_bounded(io::stdin().lock())?
+    } else {
+        text.unwrap_or_default()
+    })
+}
+
 impl MessageOptions {
     fn input(self, post_at: Option<i64>) -> Result<MessageInput> {
         let blocks_stdin = self.blocks.as_deref() == Some("-");
-        let text_stdin = self.stdin
-            || self.text.as_deref() == Some("-")
-            || (self.text.is_none()
-                && self.file.is_none()
-                && !io::stdin().is_terminal()
-                && !blocks_stdin);
-        if blocks_stdin && text_stdin {
-            return Err(
-                Error::Usage("stdin can supply either text or blocks, not both".into()).into(),
-            );
-        }
-        let text = if let Some(path) = self.file {
-            read_bounded(std::fs::File::open(path)?)?
-        } else if text_stdin {
-            read_bounded(io::stdin().lock())?
-        } else {
-            self.text.unwrap_or_default()
-        };
+        let text = read_text(self.text, self.file, self.stdin, blocks_stdin)?;
         let blocks = self
             .blocks
             .map(|source| -> Result<_> {

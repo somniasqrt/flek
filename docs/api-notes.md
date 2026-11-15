@@ -705,3 +705,48 @@ cover by tests:
 - UI pure models `uploadFileError`, `uploadPercent`, `uploadDisplayName`; draft
   destination isolation, first-file comment, frozen retry payload, optimistic
   matching by file id/ts and teardown of browser File references.
+
+### `chat.update` / `chat.delete` (M4.5, M8.4.2)
+
+- **Documented:** yes: [chat.update](https://docs.slack.dev/reference/methods/chat.update/),
+  [chat.delete](https://docs.slack.dev/reference/methods/chat.delete/) and
+  [message_changed](https://docs.slack.dev/reference/events/message/message_changed/).
+- **Request:** POST form, `channel=CFAKE`, `ts=1700000000.000001`;
+  update also sends escaped `text` and optionally JSON `blocks`. As with send,
+  core escapes `&`, `<`, `>`; rich mentions/links live in documented blocks.
+  Supplying text without blocks removes old blocks. Omitted attachments are
+  retained. No undocumented endpoints or `as_user` assumptions are used.
+- **Response:** update returns `channel`, `ts`, optional top-level `text` and a
+  partial `message` (the documented example contains only text/user). Prefer
+  response text/blocks, fall back to accepted input fields that are omitted.
+  Delete returns `channel`, `ts`. Response identity must match the requested
+  target before any local write. Core requires a locally stored own message in
+  the current team and excludes bot-authored messages, even if workspace roles
+  would let the user delete somebody else's messages.
+- **Persistence:** HTTP update merges only editable content into the current row
+  inside a writer transaction, preserving files, reactions and thread metadata.
+  FTS/counters use existing triggers. If `message.edited.ts` is absent, use the
+  preflight known edit timestamp (or original message ts) provisionally, and
+  store `_flek_edit_pending: true` in raw_json. This is a local marker, never sent
+  to Slack. Compare the preflight content/version before applying a response
+  without an authoritative timestamp; an intervening edit/delete wins. A pending
+  edit rejects old/equal-version content from history/RTM; a strictly newer
+  `edited.ts` replaces it and removes the marker. No local clock can outrank Slack.
+  The UI shows `(edited)` immediately from the stored provisional timestamp.
+  Confirmed delete uses the same live deletion path, including explicit evidence
+  for hidden rows. Absence-based history deletion still preserves hidden archives.
+  Duplicate echoes retain one row/tombstone and never advance sync cursors.
+- **Works with `xoxc`:** not verified on a real workspace. Only official shapes
+  were reviewed; no live Slack, Keychain or real app execution was used.
+- **TODO (owner verification):** confirm xoxc+d acceptance, rich-text round trips,
+  workspace edit-window failures, own file-share editing/deletion, and the
+  authoritative `edited.ts` in rich-text RTM/catch-up payloads. The documented
+  update response does not guarantee this field. If a real workspace supplies no
+  revision timestamp at all, pending content stays conservative until a newer
+  timestamp arrives; no undocumented readback workaround is enabled.
+- **CLI path:** `flek edit` / `flek delete` prepare a `PreparedWrite` (actions `edit`, `delete`) through the M8.7 guard; edit text is escaped and `@name` converted once by core (`UpdateMessage.text_escaped`), then sent without a second escape.
+- **Fallback:** remote errors leave the DB untouched and keep the edit draft or
+  confirmation dialog available. Unsupported rich structures are not flattened by
+  the UI; it offers the existing Open in Slack action. Remote success with a local
+  store failure is returned as `not_stored_locally`, without retrying the write.
+- **Date checked:** 2026-11-15, official documentation and offline code review.

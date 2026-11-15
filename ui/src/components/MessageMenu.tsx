@@ -4,6 +4,7 @@ import { t } from "../i18n/index";
 import { keyCombo, modKeyLabel } from "../platform";
 import { primaryModifier, usesMacShortcuts } from "../models/shortcuts";
 import { AddReaction, ReplyInThread, MessageLink, CopyMessage } from "./icons";
+import { messageActionKey } from "../models/message-edit";
 import EmojiPicker from "./EmojiPicker";
 
 export default function MessageMenu(props: {
@@ -15,6 +16,8 @@ export default function MessageMenu(props: {
   onReaction: (name: string) => void;
   onClose: () => void;
   onThread?: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   onCopy: () => void;
   onCopyLink: () => void;
   onOpenSlack: () => void;
@@ -44,6 +47,18 @@ export default function MessageMenu(props: {
     });
   });
   const keydown = (e: KeyboardEvent) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (!picker() && !(e.target as Element).closest("input, textarea, [contenteditable=true]")) {
+      const action = messageActionKey(e);
+      const handler = action === "edit" ? props.onEdit : action === "delete" ? props.onDelete : undefined;
+      if (handler && !props.readOnly) {
+        e.preventDefault();
+        e.stopPropagation();
+        props.onClose();
+        handler();
+        return;
+      }
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -149,6 +164,16 @@ export default function MessageMenu(props: {
                 <button class="message-menu-item" role="menuitem" type="button" onClick={props.onOpenSlack}>
                   <MessageLink /><span class="message-menu-label">{t("Open in Slack")}</span>
                 </button>
+                <Show when={props.onEdit && !props.readOnly}>
+                  <button class="message-menu-item" role="menuitem" type="button" onClick={() => { props.onClose(); props.onEdit?.(); }}>
+                    <span aria-hidden="true">✎</span><span class="message-menu-label">{t("Edit message")}</span><kbd>{keyCombo(["E"])}</kbd>
+                  </button>
+                </Show>
+                <Show when={props.onDelete && !props.readOnly}>
+                  <button class="message-menu-item danger" role="menuitem" type="button" onClick={() => { props.onClose(); props.onDelete?.(); }}>
+                    <span aria-hidden="true">×</span><span class="message-menu-label">{t("Delete message…")}</span><kbd>{usesMacShortcuts() ? "⌫" : keyCombo(["Delete"])}</kbd>
+                  </button>
+                </Show>
                 <div class="message-menu-rule" role="separator" />
                 <button
                   class="message-menu-item"

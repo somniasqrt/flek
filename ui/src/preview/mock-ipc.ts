@@ -406,11 +406,11 @@ mockIPC(
       // must not mutate it behind their back.
       case "thread":
         return structuredClone(
-          a.ts === ROOT ? [messages.find((m) => m.ts === ROOT), ...replies] : [],
+          mutationRows(String(a.conversationId)).filter((m) => m.ts === a.ts || m.thread_ts === a.ts).sort((x, y) => x.ts.localeCompare(y.ts)),
         );
       case "message":
         return structuredClone(
-          [...messages, ...bigMessages, ...replies, ...elsewhere].find((m) => m.ts === a.ts) ?? null,
+          mutationRows(String(a.conversationId)).find((m) => m.ts === a.ts) ?? null,
         );
       case "messages": {
         const rows = timelineRows(String(a.conversationId));
@@ -435,6 +435,36 @@ mockIPC(
         if (rows.length && String(a.end) <= rows[0].ts) return { status: "before_archive" };
         const target = rows.find((m) => m.ts >= String(a.start) && m.ts < String(a.end));
         return target ? { status: "found", ts: target.ts } : { status: "empty" };
+      }
+      case "last_own_message": {
+        const rows = mutationRows(String(a.conversationId)).filter((m) => m.user_id === "U3" && !m.hidden_by_limit &&
+          (a.threadTs ? m.thread_ts === a.threadTs && m.ts !== a.threadTs : !m.thread_ts || m.thread_ts === m.ts || m.subtype === "thread_broadcast"));
+        return rows.sort((x, y) => y.ts.localeCompare(x.ts))[0]?.ts ?? null;
+      }
+      case "edit_message":
+      case "delete_message": {
+        const conv = String(a.conversationId), ts = String(a.ts);
+        const copies = mutationRows(conv).filter((m) => m.ts === ts);
+        if (!copies.length) throw "message_not_found";
+        if (copies.some((m) => m.user_id !== "U3")) throw "operation forbidden";
+        await new Promise((r) => setTimeout(r, w.__sendDelay));
+        if (cmd === "edit_message") {
+          const text = String(a.text);
+          if (!text.trim()) throw "no_text";
+          if (text.includes("fail")) throw "edit_window_closed";
+          for (const m of copies) {
+            m.text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            m.blocks = a.blocks ? JSON.parse(JSON.stringify(a.blocks)) : undefined;
+            m.edited = true;
+          }
+        } else {
+          for (const list of [messages, bigMessages, replies, elsewhere]) {
+            for (let i = list.length - 1; i >= 0; i--)
+              if (copies.includes(list[i])) list.splice(i, 1);
+          }
+        }
+        emit("flek://change", { type: cmd === "edit_message" ? "message" : "message_deleted", data: { conversation_id: conv, ts } });
+        return { conversation_id: conv, ts, not_stored_locally: false };
       }
       case "set_reaction": {
         const m = [...messages, ...bigMessages, ...replies, ...elsewhere].find((m) => m.ts === a.ts);
@@ -479,6 +509,10 @@ mockIPC(
   },
   { shouldMockEvents: true },
 );
+
+function mutationRows(id: string) {
+  return id === "C1" ? [...messages, ...replies] : id === "CBIG" ? bigMessages : elsewhere.filter((m) => m.conversation_id === id);
+}
 
 function timelineRows(id: string) {
   return (id === "C1" ? messages : id === "CBIG" ? bigMessages : elsewhere.filter((m) => m.conversation_id === id))

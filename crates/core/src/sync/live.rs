@@ -146,7 +146,7 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     })
                 }
                 Event::MessageDeleted { channel, ts } => {
-                    messages::mark_deleted(c, &channel, std::slice::from_ref(&ts))?;
+                    messages::mark_deleted_explicit(c, &channel, &ts)?;
                     Applied::Changed(Change::MessageDeleted {
                         conversation_id: channel,
                         ts,

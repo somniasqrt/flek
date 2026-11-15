@@ -39,7 +39,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `api/auth.rs` — `auth.test`.
 - `api/channel_browser.rs` — Documented workspace directory and explicit channel writes.
 - `api/channel_details.rs` — Documented conversation membership and pins endpoints.
-- `api/chat.rs` — `chat.postMessage`: sending as the user.
+- `api/chat.rs` — Typed `chat.postMessage`, `chat.update`, `chat.delete` writes.
 - `api/client.rs` — HTTP plumbing: auth headers, `ok`/`error` envelope, rate limits.
 - `api/conversations.rs` — `users.conversations`.
 - `api/emoji.rs` — `emoji.list`.
@@ -94,6 +94,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `store/emoji.rs` — Workspace (custom) emoji from `emoji.list` and their cached images.
 - `store/files.rs` — File metadata and the local cache path.
 - `store/materials.rs` — HTTP(S) link extraction and transactional material catalogue refresh/backfill.
+- `store/messages/actions.rs` — Own-message preconditions, last-own DB lookup, partial confirmed edits and explicit deletions.
 - `store/messages/cache.rs` — Cached file and preview paths by file id.
 - `store/messages/display.rs` — Timeline hydration with files, unfurls and own reactions.
 - `store/messages/mod.rs` — Public facade for store/messages; grouped implementations are re-exported here.
@@ -117,6 +118,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `sync/live.rs` — Live events → database, and the change bus the UI and CLI listen to.
 - `sync/mod.rs` — SyncOptions, timestamp helpers and network-to-store orchestration facade.
 - `sync/presence.rs` — Presence snapshots and self writes. Network responses commit before readers
+- `sync/message_actions.rs` — Own-message edit/delete orchestration; commit before invalidation, explicit local-persistence status.
 - `sync/reactions.rs` — Confirm with Slack, then apply the same idempotent change as the RTM echo.
 - `sync/read.rs` — Conversation cursors only. Slack's separate, undocumented thread read API is out of scope.
 - `sync/send.rs` — Sending a message: Slack first, then the database, through the same
@@ -186,6 +188,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `components/EmojiView.tsx` — Custom/standard emoji rendering and cached custom catalog.
 - `components/SvgPreview.tsx` — Lazy SVG image-context previews shared by attachments and FileBrowser.
 - `components/Files.tsx` — Message attachments and cached previews. `components/FileSafety.tsx` presents core launch decisions, warnings and platform file-manager labels.
+- `components/DeleteMessage.tsx` — Own-message confirmation, focus trapping and failure recovery.
 - `components/MessageMenu.tsx` — Message actions and reaction picker.
 - `components/MessageRow.tsx` — Author grouping, text, reactions, files and thread summary.
 - `components/PresenceIndicator.tsx` — Visual active/away/DND/unknown indicator.
@@ -214,6 +217,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `models/file-presentation.ts` — Real filenames without bidi controls and fail-closed presentation of core launch eligibility.
 - `models/external-link.ts` — Href-free, keyboard-accessible external link interactions through open_url.
 - `models/links.ts` — Link kinds and short display labels.
+- `models/message-edit.ts` — Safe stored-content composer initialization and physical message action keys.
 - `models/mrkdwn.ts` — Pure Slack text parsing into safe render nodes.
 - `models/presence.ts` — Presence/DND/status expiry and calendar arithmetic.
 - `models/rail-model.ts` — Rail selection persistence and message/file summaries.

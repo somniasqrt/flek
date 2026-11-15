@@ -382,6 +382,12 @@ export const api = {
     invoke<MaterialPage>("search_materials", { query, sort, limit, cursor }),
   search: (query: string, recent: boolean, limit: number) =>
     invoke<Hit[]>("search", { query, recent, limit }),
+  editMessage: (conversationId: string, ts: string, text: string, blocks?: unknown[]) =>
+    invoke<MessageMutation>("edit_message", { conversationId, ts, text, blocks }),
+  deleteMessage: (conversationId: string, ts: string) =>
+    invoke<MessageMutation>("delete_message", { conversationId, ts }),
+  lastOwnMessage: (conversationId: string, threadTs?: string) =>
+    invoke<string | null>("last_own_message", { conversationId, threadTs }),
   setReaction: (conversationId: string, ts: string, name: string, on: boolean) =>
     invoke<void>("set_reaction", { conversationId, ts, name, on }),
   prepareUpload: (name: string, size: number) => invoke<string>("prepare_upload", { name, size }),
@@ -440,3 +446,9 @@ export const linkImageUrl = (hash: string) => cacheUrl("link/" + encodeURICompon
 export function overrideCacheUrl(f: (path: string) => string) {
   cacheUrl = f;
 }
+
+export type MessageMutation = {
+  conversation_id: string;
+  ts: string;
+  not_stored_locally: boolean;
+};

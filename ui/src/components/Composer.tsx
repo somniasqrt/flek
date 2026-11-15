@@ -73,6 +73,10 @@ export default function Composer(props: ComposerProps) {
             e.stopPropagation();
             setPopover(null);
             focusSelection();
+          } else if (e.key === "Escape" && props.edit) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!props.edit.busy) props.edit.onCancel();
           }
         }}
       >
@@ -205,7 +209,7 @@ export default function Composer(props: ComposerProps) {
         <div
           ref={setEditor}
           class="composer-editor"
-          contentEditable
+          contentEditable={!props.edit?.busy}
           role="textbox"
           aria-multiline="true"
           aria-autocomplete="list"
@@ -307,18 +311,21 @@ export default function Composer(props: ComposerProps) {
             </button>
           </span>
           <div class="composer-spacer" />
-          <div class="composer-send-group" classList={{ ready: canSubmit() }}>
+          <Show when={props.edit}>
+            <button type="button" class="compose-edit-cancel" disabled={props.edit?.busy} onClick={() => props.edit?.onCancel()}>{t("Cancel")}</button>
+          </Show>
+          <div class="composer-send-group" classList={{ ready: props.edit ? hasText() : canSubmit() }}>
             <button
               type="button"
               class="composer-send"
-              title={t("Send ({key})", {
+              title={props.edit ? t("Save changes") : t("Send ({key})", {
                 key: modEnter() ? keyCombo([modKeyLabel(), "Enter"]) : "Enter",
               })}
-              aria-label={t("Send")}
-              disabled={!canSubmit()}
+              aria-label={props.edit ? t("Save changes") : t("Send")}
+              disabled={props.edit ? !hasText() || props.edit.busy : !canSubmit()}
               onClick={submit}
             >
-              <ComposeIcon name="send" />
+              <Show when={props.edit} fallback={<ComposeIcon name="send" />}>{props.edit?.busy ? t("Saving…") : t("Save changes")}</Show>
             </button>
             <button
               type="button"

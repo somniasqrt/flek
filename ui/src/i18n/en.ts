@@ -589,6 +589,19 @@ export const en = {
   "Upload failed. Check your connection and retry.": "Upload failed. Check your connection and retry.",
   "Upload confirmation is pending. Check the conversation before uploading again.": "Upload confirmation is pending. Check the conversation before uploading again.",
   "File replies cannot be broadcast to the channel.": "File replies cannot be broadcast to the channel.",
+"Edit message": "Edit message",
+  "Delete message…": "Delete message…",
+  "Delete message": "Delete message",
+  "Delete message?": "Delete message?",
+  "Are you sure you want to delete this message? This cannot be undone.": "Are you sure you want to delete this message? This cannot be undone.",
+  "Save changes": "Save changes",
+  "Saving…": "Saving…",
+  "Deleting…": "Deleting…",
+  "Change accepted by Slack; the local copy will sync later.": "Change accepted by Slack; the local copy will sync later.",
+  "This message uses formatting that can only be edited in Slack.": "This message uses formatting that can only be edited in Slack.",
+  "You can only edit or delete your own messages.": "You can only edit or delete your own messages.",
+  "This message is no longer available.": "This message is no longer available.",
+  "The workspace does not allow this message to be changed.": "The workspace does not allow this message to be changed.",
 } as const;
 export type Key = keyof typeof en;
 export type Dictionary = { [K in Key]: string };

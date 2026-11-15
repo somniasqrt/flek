@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { t, plural, locale, clock24, errorMessage } from "../i18n/index";
 import { settings } from "../stores/settings";
 import { api, tsDate, type Message } from "../api";
@@ -6,6 +6,12 @@ import { AddReaction, ReplyInThread } from "./icons";
 import { needsSlack } from "../models/slack-link";
 import { openInSlack, storedSlackLink } from "../stores/slack";
 import MessageMenu from "./MessageMenu";
+import Composer from "./Composer";
+import DeleteMessage from "./DeleteMessage";
+import { messageActionKey, messageEditDraft } from "../models/message-edit";
+import { currentUser } from "../stores/outbox";
+import { channelNames } from "../stores/people";
+import type { RichBlock } from "../models/rich-compose";
 import Avatar from "./Avatar";
 import Emoji from "./EmojiView";
 import Files from "./Files";
@@ -126,6 +132,8 @@ export default function MessageRow(props: {
   active?: boolean;
   /// Briefly highlighted (a search result jumped to).
   flash?: boolean;
+  editRequested?: boolean;
+  onEditEnd?: () => void;
 }) {
   let rowElement!: HTMLElement;
   const m = props.m;
@@ -135,6 +143,61 @@ export default function MessageRow(props: {
     picker: boolean;
   } | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const [editDraft, setEditDraft] = createSignal<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = createSignal(false);
+  const [notice, setNotice] = createSignal("");
+  const [hovered, setHovered] = createSignal(false);
+  const own = () => !!m.user_id && m.user_id === currentUser() && !m.pending && !props.readOnly;
+  const canAct = () => own() && !busy();
+  const focusRow = () => requestAnimationFrame(() => { if (rowElement?.isConnected) rowElement.focus({ preventScroll: true }); });
+  const finishEdit = () => {
+    setEditDraft(null);
+    props.onEditEnd?.();
+    focusRow();
+  };
+  const beginEdit = () => {
+    if (!canAct()) return;
+    setMenu(null);
+    setError("");
+    setNotice("");
+    const draft = messageEditDraft(m.text, m.blocks, people(), channelNames());
+    if (draft === null) {
+      setNotice(t("This message uses formatting that can only be edited in Slack."));
+      props.onEditEnd?.();
+      return;
+    }
+    setEditDraft(draft);
+  };
+  const beginDelete = () => {
+    if (!canAct()) return;
+    setMenu(null);
+    setConfirmDelete(true);
+  };
+  const saveEdit = async (text: string, blocks: RichBlock[]) => {
+    if (!canAct()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const changed = await api.editMessage(props.conversationId, m.ts, text, blocks);
+      if (changed.not_stored_locally) setNotice(t("Change accepted by Slack; the local copy will sync later."));
+      finishEdit();
+    } catch (e) {
+      setError(String(e));
+    } finally { setBusy(false); }
+  };
+  createEffect(on(() => props.editRequested, (requested) => { if (requested) beginEdit(); }));
+  onMount(() => {
+    const shortcut = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.keyCode === 229 || editDraft() !== null || confirmDelete() || menu() || !hovered()) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="dialog"], [role="alertdialog"]') || document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]')) return;
+      const action = messageActionKey(e);
+      if (action === "edit" && canAct()) { e.preventDefault(); beginEdit(); }
+      if (action === "delete" && canAct()) { e.preventDefault(); beginDelete(); }
+    };
+    window.addEventListener("keydown", shortcut);
+    onCleanup(() => window.removeEventListener("keydown", shortcut));
+  });
   const [error, setError] = createSignal("");
   const openMenu = (e: MouseEvent, picker = false) => {
     if (m.pending) return;
@@ -194,7 +257,11 @@ export default function MessageRow(props: {
         failed: m.pending === "failed",
       }}
       data-ts={m.ts}
+      tabIndex={-1}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onContextMenu={(e) => {
+        if ((e.target as Element).closest('[contenteditable="true"], input, textarea')) return;
         const selection = window.getSelection();
         if (selection?.toString()) {
           for (let i = 0; i < selection.rangeCount; i++) {
@@ -214,7 +281,7 @@ export default function MessageRow(props: {
         }
       }}
     >
-      <Show when={!m.pending}>
+      <Show when={!m.pending && editDraft() === null}>
         <div class="message-actions">
           <button
             type="button"
@@ -253,6 +320,8 @@ export default function MessageRow(props: {
             picker={pos().picker}
             readOnly={props.readOnly}
             own={m.own_reactions ?? []}
+            onEdit={own() ? beginEdit : undefined}
+            onDelete={own() ? beginDelete : undefined}
             onReaction={react}
             onClose={() => setMenu(null)}
             onCopy={copy}
@@ -261,6 +330,11 @@ export default function MessageRow(props: {
             onThread={props.onThread ? () => props.onThread?.(m.thread_ts ?? m.ts) : undefined}
           />
         )}
+      </Show>
+      <Show when={confirmDelete()}>
+        <DeleteMessage conversationId={props.conversationId} message={m}
+          onClose={() => { setConfirmDelete(false); focusRow(); }}
+          onUnstored={() => setNotice(t("Change accepted by Slack; the local copy will sync later."))} />
       </Show>
       <div class="gutter">
         <Show when={!grouped()} fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}>
@@ -300,9 +374,17 @@ export default function MessageRow(props: {
             </Show>
           </div>
         </Show>
-        <Show when={m.text.trim() || m.blocks}>
-          <Rich text={m.text} blocks={m.blocks} blockImages={m.block_images} />
+        <Show when={editDraft() !== null} fallback={
+          <Show when={m.text.trim() || m.blocks}>
+            <Rich text={m.text} blocks={m.blocks} blockImages={m.block_images} />
+          </Show>
+        }>
+          <div class="message-inline-edit">
+            <Composer conversationId={props.conversationId} placeholder={t("Edit message")}
+              edit={{ draft: editDraft()!, get busy() { return busy(); }, onSave: saveEdit, onCancel: finishEdit }} />
+          </div>
         </Show>
+        <Show when={notice()}><p class="message-action-notice" role="status">{notice()}</p></Show>
         <Show when={!m.pending && needsSlack(m)}>
           <button class="open-slack-fallback" onClick={openSlack}>{t("Open in Slack")}</button>
         </Show>

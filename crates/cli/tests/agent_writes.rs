@@ -668,3 +668,116 @@ fn upload_rate_limit_is_enforced_before_the_session() {
     assert_eq!(err["code"], "rate_limited");
     assert_eq!(log.entries(10).unwrap().len(), 1);
 }
+
+fn with_messages(env: &Env) {
+    use flek_core::store::messages::{upsert_messages, MessageRow};
+    let db = Store::open(&env.path("fixture.db")).unwrap();
+    db.with_conn(|c| {
+        let row = |ts: &str, user: &str| MessageRow {
+            ts: ts.into(),
+            user_id: Some(user.into()),
+            text: "stored".into(),
+            raw_json: json!({"ts": ts, "user": user}).to_string(),
+            ..Default::default()
+        };
+        upsert_messages(c, "C1", &[row(TS, "U1"), row("1700000000.222222", "U2")])?;
+        Ok(())
+    })
+    .unwrap();
+}
+
+#[test]
+fn edit_and_delete_are_guarded_like_every_other_write() {
+    let env = Env::new();
+    with_messages(&env);
+    // Denied by default, before any session or log entry.
+    for args in [
+        &["edit", "general", TS, "--text", "new"][..],
+        &["delete", "general", TS],
+    ] {
+        let err = env.fail(args, 8);
+        assert_eq!(err["code"], "forbidden", "{args:?}");
+        assert!(err["message"].as_str().unwrap().contains("agent.toml"));
+    }
+    assert!(!env.path("log.db").exists());
+
+    // Dry run shows the exact prepared form; --yes and rules decide authorization.
+    let edit = env.ok(&["--dry-run", "edit", "#general", TS, "--text", "a & @alice"]);
+    assert_eq!(
+        edit,
+        write(
+            "edit",
+            json!(["C1"]),
+            "chat.update",
+            json!({"channel":"C1","ts":TS,"text":"a &amp; <@U2>"}),
+            false
+        )
+    );
+    let delete = env.ok(&["--dry-run", "--yes", "delete", "general", TS]);
+    assert_eq!(
+        delete,
+        write(
+            "delete",
+            json!(["C1"]),
+            "chat.delete",
+            json!({"channel":"C1","ts":TS}),
+            true
+        )
+    );
+    env.config(
+        r#"
+[[allow]]
+team = "T1"
+channels = ["C1"]
+actions = ["edit"]
+"#,
+    );
+    assert_eq!(
+        env.ok(&["--dry-run", "edit", "general", TS, "--text", "x"])["authorized"],
+        true
+    );
+    assert_eq!(
+        env.ok(&["--dry-run", "delete", "general", TS])["authorized"],
+        false
+    );
+    assert!(!env.path("log.db").exists());
+}
+
+#[test]
+fn edit_and_delete_refuse_foreign_missing_and_invalid_targets_before_credentials() {
+    let env = Env::new();
+    with_messages(&env);
+    let foreign = "1700000000.222222";
+    // Another author's message is forbidden even with --yes and in a dry run,
+    // and the error is not the "pass --yes" hint.
+    for args in [
+        &["--yes", "delete", "general", foreign][..],
+        &[
+            "--dry-run",
+            "--yes",
+            "edit",
+            "general",
+            foreign,
+            "--text",
+            "x",
+        ],
+    ] {
+        let err = env.fail(args, 8);
+        assert_eq!(err["code"], "forbidden");
+        assert!(!err["message"].as_str().unwrap().contains("agent.toml"));
+    }
+    env.fail(&["--yes", "delete", "general", "1700000000.999999"], 3);
+    env.fail(&["--yes", "delete", "nope", TS], 3);
+    env.fail(&["--yes", "delete", "general", "bad"], 2);
+    env.fail(&["--yes", "edit", "general", TS, "--text", "   "], 2);
+    // A permalink works for delete.
+    let link = format!(
+        "https://fake.slack.com/archives/C1/p{}",
+        TS.replace('.', "")
+    );
+    assert_eq!(
+        env.ok(&["--dry-run", "--yes", "delete", &link])["write"]["request"]["params"]["ts"],
+        TS
+    );
+    assert!(!env.path("log.db").exists());
+}

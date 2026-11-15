@@ -475,6 +475,8 @@ are always allowed; the commands below are the only writers in the CLI.
 | `channel archive <channel>` | `conversations.archive` | `channel-archive` |
 | `status set <text>` / `status clear` | `users.profile.set` | `status-set` / `status-clear` |
 | `upload <file> --channel REF [--thread TS] [--comment TEXT]` | `files.getUploadURLExternal`, upload host, `files.completeUploadExternal` | `upload` |
+| `edit <ref> [text]` | `chat.update` | `edit` |
+| `delete <ref>` | `chat.delete` | `delete` |
 
 Guard targets (what allow rules list under `channels`): message and channel
 actions use the resolved conversation id; `dm` the recipient user ids;
@@ -488,9 +490,24 @@ target, so there are no mass writes.
 Slack timestamp (`flek react general 1700000000.123456 --emoji tada`). Channels
 and people resolve with the exact matcher from the local database only: a
 prefix or fuzzy match is reported as `ambiguous`/`not_found`, never guessed.
-No command opens a DM implicitly; run `flek dm` first. Edit, delete and
-forward are not part of this layer yet; when they are added they must call the
-same guard (`writes::guarded`) with their own action name.
+No command opens a DM implicitly; run `flek dm` first. Forward is not part
+of this layer yet; when it is added it must call the same guard
+(`writes::guarded`) with its own action name.
+
+`edit` and `delete` touch only your own, stored, non-deleted messages (never a
+bot's). Ownership is checked offline while the command is prepared, so a message
+of someone else is `forbidden` (8) and an unknown or deleted one `not_found` (3)
+before any credentials are read, even with `--yes` or `--dry-run`; core checks
+again against the resolved session before HTTP. `edit` takes the replacement
+text as `[text]`, `--text`, `--stdin`/`-` or `--file PATH` (same limits and
+escaping as `send`, explicit `@name` mentions included), `<ref>` is a permalink or
+`CHANNEL TS`. The replacement is plain text: previous rich blocks are removed, and
+no signature is added. The receipt carries `message` (re-read from SQLite, `edit`
+only). A workspace restriction (edit window, retention or admin policy) maps to
+`forbidden` (8) too. `delete` is not undoable; the receipt has `action`, `channel`,
+`ts` and `not_stored_locally` (accepted by Slack but the local tombstone could not
+be written: sync, never resend). The app's own edit/delete UI is the human path
+and is not guarded.
 
 Message input: text as an argument, `-`/`--stdin`, piped stdin (when no text is
 given and stdin is not a terminal) or `--file PATH` (UTF-8, at most 1 MiB).
@@ -574,7 +591,7 @@ printed pretty-printed (without `schema_version`).
 and `post_at` for `schedule`; `not_stored_locally`: boolean (the write was
 accepted by Slack but local state could not be updated: sync before retrying,
 never blindly resend); `warning`: string or null (`permalink_unavailable_message_accepted`,
-`legacy_star_only_later_api_unavailable`); `message`: Message or null (`send`);
+`legacy_star_only_later_api_unavailable`); `message`: Message or null (`send`, `edit`);
 `conversation`: Conversation or null (`dm`). Remote acceptance is always success,
 even when the permalink lookup or local persistence fails.
 

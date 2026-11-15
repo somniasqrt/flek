@@ -1,4 +1,4 @@
-//! `chat.postMessage`: sending as the user.
+//! Documented message writes as the signed-in user.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -96,6 +96,94 @@ impl Client {
             ts: raw.ts,
             message,
         })
+    }
+}
+
+/// A replacement for a message's editable content. Omitting blocks removes
+/// previous blocks because text is always supplied (Slack's documented rule).
+#[derive(Debug, Clone)]
+pub struct UpdateMessage {
+    pub channel: String,
+    pub ts: String,
+    pub text: String,
+    pub blocks: Option<Vec<Value>>,
+    /// `text` is already Slack-escaped (it carries generated mention tokens),
+    /// so `chat_update` must not escape it again.
+    pub text_escaped: bool,
+}
+
+/// A partial message response; unrelated stored metadata must be retained.
+#[derive(Debug, Clone)]
+pub struct Updated {
+    pub channel: String,
+    pub ts: String,
+    pub text: String,
+    pub blocks: Option<Value>,
+    pub edited_ts: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Deleted {
+    pub channel: String,
+    pub ts: String,
+}
+
+impl Client {
+    pub async fn chat_update(&self, update: &UpdateMessage) -> Result<Updated> {
+        if update.text.trim().is_empty() {
+            return Err(Error::Usage("The message is empty".into()));
+        }
+        let text = if update.text_escaped {
+            update.text.clone()
+        } else {
+            escape_text(&update.text)
+        };
+        let mut params = vec![
+            ("channel", update.channel.as_str()),
+            ("ts", update.ts.as_str()),
+            ("text", text.as_str()),
+        ];
+        let blocks = update
+            .blocks
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()?;
+        if let Some(blocks) = blocks.as_deref() {
+            params.push(("blocks", blocks));
+        }
+        #[derive(Deserialize)]
+        struct Raw {
+            channel: String,
+            ts: String,
+            text: Option<String>,
+            message: Option<Value>,
+        }
+        let raw: Raw = self.call("chat.update", &params).await?;
+        let message = raw.message.unwrap_or(Value::Null);
+        Ok(Updated {
+            channel: raw.channel,
+            ts: raw.ts,
+            text: message
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .or(raw.text)
+                .unwrap_or(text),
+            blocks: message
+                .get("blocks")
+                .filter(|v| v.is_array())
+                .cloned()
+                .or_else(|| update.blocks.clone().map(Value::Array)),
+            edited_ts: message
+                .pointer("/edited/ts")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        })
+    }
+
+    pub async fn chat_delete(&self, channel: &str, ts: &str) -> Result<Deleted> {
+        self.call("chat.delete", &[("channel", channel), ("ts", ts)])
+            .await
     }
 }
 

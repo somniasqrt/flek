@@ -1,7 +1,7 @@
 import { fileDragOver, dropFiles } from "../stores/uploads";
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import { t } from "../i18n/index";
+import { t, errorMessage } from "../i18n/index";
 import { api, type Change, type Conversation, type Message } from "../api";
 import { Hash, Lock } from "../components/icons";
 import Composer from "../components/Composer";
@@ -19,6 +19,8 @@ export default function Thread(props: {
   onClose: () => void;
 }) {
   const [rows, setRows] = createStore<Message[]>([]);
+  const [editTs, setEditTs] = createSignal<string | null>(null);
+  const [actionError, setActionError] = createSignal("");
   const [loaded, setLoaded] = createSignal(false);
   let scroller!: HTMLDivElement;
 
@@ -59,6 +61,8 @@ export default function Thread(props: {
   createEffect(
     on([() => props.conversation.id, () => props.ts], () => {
       setLoaded(false);
+      setEditTs(null);
+      setActionError("");
       setRows([]);
       load();
     }),
@@ -97,6 +101,15 @@ export default function Thread(props: {
     ),
   );
   const kind = () => props.conversation.kind;
+  const editLast = async () => {
+    const id = props.conversation.id, root = props.ts;
+    try {
+      const ts = await api.lastOwnMessage(id, root);
+      if (!ts || id !== props.conversation.id || root !== props.ts) return;
+      setEditTs(ts);
+      requestAnimationFrame(() => scroller.querySelector(`[data-ts="${CSS.escape(ts)}"]`)?.scrollIntoView({ block: "nearest" }));
+    } catch (e) { if (id === props.conversation.id && root === props.ts) setActionError(String(e)); }
+  };
 
   return (
     <aside onDragOver={fileDragOver} onDrop={e => { if (props.conversation.is_member !== false && !props.conversation.is_archived) dropFiles(e, props.conversation.id, props.ts); else e.preventDefault(); }} class="thread-panel" aria-label={t("Thread")}>
@@ -118,7 +131,7 @@ export default function Thread(props: {
       </header>
       <div class="thread-scroller" ref={scroller}>
         <Show when={root()}>
-          {(m) => <MessageRow m={m()} conversationId={props.conversation.id} />}
+          {(m) => <MessageRow m={m()} conversationId={props.conversation.id} readOnly={props.conversation.is_member === false} />}
         </Show>
         <Show when={replies().length > 0}>
           <div class="thread-divider">
@@ -130,6 +143,8 @@ export default function Thread(props: {
             <MessageRow
               readOnly={props.conversation.is_member === false}
               m={m}
+              editRequested={editTs() === m.ts}
+              onEditEnd={() => setEditTs(null)}
               conversationId={props.conversation.id}
               flash={props.jump?.ts === m.ts}
               prev={i() > 0 ? replies()[i() - 1] : undefined}
@@ -143,6 +158,7 @@ export default function Thread(props: {
           <div class="start muted">{t("Replies appear here once they sync.")}</div>
         </Show>
       </div>
+      <Show when={actionError()}><p class="error" role="alert">{errorMessage(actionError())}</p></Show>
       <Show when={props.conversation.is_member !== false && (!loaded() || rows.length > 0)}>
         <Composer
           conversationId={props.conversation.id}
@@ -154,6 +170,7 @@ export default function Thread(props: {
               : t("Also send to #{name}", { name: props.conversation.label })
           }
           onSent={toBottom}
+          onEditLast={editLast}
         />
       </Show>
     </aside>
