@@ -35,6 +35,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
         21,
         include_str!("migrations/0021_notification_explicit.sql"),
     ),
+    (22, include_str!("migrations/0022_events.sql")),
 ];
 
 /// Latest schema version this build knows.

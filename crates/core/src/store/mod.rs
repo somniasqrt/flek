@@ -2,6 +2,7 @@
 
 pub mod directory;
 pub mod emoji;
+pub mod events;
 pub mod files;
 pub mod messages;
 pub mod migrations;

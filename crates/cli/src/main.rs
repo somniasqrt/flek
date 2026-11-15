@@ -5,6 +5,7 @@ mod archive_commands;
 mod args;
 mod common;
 mod dispatch;
+mod event_commands;
 mod export_commands;
 mod manual_login;
 mod output;
@@ -22,7 +23,7 @@ use common::{default_team, format_ts, open_db};
 async fn main() {
     let json_output = std::env::args().any(|a| a == "--json");
     let login_requested = std::env::args_os().any(|a| a == "login");
-    let cli = match Cli::try_parse() {
+    let mut cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(e) if login_requested && e.exit_code() != 0 => {
             // Clap's usual diagnostic quotes unexpected arguments. A mistaken
@@ -55,6 +56,10 @@ async fn main() {
             output::safe_message(&error.to_string())
         );
     }
+    cli.global.json |= matches!(
+        cli.command,
+        args::Command::Events { .. } | args::Command::Wait { .. }
+    );
     let json_output = cli.global.json;
     if let Err(error) = dispatch::run(cli).await {
         std::process::exit(output::report(&error, json_output));

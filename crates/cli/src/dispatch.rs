@@ -1,8 +1,8 @@
 //! Command dispatch and logging setup.
 
 use crate::{
-    account_commands::*, archive_commands::*, args::*, read_commands, search_commands,
-    send_commands::send, sync_commands::sync,
+    account_commands::*, archive_commands::*, args::*, event_commands, read_commands,
+    search_commands, send_commands::send, sync_commands::sync,
 };
 use anyhow::Result;
 use flek_core::auth::CredentialStore;
@@ -21,6 +21,10 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
         Command::Export(_) => unreachable!("offline export dispatched before credentials"),
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
+        Command::Events { options } => event_commands::events(&store, g, options).await,
+        Command::Wait { reply_to, timeout } => {
+            event_commands::wait(&store, g, reply_to, timeout).await
+        }
         Command::Sync {
             channel,
             no_files,

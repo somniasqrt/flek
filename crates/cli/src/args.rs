@@ -1,6 +1,6 @@
 //! Clap definitions; flags and help text are part of the CLI contract.
 
-use crate::{read_commands, search_commands};
+use crate::{event_commands, read_commands, search_commands};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -63,6 +63,20 @@ pub(super) enum Command {
     Whoami,
     /// Open (create, migrate) the local database and show where it lives.
     Db,
+    /// Stream committed messages, mentions, edits, deletions and reactions as NDJSON.
+    Events {
+        #[command(flatten)]
+        options: event_commands::EventOptions,
+    },
+    /// Print the first reply from someone else as JSON (timeout exits with code 9).
+    Wait {
+        /// A Slack permalink, or a conversation followed by a Slack timestamp.
+        #[arg(long, required = true, num_args = 1..=2, value_names = ["REFERENCE", "TS"])]
+        reply_to: Vec<String>,
+        /// Maximum wait in seconds (default: unlimited).
+        #[arg(long, value_name = "SECONDS")]
+        timeout: Option<u64>,
+    },
     /// Fetch users, conversations and message history into the local database.
     Sync {
         /// Only this conversation (name, #name or id).

@@ -184,7 +184,7 @@ pub(super) async fn sync(
     Ok(())
 }
 
-fn shutdown_signal(
+pub(super) fn shutdown_signal(
     signal: impl std::future::Future<Output = std::io::Result<()>> + Send + 'static,
 ) -> (
     tokio::sync::watch::Sender<bool>,

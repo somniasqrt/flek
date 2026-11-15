@@ -626,3 +626,70 @@ fn export_obsidian_is_offline_json_and_incremental() {
     assert!(!missing.exists());
     command(&path).arg("export").assert().failure();
 }
+
+#[test]
+fn wait_prints_a_stored_reply_from_someone_else_without_credentials() {
+    let (_dir, path) = fixture();
+    let db = Store::open(&path).unwrap();
+    let reply = |ts: &str, user: &str, text: &str| MessageRow {
+        ts: ts.into(),
+        thread_ts: Some("1700000000.123456".into()),
+        user_id: Some(user.into()),
+        text: text.into(),
+        raw_json: "{}".into(),
+        ..Default::default()
+    };
+    db.with_conn(|c| {
+        messages::upsert_messages(
+            c,
+            "C1",
+            &[
+                // U1 is the stored self identity: not an answer.
+                reply("1700000001.000001", "U1", "my own follow-up"),
+                reply("1700000002.000001", "U2", "the answer"),
+            ],
+        )
+    })
+    .unwrap();
+    for args in [
+        vec!["--reply-to", "general", "1700000000.123456"],
+        vec![
+            "--reply-to",
+            "https://fake.slack.com/archives/C1/p1700000000123456",
+        ],
+    ] {
+        let value = success(&path, &[&["wait"], args.as_slice()].concat());
+        assert_eq!(value["message"]["ts"], "1700000002.000001");
+        assert_eq!(value["message"]["text"], "the answer");
+        assert_eq!(value["message"]["user_id"], "U2");
+    }
+}
+
+#[test]
+fn events_and_wait_reject_bad_arguments_before_any_network_or_keychain() {
+    let (_dir, path) = fixture();
+    for (args, code, name) in [
+        (vec!["events", "--since", "yesterday"], 2, "usage"),
+        (vec!["events", "--channel", "missing"], 3, "not_found"),
+        (
+            vec!["wait", "--reply-to", "general", "not-a-ts"],
+            2,
+            "usage",
+        ),
+        (
+            vec!["wait", "--reply-to", "missing", "1700000000.123456"],
+            3,
+            "not_found",
+        ),
+    ] {
+        let output = command(&path)
+            .args(&args)
+            .assert()
+            .code(code)
+            .get_output()
+            .clone();
+        assert!(output.stdout.is_empty(), "{args:?}");
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], name, "{args:?}");
+    }
+}

@@ -15,6 +15,8 @@ pub enum Error {
     },
     #[error("{0}")]
     Usage(String),
+    #[error("timed out waiting for a reply")]
+    Timeout,
     #[error("operation forbidden")]
     Forbidden,
     #[error("Slack desktop app not found (looked in: {searched})")]
@@ -111,6 +113,7 @@ pub enum ErrorKind {
     RateLimited = 6,
     Network = 7,
     Forbidden = 8,
+    Timeout = 9,
 }
 impl ErrorKind {
     pub fn exit_code(self) -> i32 {
@@ -127,6 +130,7 @@ impl Error {
             Self::Ambiguous { .. } | Self::TeamSelection(_) => ErrorKind::Ambiguous,
             Self::Usage(_) => ErrorKind::Usage,
             Self::Forbidden => ErrorKind::Forbidden,
+            Self::Timeout => ErrorKind::Timeout,
             Self::NoCredentials
             | Self::DesktopNotFound { .. }
             | Self::DesktopNotLoggedIn

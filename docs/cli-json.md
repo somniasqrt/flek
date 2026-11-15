@@ -252,6 +252,9 @@ clap's first diagnostic line without ANSI styling (for example,
 | 7 | `network` | transport error, HTTP failure, websocket or other Slack API error |
 | 8 | `forbidden` | the write guard denied the action: no `--yes` and no matching allow rule in `agent.toml` (or the session belongs to another team). Nothing was sent or logged |
 
+| 8 | `forbidden` | reserved for the M8.7 write guard; no command uses it yet |
+| 9 | `timeout` | `flek wait --timeout` elapsed with no reply |
+
 ## Concurrent database opens
 
 Opening a fully migrated database checks its version without a write lock,
@@ -568,3 +571,73 @@ user ids. `outcome` is `pending` (in flight, or the process died: check history
 before retrying), `accepted`, or `failed:<exit code>`. The log never stores
 message text, blocks, signatures, request bodies, error text, tokens or cookies.
 The limit counts entries of the last 60 seconds across all teams and actions.
+
+## Live events for agents (M8.6, additive version 1)
+
+Both commands always write JSON (`--json` is implied). Nothing but the stream or
+the result goes to stdout.
+
+### `flek events [--channel REF]... [--mentions] [--dm] [--since TS]`
+
+An NDJSON stream; one object per line, `schema_version` on every line:
+
+```json
+{"schema_version":1,"event_id":"1042","event_ts":"1700000100.123000","type":"message_changed","mention":false,"actor_id":null,"reaction":null,"message":{ ...Message view... }}
+```
+
+- `type`: `message` (new), `message_changed` (text edited), `message_deleted`,
+  `reaction_added`, `reaction_removed`. Reaction events carry `actor_id` and
+  `reaction`; `actor_id`/`reaction` are absent on message events. Unknown types
+  must be ignored.
+- `event_id` is a decimal string: the position in the local event journal, strictly
+  increasing, the same for every consumer, and unrelated to Slack timestamps.
+- `event_ts`: Slack timestamp of the message for `message`; the local time of
+  the change for the other types (Slack's edit/removal time is not stored).
+- `message` is the Message view as it was at the time of the event (text, edit and
+  delete flags, author, thread, reply count); files, reactions and permalink are
+  current. `mention` is true when the text mentions you directly and you are not
+  the author.
+- Filters combine with AND. `--channel` is repeatable (name, `#name`, id; exact
+  match). `--mentions` keeps events on messages that mention you. `--dm` keeps
+  personal and group DMs.
+- `--since TS` first replays the journal entries whose `event_ts` is after TS, then
+  continues live. The boundary is a journal position captured before any network
+  work, so nothing is repeated and nothing between replay and live is lost.
+  Without `--since` only new events are printed.
+
+The command also runs the sync engine (as `sync --follow` does: incremental
+catch-up, websocket, reconnect with backoff), so it writes to the DB and must be
+usable while the desktop app runs: both processes write to the same WAL
+database. The journal is filled by SQLite triggers on `messages` and `reactions`,
+so events written by the app are streamed too, and an unchanged re-write of a
+message or reaction (every re-sync does this) produces no event. Live delivery
+polls the local journal every 100 ms; it never polls Slack.
+
+Retention: the journal keeps the newest 50000 entries (older ones are deleted by
+a trigger on insert), so `--since` can only replay that window, and a consumer that
+falls more than 50000 events behind skips the dropped ones. A bulk history
+backfill also records its messages (old `event_ts`), so a long-running stream may
+see them as `message` events during `sync --full`. Existing messages are seeded
+into the journal once, by the migration.
+
+Ctrl-C stops the engine, prints events committed up to that moment and exits 0. A
+closed stdout (`| head`) ends the command quietly with exit 0. Errors use the
+usual envelope on stderr.
+
+### `flek wait --reply-to <permalink | CHANNEL TS> [--timeout SECONDS]`
+
+Waits for the first message from someone other than you: in the thread of that
+message (a channel message or a thread reply; the thread root is found from the
+database), or any later message in a DM/group DM. Your own replies, deleted messages
+and content-hidden messages do not count. Prints one object and exits 0:
+
+```json
+{"schema_version":1,"message":{ ...Message view... }}
+```
+
+Order: a matching stored reply is returned at once without credentials or
+network; otherwise the engine's websocket is used, and after every reconnect the
+thread (or DM) is fetched again, so a reply that arrived while disconnected is
+still found. `--timeout` elapsing exits 9 (`timeout`); the default is to wait
+forever. Ctrl-C exits 0 without output. An unknown reference is `not_found` (3)
+and an invalid timestamp `usage` (2), both before any network work.
