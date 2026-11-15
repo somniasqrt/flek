@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-message-action-state"
+description = "Enables the message_action_state command without any pre-configured scope."
+commands.allow = ["message_action_state"]
+
+[[permission]]
+identifier = "deny-message-action-state"
+description = "Denies the message_action_state command without any pre-configured scope."
+commands.deny = ["message_action_state"]

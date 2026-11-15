@@ -115,7 +115,12 @@ pub fn channel_info(c: &Connection, id: &str) -> Result<ChannelInfo> {
     } else {
         None
     };
-    let pins = if synced.is_some() {
+    let has_pins: bool = c.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pins WHERE conversation_id=?1)",
+        [id],
+        |r| r.get(0),
+    )?;
+    let pins = if synced.is_some() || has_pins {
         let mut stmt = c.prepare(
             "
                 SELECT ts

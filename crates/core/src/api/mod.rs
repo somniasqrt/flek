@@ -39,3 +39,5 @@ pub use channel_browser::ChannelDirectory;
 
 pub mod upload;
 pub mod write;
+
+mod message_actions;

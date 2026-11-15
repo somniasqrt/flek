@@ -1,5 +1,6 @@
 import { attachTimelineProbe } from "../dev/performance";
 import { fileDragOver, dropFiles } from "../stores/uploads";
+import { pausedRead, pauseRead, unreadBoundary } from "../stores/message-actions";
 import { dayLabel, JoinChannelBar } from "./timeline-parts";
 import {
   createEffect,
@@ -169,7 +170,7 @@ export default function Timeline(props: {
   let acknowledged: string | null = null;
   const focused = () => document.visibilityState === "visible" && document.hasFocus();
   const seenTs = () => {
-    if (!focused() || loading() || !scroller) return null;
+    if (pausedRead() === props.conversation.id || !focused() || loading() || !scroller) return null;
     const bounds = scroller.getBoundingClientRect();
     let latest: string | null = null;
     const pendingKeys = new Set(untrack(() => pending().map((m) => m.ts)));
@@ -193,7 +194,7 @@ export default function Timeline(props: {
   const flushRead = () => {
     const seen = unmarked;
     unmarked = null;
-    if (seen) void api.markRead(seen.id, seen.ts).catch(() => {});
+    if (seen && pausedRead() !== seen.id) void api.markRead(seen.id, seen.ts).catch(() => {});
   };
   const scheduleRead = () => {
     if (!alive) return;
@@ -208,7 +209,7 @@ export default function Timeline(props: {
     const gen = generation;
     readTimer = window.setTimeout(async () => {
       readTimer = undefined;
-      if (gen !== generation || id !== props.conversation.id || !focused()) return;
+      if (gen !== generation || id !== props.conversation.id || pausedRead() === id || !focused()) return;
       const latest = seenTs();
       if (!latest) return;
       marking = true;
@@ -235,6 +236,7 @@ export default function Timeline(props: {
     alive = false;
     generation++;
     flushRead();
+    if (pausedRead() === props.conversation.id) pauseRead(null);
     window.clearTimeout(readTimer);
     window.removeEventListener("focus", focusRead);
     document.removeEventListener("visibilitychange", focusRead);
@@ -243,6 +245,14 @@ export default function Timeline(props: {
     rows.length;
     props.conversation.last_read;
     requestAnimationFrame(scheduleRead);
+  });
+
+  createEffect(() => {
+    if (pausedRead() === props.conversation.id) {
+      window.clearTimeout(readTimer); readTimer = undefined; unmarked = null;
+      const boundary = unreadBoundary();
+      if (boundary?.id === props.conversation.id) setOpeningRead(boundary.ts);
+    }
   });
 
   const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
@@ -273,6 +283,7 @@ export default function Timeline(props: {
         }
         const gen = ++generation;
         flushRead();
+        if (pausedRead() && pausedRead() !== id) pauseRead(null);
         window.clearTimeout(readTimer);
         readTimer = undefined;
         acknowledged = null;

@@ -1,6 +1,6 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show, onMount, onCleanup } from "solid-js";
 import { t, errorMessage, locale, plural } from "../i18n/index";
-import { api, type ChannelInfo } from "../api";
+import { api, onChange, type ChannelInfo } from "../api";
 import { people } from "../stores/people";
 
 export default function ChannelPanel(props: { id: string; onClose: () => void }) {
@@ -28,6 +28,12 @@ export default function ChannelPanel(props: { id: string; onClose: () => void })
     props.id;
     setInfo(null);
     void load(false);
+  });
+  onMount(() => {
+    let disposed = false;
+    let stop: (() => void) | undefined;
+    onChange(c => { if (c.type === "directory") void load(false); }).then(f => { if (disposed) f(); else stop = f; });
+    onCleanup(() => { disposed = true; generation++; stop?.(); });
   });
   return (
     <aside class="channel-panel">

@@ -40,6 +40,21 @@ export const uk = {
   "Try fewer words or other filters.": "Спробуйте менше слів або інші фільтри.",
   "Links and files from your local archive. Use in:, from:, after: and before: to filter.": "Посилання і файли з локального архіву. Фільтруйте за допомогою in:, from:, after: та before:.",
 
+  // Message actions.
+  "Forward message…": "Переслати повідомлення…",
+  "Mark unread": "Позначити непрочитаним",
+  "Add to saved": "Додати до збережених",
+  "Remove from saved": "Вилучити зі збережених",
+  "Pin to this conversation": "Закріпити в цій розмові",
+  "Unpin from this conversation": "Відкріпити в цій розмові",
+  "Saved in Flek; Slack Later is unavailable.": "Збережено у Flek; Slack Later недоступний.",
+  "Forward a link to this message. Access to the original still applies.": "Переслати посилання на повідомлення. Доступ до оригіналу залишається необхідним.",
+  "Forward to {name}": "Переслати до {name}",
+  "Add a comment (optional)": "Додати коментар (необовʼязково)",
+  "Forwarding…": "Пересилання…",
+  "Forward": "Переслати",
+  "Forwarded; local copy will sync later.": "Переслано; локальна копія синхронізується пізніше.",
+  "Message forwarded": "Повідомлення переслано",
   // Conversation header.
   "Unstar channel": "Прибрати канал з обраного",
   "Star conversation": "Додати розмову до обраного",

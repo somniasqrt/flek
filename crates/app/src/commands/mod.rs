@@ -27,3 +27,5 @@ const MAX_PAGE: usize = 500;
 
 mod uploads;
 pub use uploads::*;
+mod message_actions;
+pub use message_actions::*;

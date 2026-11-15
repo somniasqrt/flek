@@ -192,3 +192,19 @@ focused. Confirmed changes mutate the synthetic store before emitting change
 notifications. There is no real Slack request. Verify English/Ukrainian, both
 themes, timeline plus thread root/replies, files/reactions surviving an edit,
 confirmation cancel/Esc/Tab, and absence of both menu actions on other authors.
+
+Message menu completion (M4.7 / M8.4.6): right-click a stored row or use the
+hover bar. R/T/F/U/P/L and primary+C / primary+Shift+S work over the hovered or
+focused row, except while editing, composing with IME, selecting text for native
+copy, or using another modal. T focuses the reply composer even if that thread
+is already open. F searches cached channels, people and groups; add a comment,
+choose a recipient, and Forward. Text containing `fail` exercises send refusal.
+Saved state lasts for this preview session and is explicitly local to Flek.
+Pin/unpin immediately changes the cached details panel; the existing thread root
+starts pinned. U moves the synthetic cursor backward and pauses automatic read
+tracking until leaving the timeline; check sidebar unread counts, the New line,
+scroll/focus, and leaving/reopening the conversation. L copies an HTTPS message
+link; Open in Slack still records a deep link in `window.__openedUrl`. Copy
+message resolves stored mrkdwn to plain text and preserves full link targets.
+Check these actions in a thread, both languages/themes, and a short/narrow window.
+The preview is an in-memory IPC simulation, not evidence of live API compatibility.

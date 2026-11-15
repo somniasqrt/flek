@@ -293,9 +293,17 @@ export type NotificationTarget = { team_id: string; conversation_id: string; ts:
 export const onNotificationOpen = (f: () => void): Promise<UnlistenFn> =>
   listen("flek://notification-open", f);
 
+export type MessageActionState = { saved: boolean; saved_local_only: boolean; pinned: boolean };
+
 export const api = {
   notificationContext: (conversationId: string | null) => invoke<void>("notification_context", { conversationId }),
   notificationTarget: () => invoke<NotificationTarget | null>("notification_target"),
+  messageActionState: (conversationId: string, ts: string) => invoke<MessageActionState>("message_action_state", { conversationId, ts }),
+  messagePermalink: (conversationId: string, ts: string) => invoke<string>("message_permalink", { conversationId, ts }),
+  markUnread: (conversationId: string, ts: string) => invoke<string>("mark_unread", { conversationId, ts }),
+  saveMessage: (conversationId: string, ts: string, on: boolean) => invoke<void>("save_message", { conversationId, ts, on }),
+  pinMessage: (conversationId: string, ts: string, on: boolean) => invoke<void>("pin_message", { conversationId, ts, on }),
+  forwardMessage: (conversationId: string, ts: string, destination: string, comment: string) => invoke<Sent>("forward_message", { conversationId, ts, destination, comment }),
   channelDirectory: (refresh = false, force = false) =>
     invoke<ChannelDirectory>("channel_directory", { refresh, force }),
   channelPreview: (conversationId: string, fresh = false) =>

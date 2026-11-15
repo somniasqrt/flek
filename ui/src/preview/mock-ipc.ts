@@ -112,6 +112,9 @@ let notificationTarget: NotificationTarget | null = null;
     notificationTarget = { team_id: "T1", conversation_id: conversationId, ts, thread_ts: threadTs };
     emit("flek://notification-open", null);
   };
+const savedMessages = new Set<string>();
+const pinnedMessages = new Set<string>([`C1:${ROOT}`]);
+const messageKey = (a: Record<string, unknown>) => `${a.conversationId}:${a.ts}`;
 
 mockIPC(
   async (cmd, args) => {
@@ -305,6 +308,45 @@ mockIPC(
         emit("flek://change", { type: "read_marker", data: { conversation_id: a.conversationId } });
         return null;
       }
+      case "message_action_state":
+        return { saved: savedMessages.has(messageKey(a)), saved_local_only: true, pinned: pinnedMessages.has(messageKey(a)) };
+      case "message_permalink":
+        return `https://demo.slack.com/archives/${a.conversationId}/p${String(a.ts).replace(".", "")}`;
+      case "save_message": {
+        const on = (args as { on: boolean }).on;
+        if (on) savedMessages.add(messageKey(a)); else savedMessages.delete(messageKey(a));
+        emit("flek://change", { type: "message", data: { conversation_id: a.conversationId, ts: a.ts } });
+        return;
+      }
+      case "pin_message": {
+        const on = (args as { on: boolean }).on;
+        if (on) pinnedMessages.add(messageKey(a)); else pinnedMessages.delete(messageKey(a));
+        emit("flek://change", { type: "directory" });
+        return;
+      }
+      case "forward_message": {
+        let destination = String(a.destination);
+        if (destination.startsWith("U")) {
+          const existing = conversations.find(c => c.kind === "im" && c.label === people[destination]);
+          if (existing) destination = existing.id;
+          else {
+            const id = `D${destination}`;
+            conversations.push({ ...conversations[0], id, kind: "im", label: people[destination] ?? destination, topic: null, unread: 0, last_read: null, latest_ts: null });
+            destination = id;
+          }
+        }
+        const sent = await sendMessage({ conversationId: destination, text: `${a.comment ? `${a.comment}\n` : ""}https://demo.slack.com/archives/${a.conversationId}/p${String(a.ts).replace(".", "")}`, clientMsgId: crypto.randomUUID() });
+        emit("flek://change", { type: "directory" });
+        return sent;
+      }
+      case "mark_unread": {
+        const c = conversations.find(c => c.id === a.conversationId);
+        const rows = timelineRows(String(a.conversationId));
+        const previous = rows.filter(m => m.ts < String(a.ts)).at(-1)?.ts ?? "0.000000";
+        if (c) { c.last_read = previous; c.unread = rows.filter(m => m.ts > previous && m.user_id !== "U3").length; }
+        emit("flek://change", { type: "read_marker", data: { conversation_id: a.conversationId } });
+        return previous;
+      }
       case "mark_read": {
         const c = conversations.find((c) => c.id === a.conversationId);
         if (c && (!c.last_read || String(a.ts) > c.last_read)) {
@@ -348,7 +390,11 @@ mockIPC(
           creator: "U1",
           num_members: 3,
           members: ["U1", "U2", "U4"].map((id) => ({ id, name: people[id] })),
-          pins: [{ ts: ROOT, text: "Pinned preview message" }],
+          pins: [...pinnedMessages].filter(key => key.startsWith(`${a.conversationId}:`)).map(key => {
+            const ts = key.slice(key.indexOf(":") + 1);
+            const m = [...messages, ...bigMessages, ...replies, ...elsewhere].find(m => m.ts === ts);
+            return { ts, text: m?.text ?? "Pinned preview message" };
+          }),
         };
       }
       case "channel_directory":

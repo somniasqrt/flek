@@ -339,6 +339,50 @@ impl PreparedWrite {
         )
     }
 
+    /// Forward = post the message's permalink plus an optional comment into one
+    /// existing conversation. The permalink must be known offline (cached or built
+    /// from the stored workspace URL); no network is needed to prepare or dry-run.
+    pub fn forward(
+        c: &Connection,
+        team: &str,
+        reference: &str,
+        ts: Option<&str>,
+        destination: &str,
+        comment: &str,
+        config: &AgentConfig,
+    ) -> Result<Self> {
+        config.validate()?;
+        let source = references::message_reference(c, team, reference, ts)?;
+        exact_channel(c, team, &source.conversation_id)?;
+        crate::store::message_actions::require_message(c, &source.conversation_id, &source.ts)?;
+        let destination = exact_channel(c, team, destination)?;
+        let link =
+            crate::store::message_actions::permalink(c, &source.conversation_id, &source.ts)?
+                .ok_or_else(|| {
+                    Error::Usage(
+                        "no permalink is known offline for this message; run `flek sync` first"
+                            .into(),
+                    )
+                })?;
+        let mut comment = mention_text(c, team, comment.trim())?;
+        if let Some(signature) = &config.signature {
+            if !comment.is_empty() {
+                comment.push_str("\n\n");
+            }
+            comment.push_str(signature);
+        }
+        let text = crate::sync::message_actions::forward_text(&link, &comment);
+        let request = WriteRequest::new(
+            "chat.postMessage",
+            &[
+                ("channel", &destination),
+                ("text", &text),
+                ("client_msg_id", &api::chat::new_client_msg_id()),
+            ],
+        );
+        Self::new("forward", team, vec![destination], request, false, None)
+    }
+
     pub fn dm(c: &Connection, team: &str, people: &[String]) -> Result<Self> {
         if people.is_empty() || people.len() > 8 {
             return Err(Error::Usage(
@@ -432,7 +476,7 @@ impl PreparedWrite {
             ..Default::default()
         };
         match self.action.action.as_str() {
-            "send" => {
+            "send" | "forward" => {
                 self.persist_sent(client, store, user, raw, &mut receipt)
                     .await?
             }

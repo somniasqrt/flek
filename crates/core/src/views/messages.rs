@@ -85,12 +85,13 @@ pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Mess
         "
             SELECT m.thread_ts, m.reply_count, m.user_id, COALESCE(NULLIF(u.display_name, ''), u.name,
                     m.author_name), COALESCE(m.text, ''), m.edited_ts IS NOT NULL, m.deleted, m.hidden_by_limit,
-                COALESCE(c.label, c.name, c.id), t.url, m.conversation_id, m.ts
+                COALESCE(c.label, c.name, c.id), t.url, m.conversation_id, m.ts, mp.permalink
             FROM json_each(?1) k
             JOIN messages m ON m.conversation_id = json_extract(k.value, '$[0]')
             AND m.ts = json_extract(k.value, '$[1]')
             JOIN conversations c ON c.id = m.conversation_id
             JOIN teams t ON t.id = c.team_id
+            LEFT JOIN message_permalinks mp ON mp.conversation_id=m.conversation_id AND mp.ts=m.ts
             LEFT JOIN users u ON u.id = m.user_id
             ORDER BY CAST (k.KEY AS INTEGER)
         ",
@@ -101,17 +102,20 @@ pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Mess
             let ts: String = r.get(11)?;
             let thread_ts = r.get::<_, Option<String>>(0)?.filter(|t| t != &ts);
             let url: Option<String> = r.get(9)?;
-            let permalink = url.filter(|u| !u.is_empty()).map(|url| {
-                let mut link = format!(
-                    "{}/archives/{}/p{}",
-                    url.trim_end_matches('/'),
-                    conversation_id,
-                    ts.replace('.', "")
-                );
-                if let Some(root) = &thread_ts {
-                    link.push_str(&format!("?thread_ts={root}&cid={conversation_id}"));
-                }
-                link
+            let cached: Option<String> = r.get(12)?;
+            let permalink = cached.or_else(|| {
+                url.filter(|u| !u.is_empty()).map(|url| {
+                    let mut link = format!(
+                        "{}/archives/{}/p{}",
+                        url.trim_end_matches('/'),
+                        conversation_id,
+                        ts.replace('.', "")
+                    );
+                    if let Some(root) = &thread_ts {
+                        link.push_str(&format!("?thread_ts={root}&cid={conversation_id}"));
+                    }
+                    link
+                })
             });
             Ok(Message {
                 conversation_id,

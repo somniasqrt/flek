@@ -80,6 +80,16 @@ pub(super) enum WriteCommand {
         #[command(flatten)]
         target: MessageTarget,
     },
+    /// Forward a message by posting its permalink and an optional comment.
+    Forward {
+        #[command(flatten)]
+        target: MessageTarget,
+        /// Exact destination conversation (channel, group or existing DM).
+        #[arg(long)]
+        to: String,
+        #[arg(long, default_value = "")]
+        comment: String,
+    },
     /// Open one direct or group conversation; does not send a message.
     Dm {
         #[arg(required = true, num_args = 1..=8)]
@@ -170,6 +180,21 @@ pub(super) async fn run(command: WriteCommand, creds: &CredentialStore, g: &Glob
             )
         })?,
         WriteCommand::Dm { people } => db.with_read(|c| PreparedWrite::dm(c, &team, &people))?,
+        WriteCommand::Forward {
+            target,
+            to,
+            comment,
+        } => db.with_read(|c| {
+            PreparedWrite::forward(
+                c,
+                &team,
+                &target.reference,
+                target.ts.as_deref(),
+                &to,
+                &comment,
+                &config,
+            )
+        })?,
         other => {
             let (action, target, emoji) = match other {
                 WriteCommand::React { target, emoji } => {

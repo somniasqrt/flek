@@ -586,3 +586,11 @@ projects unchosen values to an in-memory `default` marker (DMs all, channels
 mentions); shared UI menu selection resolves the same rule. Raw `muted` checks
 for grouping/unread/badges remain unchanged. See notifications.md for the API
 and legacy-all migration limitation.
+
+Migration 0024 adds `message_permalinks` (API-result cache) and the per-user
+`saved_messages` bookmark list. Message-menu writes live in
+`sync::message_actions` (pins and stars go through the shared
+`api::write::WriteRequest`, confirmed state through `store::message_actions`);
+the CLI `forward` is a guarded `PreparedWrite::forward` with action `forward`.
+Mark unread is `sync::read::unread`, the only path allowed to move `last_read`
+backwards. See api-notes.md for the Slack methods and unverified assumptions.

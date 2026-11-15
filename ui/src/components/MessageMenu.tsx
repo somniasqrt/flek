@@ -1,10 +1,12 @@
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { t } from "../i18n/index";
-import { keyCombo, modKeyLabel } from "../platform";
-import { primaryModifier, usesMacShortcuts } from "../models/shortcuts";
+import { keyCombo, modKeyLabel, shiftKeyLabel } from "../platform";
+import { usesMacShortcuts } from "../models/shortcuts";
 import { AddReaction, ReplyInThread, MessageLink, CopyMessage } from "./icons";
 import { messageActionKey } from "../models/message-edit";
+import { messageShortcut } from "../models/message-actions";
+import type { MessageActionState } from "../api";
 import EmojiPicker from "./EmojiPicker";
 
 export default function MessageMenu(props: {
@@ -21,6 +23,12 @@ export default function MessageMenu(props: {
   onCopy: () => void;
   onCopyLink: () => void;
   onOpenSlack: () => void;
+  actionState: MessageActionState | null;
+  busy: boolean;
+  onForward: () => void;
+  onUnread: () => void;
+  onSave: () => void;
+  onPin: () => void;
 }) {
   const [picker, setPicker] = createSignal(props.picker);
   const [position, setPosition] = createSignal({ left: props.x, top: props.y });
@@ -65,27 +73,19 @@ export default function MessageMenu(props: {
       props.onClose();
     }
     if ((e.target as HTMLElement).tagName !== "INPUT" && !picker()) {
-      const key = !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey ? e.code : "";
-      if (key === "KeyR" && !props.readOnly) {
-        e.preventDefault();
-        setPicker(true);
-        return;
-      }
-      if (key === "KeyT" && props.onThread) {
-        e.preventDefault();
-        props.onThread();
-        props.onClose();
-        return;
-      }
-      if (key === "KeyL") {
-        e.preventDefault();
-        props.onCopyLink();
-        return;
-      }
-      if (primaryModifier(e, usesMacShortcuts()) && e.code === "KeyC") {
-        e.preventDefault();
-        props.onCopy();
-        return;
+      const action = messageShortcut(e, usesMacShortcuts());
+      const handlers = {
+        reaction: !props.readOnly ? () => setPicker(true) : undefined,
+        thread: props.onThread ? () => { props.onThread?.(); props.onClose(); } : undefined,
+        forward: props.onForward,
+        unread: !props.readOnly ? props.onUnread : undefined,
+        save: props.actionState ? props.onSave : undefined,
+        pin: !props.readOnly && props.actionState ? props.onPin : undefined,
+        link: props.onCopyLink,
+        copy: props.onCopy,
+      };
+      if (action && handlers[action] && !props.busy) {
+        e.preventDefault(); e.stopPropagation(); handlers[action]?.(); return;
       }
     }
     if (e.key === "Tab") {
@@ -161,6 +161,16 @@ export default function MessageMenu(props: {
                     <kbd>T</kbd>
                   </button>
                 </Show>
+                <button class="message-menu-item" role="menuitem" type="button" onClick={props.onForward} disabled={props.busy}>
+                  <MessageLink /><span class="message-menu-label">{t("Forward message…")}</span><kbd>{keyCombo(["F"])}</kbd>
+                </button>
+                <button class="message-menu-item" role="menuitem" type="button" onClick={props.onUnread} disabled={props.busy || props.readOnly}>
+                  <span aria-hidden="true">◉</span><span class="message-menu-label">{t("Mark unread")}</span><kbd>{keyCombo(["U"])}</kbd>
+                </button>
+                <button class="message-menu-item" role="menuitem" type="button" onClick={props.onSave} disabled={props.busy || !props.actionState}>
+                  <span aria-hidden="true">☆</span><span class="message-menu-label">{t(props.actionState?.saved ? "Remove from saved" : "Add to saved")}</span><kbd>{keyCombo([modKeyLabel(), shiftKeyLabel(), "S"])}</kbd>
+                </button>
+                <p class="message-menu-note">{t("Saved in Flek; Slack Later is unavailable.")}</p>
                 <button class="message-menu-item" role="menuitem" type="button" onClick={props.onOpenSlack}>
                   <MessageLink /><span class="message-menu-label">{t("Open in Slack")}</span>
                 </button>
@@ -194,6 +204,9 @@ export default function MessageMenu(props: {
                   <CopyMessage />
                   <span class="message-menu-label">{t("Copy message")}</span>
                   <kbd>{keyCombo([modKeyLabel(), "C"])}</kbd>
+                </button>
+                <button class="message-menu-item" role="menuitem" type="button" onClick={props.onPin} disabled={props.busy || props.readOnly || !props.actionState}>
+                  <span aria-hidden="true">⌖</span><span class="message-menu-label">{t(props.actionState?.pinned ? "Unpin from this conversation" : "Pin to this conversation")}</span><kbd>{keyCombo(["P"])}</kbd>
                 </button>
               </>
             }

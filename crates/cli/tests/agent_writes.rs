@@ -781,3 +781,63 @@ fn edit_and_delete_refuse_foreign_missing_and_invalid_targets_before_credentials
     );
     assert!(!env.path("log.db").exists());
 }
+
+#[test]
+fn forward_is_guarded_and_dry_runs_offline() {
+    use flek_core::store::messages::{self, MessageRow};
+    let env = Env::new();
+    Store::open(&env.path("fixture.db"))
+        .unwrap()
+        .with_conn(|c| {
+            messages::upsert_messages(
+                c,
+                "C1",
+                &[MessageRow {
+                    ts: TS.into(),
+                    text: "root".into(),
+                    raw_json: "{}".into(),
+                    ..Default::default()
+                }],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+    let link = "https://fake.slack.com/archives/C1/p1700000000123456";
+    let args = [
+        "forward",
+        "general",
+        TS,
+        "--to",
+        "random",
+        "--comment",
+        "FYI",
+    ];
+    // Denied by default, before any session or log entry.
+    let err = env.fail(&args, 8);
+    assert_eq!(err["code"], "forbidden");
+    assert!(!env.path("log.db").exists());
+
+    env.config("");
+    let mut dry = vec!["--dry-run"];
+    dry.extend(args);
+    let report = scrub(env.ok(&dry));
+    assert_eq!(
+        report,
+        write(
+            "forward",
+            json!(["C2"]),
+            "chat.postMessage",
+            json!({"channel":"C2","client_msg_id":"<id>","text":format!("FYI\n{link}")}),
+            false,
+        )
+    );
+    // A permalink works as the source, and an allow rule on the destination authorizes it.
+    env.config("[[allow]]\nteam = \"T1\"\nchannels = [\"C2\"]\nactions = [\"forward\"]\n");
+    let mut dry = vec!["--dry-run", "forward", link, "--to", "C2"];
+    let report = scrub(env.ok(&dry));
+    assert_eq!(report["authorized"], true, "{report}");
+    assert_eq!(report["write"]["request"]["params"]["text"], link);
+    dry = vec!["--dry-run", "forward", "general", TS, "--to", "nope"];
+    assert_eq!(env.fail(&dry, 3)["code"], "not_found");
+    assert!(!env.path("log.db").exists());
+}

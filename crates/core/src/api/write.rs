@@ -33,6 +33,7 @@ impl WriteRequest {
                 | "pins.add"
                 | "pins.remove"
                 | "stars.add"
+                | "stars.remove"
         ) || self.params.keys().any(|k| {
             matches!(
                 k.to_ascii_lowercase().as_str(),
@@ -56,6 +57,7 @@ impl WriteRequest {
                         | ("pins.add", "already_pinned")
                         | ("pins.remove", "no_pin")
                         | ("stars.add", "already_starred")
+                        | ("stars.remove", "not_starred" | "no_star")
                 ) =>
             {
                 Ok(serde_json::json!({"ok":true}))

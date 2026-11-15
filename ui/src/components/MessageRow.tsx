@@ -1,10 +1,14 @@
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { t, plural, locale, clock24, errorMessage } from "../i18n/index";
 import { settings } from "../stores/settings";
-import { api, tsDate, type Message } from "../api";
+import { api, tsDate, type Message, type MessageActionState } from "../api";
 import { AddReaction, ReplyInThread } from "./icons";
 import { needsSlack } from "../models/slack-link";
-import { openInSlack, storedSlackLink } from "../stores/slack";
+import { openInSlack } from "../stores/slack";
+import { messageShortcut, type MessageAction } from "../models/message-actions";
+import { usesMacShortcuts } from "../models/shortcuts";
+import { pauseRead, pausedRead, setUnreadBoundary } from "../stores/message-actions";
+import ForwardMessage from "./ForwardMessage";
 import MessageMenu from "./MessageMenu";
 import Composer from "./Composer";
 import DeleteMessage from "./DeleteMessage";
@@ -186,22 +190,86 @@ export default function MessageRow(props: {
     } finally { setBusy(false); }
   };
   createEffect(on(() => props.editRequested, (requested) => { if (requested) beginEdit(); }));
+  const [error, setError] = createSignal("");
+  const [forwarding, setForwarding] = createSignal(false);
+  const [actionState, setActionState] = createSignal<MessageActionState | null>(null);
+  let alive = true;
+  onCleanup(() => { alive = false; });
+  const loadActions = async () => {
+    const state = await api.messageActionState(props.conversationId, m.ts);
+    if (alive) setActionState(state);
+    return state;
+  };
+  const openThread = () => {
+    setMenu(null);
+    props.onThread?.(m.thread_ts ?? m.ts);
+    requestAnimationFrame(() => document.querySelector<HTMLElement>('.thread-panel .composer [contenteditable="true"]')?.focus({ preventScroll: true }));
+  };
+  const forward = () => { setMenu(null); setForwarding(true); };
+  const changeAction = async (action: "unread" | "save" | "pin") => {
+    if (busy() || (props.readOnly && action !== "save")) return;
+    setMenu(null); setBusy(true); setError(""); setNotice("");
+    const id = props.conversationId;
+    const previouslyPaused = pausedRead();
+    if (action === "unread") {
+      setUnreadBoundary(null);
+      pauseRead(id);
+    }
+    try {
+      if (action === "unread") {
+        const cursor = await api.markUnread(id, m.ts);
+        if (pausedRead() === id) setUnreadBoundary({ id, ts: cursor });
+      }
+      else {
+        const state = await loadActions();
+        if (action === "save") await api.saveMessage(id, m.ts, !state.saved);
+        else await api.pinMessage(id, m.ts, !state.pinned);
+        await loadActions();
+      }
+    } catch (e) {
+      if (action === "unread" && pausedRead() === id) pauseRead(previouslyPaused);
+      if (alive) setError(String(e));
+    } finally { if (alive) setBusy(false); }
+  };
+  const perform = (action: MessageAction) => {
+    if (busy() || m.pending) return;
+    if (action === "reaction") {
+      if (props.readOnly) return;
+      const rect = rowElement.getBoundingClientRect();
+      setMenu({ x: rect.right - 40, y: rect.top + 24, picker: true });
+    } else if (action === "thread") { if (props.onThread) openThread(); }
+    else if (action === "forward") forward();
+    else if (action === "link") void copyLink();
+    else if (action === "copy") void copy();
+    else void changeAction(action);
+  };
+  // One keyboard handler for every row action; the hovered row wins, else the focused one.
   onMount(() => {
     const shortcut = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.keyCode === 229 || editDraft() !== null || confirmDelete() || menu() || !hovered()) return;
+      if (e.defaultPrevented || e.keyCode === 229 || editDraft() !== null || confirmDelete() || menu() || forwarding() || m.pending || busy()) return;
       const target = e.target instanceof Element ? e.target : null;
-      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="dialog"], [role="alertdialog"]') || document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"]')) return;
-      const action = messageActionKey(e);
-      if (action === "edit" && canAct()) { e.preventDefault(); beginEdit(); }
-      if (action === "delete" && canAct()) { e.preventDefault(); beginDelete(); }
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="menu"], [role="dialog"], [role="alertdialog"]') || document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"], [aria-modal="true"], .message-menu-backdrop')) return;
+      const current = hovered() || (!document.querySelector(".msg:hover") && rowElement.contains(document.activeElement));
+      if (!current) return;
+      const edit = messageActionKey(e);
+      if (edit) {
+        if (edit === "edit" && canAct()) { e.preventDefault(); beginEdit(); }
+        if (edit === "delete" && canAct()) { e.preventDefault(); beginDelete(); }
+        return;
+      }
+      const action = messageShortcut(e, usesMacShortcuts());
+      if (!action || (action === "copy" && window.getSelection()?.toString())) return;
+      if ((props.readOnly && ["reaction", "unread", "pin"].includes(action)) || (action === "thread" && !props.onThread)) return;
+      e.preventDefault(); e.stopPropagation(); perform(action);
     };
     window.addEventListener("keydown", shortcut);
     onCleanup(() => window.removeEventListener("keydown", shortcut));
   });
-  const [error, setError] = createSignal("");
   const openMenu = (e: MouseEvent, picker = false) => {
     if (m.pending) return;
     e.preventDefault();
+    setActionState(null);
+    void loadActions().catch(e => alive && setError(String(e)));
     setMenu({ x: e.clientX, y: e.clientY, picker });
   };
   const react = async (name: string) => {
@@ -228,7 +296,7 @@ export default function MessageRow(props: {
   const copyLink = async () => {
     setMenu(null);
     try {
-      const link = await storedSlackLink(props.conversationId, m.ts);
+      const link = await api.messagePermalink(props.conversationId, m.ts);
       await navigator.clipboard.writeText(link);
     } catch {
       setError(t("Could not copy the message link"));
@@ -257,7 +325,7 @@ export default function MessageRow(props: {
         failed: m.pending === "failed",
       }}
       data-ts={m.ts}
-      tabIndex={-1}
+      tabIndex={0}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onContextMenu={(e) => {
@@ -277,7 +345,11 @@ export default function MessageRow(props: {
         if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
           e.preventDefault();
           const rect = e.currentTarget.getBoundingClientRect();
-          if (!m.pending) setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
+          if (!m.pending) {
+            setActionState(null);
+            void loadActions().catch(e => alive && setError(String(e)));
+            setMenu({ x: rect.left + 48, y: rect.top + 24, picker: false });
+          }
         }
       }}
     >
@@ -285,7 +357,7 @@ export default function MessageRow(props: {
         <div class="message-actions">
           <button
             type="button"
-            title={t("Add reaction")}
+            title={`${t("Add reaction")} (R)`}
             aria-label={t("Add reaction")}
             disabled={busy() || props.readOnly}
             onClick={(e) => openMenu(e, true)}
@@ -295,13 +367,16 @@ export default function MessageRow(props: {
           <Show when={props.onThread}>
             <button
               type="button"
-              title={t("Reply in thread")}
+              title={`${t("Reply in thread")} (T)`}
               aria-label={t("Reply in thread")}
-              onClick={() => props.onThread?.(m.thread_ts ?? m.ts)}
+              onClick={openThread}
             >
               <ReplyInThread />
             </button>
           </Show>
+          <button type="button" title={`${t("Forward message…")} (F)`} aria-label={t("Forward message…")} disabled={busy()} onClick={forward}>
+            <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M11 4l6 6-6 6v-4H8c-3 0-4 2-5 4v-3c0-5 3-7 8-7z" /></svg>
+          </button>
           <button
             type="button"
             title={t("More actions")}
@@ -327,7 +402,13 @@ export default function MessageRow(props: {
             onCopy={copy}
             onCopyLink={copyLink}
             onOpenSlack={openSlack}
-            onThread={props.onThread ? () => props.onThread?.(m.thread_ts ?? m.ts) : undefined}
+            onThread={props.onThread ? openThread : undefined}
+            actionState={actionState()}
+            busy={busy()}
+            onForward={forward}
+            onUnread={() => void changeAction("unread")}
+            onSave={() => void changeAction("save")}
+            onPin={() => void changeAction("pin")}
           />
         )}
       </Show>
@@ -336,6 +417,7 @@ export default function MessageRow(props: {
           onClose={() => { setConfirmDelete(false); focusRow(); }}
           onUnstored={() => setNotice(t("Change accepted by Slack; the local copy will sync later."))} />
       </Show>
+      <Show when={forwarding()}><ForwardMessage conversationId={props.conversationId} ts={m.ts} onClose={() => setForwarding(false)} onSent={warning => setNotice(t(warning ? "Forwarded; local copy will sync later." : "Message forwarded"))} /></Show>
       <div class="gutter">
         <Show when={!grouped()} fallback={<time class="hover-time">{timeLabel(m.ts)}</time>}>
           <Show when={m.user_id} fallback={<Avatar id={m.user_id} name={author(m)} />}>
@@ -408,6 +490,7 @@ export default function MessageRow(props: {
         <Show when={m.reactions && !m.pending}>
           <Reactions m={m} busy={busy() || !!props.readOnly} onToggle={react} onPicker={(e) => openMenu(e, true)} />
         </Show>
+        <Show when={notice()}><p class="muted" role="status">{notice()}</p></Show>
         <Show when={error()}>
           <div class="reaction-error" role="alert">
             {errorMessage(error())}{" "}

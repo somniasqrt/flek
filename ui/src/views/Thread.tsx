@@ -100,6 +100,7 @@ export default function Thread(props: {
       { defer: true },
     ),
   );
+  const focusReply = () => requestAnimationFrame(() => document.querySelector<HTMLElement>('.thread-panel .composer [contenteditable="true"]')?.focus({ preventScroll: true }));
   const kind = () => props.conversation.kind;
   const editLast = async () => {
     const id = props.conversation.id, root = props.ts;
@@ -131,7 +132,7 @@ export default function Thread(props: {
       </header>
       <div class="thread-scroller" ref={scroller}>
         <Show when={root()}>
-          {(m) => <MessageRow m={m()} conversationId={props.conversation.id} readOnly={props.conversation.is_member === false} />}
+          {(m) => <MessageRow m={m()} readOnly={props.conversation.is_member === false} conversationId={props.conversation.id} onThread={focusReply} />}
         </Show>
         <Show when={replies().length > 0}>
           <div class="thread-divider">
@@ -146,6 +147,7 @@ export default function Thread(props: {
               editRequested={editTs() === m.ts}
               onEditEnd={() => setEditTs(null)}
               conversationId={props.conversation.id}
+              onThread={focusReply}
               flash={props.jump?.ts === m.ts}
               prev={i() > 0 ? replies()[i() - 1] : undefined}
             />

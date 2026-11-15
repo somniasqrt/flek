@@ -750,3 +750,63 @@ cover by tests:
   the UI; it offers the existing Open in Slack action. Remote success with a local
   store failure is returned as `not_stored_locally`, without retrying the write.
 - **Date checked:** 2026-11-15, official documentation and offline code review.
+
+### Message menu actions: forward, permalink, saved and pins (M4.7 / M8.4.6)
+
+- **Date checked:** 2026-11-15, official documentation and source review only.
+  All paths below are **not verified on a real workspace**, including `xoxc+d`
+  compatibility. No live Slack calls or DevTools capture were performed.
+- **Forward:** Slack's [user guide](https://slack.com/help/articles/203274767-Forward-messages-in-Slack)
+  describes both forwarding with a note and pasting a message link. Flek uses the
+  documented [chat.postMessage](https://docs.slack.dev/reference/methods/chat.postMessage/)
+  path: `channel`, `text` = optional comment + newline + source permalink,
+  `client_msg_id`; no invented shared-message attachment. The existing send path
+  escapes reserved text characters, stores the accepted message before returning,
+  and reports remote acceptance separately from local persistence failure.
+  Recipient access to the original still applies; Flek never copies private text
+  or attachments into the destination. Slack's link unfurl appearance is unverified.
+- **Person destination:** selected from SQLite `composer_people`, using the same
+  person ranking as autocomplete; channels use the cached channel directory and
+  member/archived filters. Existing group DMs are also searchable. An existing cached DM is reused; otherwise a person is
+  resolved via documented [conversations.open](https://docs.slack.dev/reference/methods/conversations.open/),
+  `users=<one user id>`, `return_im=true`, response `{channel:{id,...}}`.
+  The returned DM is persisted before posting. This is an explicit action only;
+  the picker does not create conversations while searching.
+- **Permalink:** prefer the API-result cache (migration 0024), then build an HTTPS
+  `/archives/<conversation>/p<ts without dot>` URL from the stored workspace URL
+  or domain; include `thread_ts` and `cid` for a reply. If metadata is absent,
+  [chat.getPermalink](https://docs.slack.dev/reference/methods/chat.getPermalink/)
+  (the shared `Client::chat_get_permalink`, `channel`, `message_ts`, response
+  `{permalink}`) is the fallback; the result is checked against the requested
+  channel/timestamp before it is cached.
+  If no web permalink can be obtained, use the exact Slack channel deep link.
+- **Mark unread:** documented `conversations.mark(channel, ts)` at the previous
+  stored undeleted timeline message; when none exists locally, use one microsecond
+  before the target timestamp (integer arithmetic). This explicit core action may
+  rewind the cursor; normal automatic read marks remain forward-only. Both share
+  a lock and update local counters through the existing SQLite triggers only after
+  Slack confirms. Automatic marking in the current timeline pauses until it is left.
+  Thread-only read state remains local and independent.
+- **Saved:** documented [stars.add](https://docs.slack.dev/reference/methods/stars.add/)
+  / [stars.remove](https://docs.slack.dev/reference/methods/stars.remove/), `channel`,
+  `timestamp`, success `{ok:true}`. Slack's [deprecation notice](https://docs.slack.dev/changelog/2023-07-its-later-already-for-stars-and-reminders/)
+  says stars are no longer visible to end users and modern Later has no public API.
+  Therefore even successful legacy stars writes are presented as saved in Flek,
+  never as synchronized with Slack Later. Migration 0024 keeps per-user bookmarks
+  and a local saved-list read function independently of history merges. Unsupported
+  methods/token scopes, inaccessible old messages, no client and unreachable
+  transport fall back locally. Auth, rate-limit and other write failures surface
+  without changing the bookmark. `already_starred`/`no_star`/`not_starred` are
+  idempotent results (shared `WriteRequest`, which also backs `flek save`). There is no background legacy-star reconciliation.
+- **Pins:** documented [pins.add](https://docs.slack.dev/reference/methods/pins.add/)
+  / [pins.remove](https://docs.slack.dev/reference/methods/pins.remove/), `channel`,
+  `timestamp`, success `{ok:true}`. Only then update the existing `pins` cache and
+  emit Directory so an open details panel re-reads SQLite. `already_pinned` and
+  `no_pin` are idempotent. A locally added pin is visible even before the first full
+  details refresh; it does not pretend the member list or pin snapshot was fetched.
+- **TODO (owner verification):** capture a sanitized web-client Forward request to
+  establish whether it uses `chat.shareMessage`, shared-message attachments or
+  another internal method. No such endpoint is enabled or guessed here. If added
+  later, isolate it in `api/internal.rs`, behind a feature check, retaining the
+  permalink + comment path. Verify native unfurls, private-message access, legacy
+  stars behavior and all documented writes with the real session separately.

@@ -34,6 +34,21 @@ export const en = {
   "No materials found": "No materials found",
   "Try fewer words or other filters.": "Try fewer words or other filters.",
   "Links and files from your local archive. Use in:, from:, after: and before: to filter.": "Links and files from your local archive. Use in:, from:, after: and before: to filter.",
+  // Message actions.
+  "Forward message…": "Forward message…",
+  "Mark unread": "Mark unread",
+  "Add to saved": "Add to saved",
+  "Remove from saved": "Remove from saved",
+  "Pin to this conversation": "Pin to this conversation",
+  "Unpin from this conversation": "Unpin from this conversation",
+  "Saved in Flek; Slack Later is unavailable.": "Saved in Flek; Slack Later is unavailable.",
+  "Forward a link to this message. Access to the original still applies.": "Forward a link to this message. Access to the original still applies.",
+  "Forward to {name}": "Forward to {name}",
+  "Add a comment (optional)": "Add a comment (optional)",
+  "Forwarding…": "Forwarding…",
+  "Forward": "Forward",
+  "Forwarded; local copy will sync later.": "Forwarded; local copy will sync later.",
+  "Message forwarded": "Message forwarded",
 
   // Conversation header.
   "Unstar channel": "Unstar channel",
