@@ -45,12 +45,8 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
             search_commands::run(&store, g, &query.join(" "), options).await
         }
         Command::Import { path, channel } => import_archive(g, &path, channel.as_deref()),
-        Command::Send {
-            channel,
-            text,
-            thread,
-            broadcast,
-        } => send(&store, g, &channel, text, thread, broadcast).await,
+        Command::Send { channel, options } => send(&store, g, &channel, options, None).await,
+        Command::Write(command) => crate::write_commands::run(command, &store, g).await,
         Command::Channels {
             archived,
             include_non_member,

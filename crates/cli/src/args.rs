@@ -15,6 +15,18 @@ pub(super) struct Cli {
 
 #[derive(Args)]
 pub(super) struct Global {
+    /// Authorize this individual agent write (policy and rate limits still apply).
+    #[arg(long, global = true)]
+    pub(super) yes: bool,
+    /// Preview the exact prepared form without credentials or network writes.
+    #[arg(long, global = true)]
+    pub(super) dry_run: bool,
+    /// Agent policy file (default: ~/.config/flek/agent.toml).
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(super) agent_config: Option<PathBuf>,
+    /// Action log database (default: agent-actions.db in Flek's data directory).
+    #[arg(long, global = true, value_name = "PATH")]
+    pub(super) agent_log: Option<PathBuf>,
     /// Machine-readable JSON output.
     #[arg(long, global = true)]
     pub(super) json: bool,
@@ -99,19 +111,15 @@ pub(super) enum Command {
         #[arg(long)]
         channel: Option<String>,
     },
-    /// Send a message as you (Slack mrkdwn; `&`, `<`, `>` are escaped).
+    /// Send one guarded message; reads piped stdin when text is omitted.
     Send {
-        /// Conversation name, #name, person for a DM, or id.
+        /// Exact conversation name, #name, person for an existing DM, or id.
         channel: String,
-        /// Message text.
-        text: String,
-        /// Reply in this thread (root ts, as `flek history` prints it).
-        #[arg(long, value_name = "TS")]
-        thread: Option<String>,
-        /// With --thread: also show the reply in the channel.
-        #[arg(long, requires = "thread")]
-        broadcast: bool,
+        #[command(flatten)]
+        options: crate::send_commands::MessageOptions,
     },
+    #[command(flatten)]
+    Write(crate::write_commands::WriteCommand),
     /// List conversations from the local database.
     Channels {
         /// Include archived channels.

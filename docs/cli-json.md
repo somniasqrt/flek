@@ -23,7 +23,7 @@ The table lists payload fields alongside the common `schema_version: integer`.
 | `channels` | `conversations`: Conversation[]; archived conversations excluded unless `--archived` |
 | `history <conversation>` | `conversation`: Conversation; `messages`: Message[] (oldest first) |
 | `search <query>` | `results`: Message[] with an additional `snippet: string` on each result (`**` marks matches); ordering follows relevance or `--recent` |
-| `send <conversation> <text>` | `message`: Message or null, re-read after sending; `ts`: string; `not_stored_locally`: boolean |
+| `send <conversation> [text]` and the other write commands | Guarded writes; see "Agent writes" below for the receipt (`action`, `channel`, `ts`, `permalink`, `message`, ...) and the `--dry-run` report |
 | `import <path>` | `summary`: `{format: string, read: integer, written: integer, unknown_channels: string[]}` |
 | `sync` | `summary`: `{conversations: integer, messages: integer, deleted: integer, failed: integer, files_downloaded: integer}` |
 | `auth list` | `teams`: string[] of stored team ids |
@@ -249,7 +249,7 @@ clap's first diagnostic line without ANSI styling (for example,
 | 5 | `auth` | no session, Keychain/import failure, `invalid_auth`, `token_revoked`, `not_authed` |
 | 6 | `rate_limited` | exhausted rate limiting (`429`, `ratelimited`, `rate_limited`); existing API retry behavior still applies |
 | 7 | `network` | transport error, HTTP failure, websocket or other Slack API error |
-| 8 | `forbidden` | reserved for the M8.7 write guard; no command uses it yet |
+| 8 | `forbidden` | the write guard denied the action: no `--yes` and no matching allow rule in `agent.toml` (or the session belongs to another team). Nothing was sent or logged |
 
 ## Concurrent database opens
 
@@ -448,3 +448,122 @@ preserved. They remain searchable/resolvable but are excluded from the app
 sidebar, default `channels`, unread listings and the engine's conversation walks.
 `channels --include-non-member` explicitly includes them (combine with
 `--archived` to also include archived records).
+
+## Agent writes (M8.4, M8.7, additive version 1)
+
+Flek writes as the account owner, so every write goes through one guard. Reads
+are always allowed; the commands below are the only writers in the CLI.
+
+| Command | Slack method | Action name (policy/log) |
+|---|---|---|
+| `send <channel> [text]` | `chat.postMessage` | `send` |
+| `schedule <channel> [text] --at TIME` | `chat.scheduleMessage` | `schedule` |
+| `react` / `unreact <ref> --emoji NAME` | `reactions.add` / `reactions.remove` | `react` / `unreact` |
+| `mark-read <ref>` | `conversations.mark` | `mark-read` |
+| `pin` / `unpin <ref>` | `pins.add` / `pins.remove` | `pin` / `unpin` |
+| `save <ref>` | `stars.add` | `save` |
+| `dm <person...>` (1 to 8 people) | `conversations.open` | `dm` |
+
+`<ref>` is a message permalink, or an exact conversation name/id followed by a
+Slack timestamp (`flek react general 1700000000.123456 --emoji tada`). Channels
+and people resolve with the exact matcher from the local database only: a
+prefix or fuzzy match is reported as `ambiguous`/`not_found`, never guessed.
+No command opens a DM implicitly; run `flek dm` first. Edit, delete, upload,
+forward and channel management are not part of this layer yet; when they are
+added they must call the same guard with their own action name.
+
+Message input: text as an argument, `-`/`--stdin`, piped stdin (when no text is
+given and stdin is not a terminal) or `--file PATH` (UTF-8, at most 1 MiB).
+`--blocks` takes a Block Kit JSON array, `@path` to a JSON file, or `-` for stdin
+(1 to 50 objects, signature block included). `--thread TS [--broadcast]` replies
+in a thread. Text is escaped (`&`, `<`, `>`); only an explicit `@name` at a word
+start that resolves to exactly one active user becomes `<@U...>`. Emails, code
+spans, `@channel`/`@here` and unknown or deleted users are never converted (the
+last group fails as `not_found`), so an agent cannot ping a whole channel.
+`schedule --at` accepts Unix seconds or RFC3339 with a timezone, in the future
+and within 120 days. `save` adds a legacy Slack star; modern "Later" has no
+documented API, so the receipt carries `warning: "legacy_star_only_later_api_unavailable"`
+and the item may not show in Slack's "Later" view (not verified on a real
+workspace). Idempotent outcomes (`already_reacted`, `no_reaction`, `already_pinned`,
+`no_pin`, `already_starred`) count as success.
+
+### Guard order
+
+1. The command is prepared offline from SQLite (resolution, validation, the exact
+   request form). Usage and resolution errors happen here (exit 2/3/4).
+2. `--dry-run`: print the report and stop. No credentials, network, log entry or
+   rate-limit slot is involved.
+3. The policy is checked (exit 8 when denied).
+4. A rate-limit slot is reserved atomically (exit 6 when exhausted).
+5. Only then the session is read from the Keychain and the single request sent.
+6. The outcome is stored in the action log. Local state (message, reaction, pin,
+   conversation) is updated from the confirmed response and re-read from SQLite.
+
+A denied write consumes no slot and leaves no log entry. A failed attempt keeps
+its slot, so a failing loop cannot hammer Slack.
+
+### Configuration: `~/.config/flek/agent.toml`
+
+```toml
+writes_per_minute = 10          # 1..60, default 10
+signature = "via agent"         # optional, at most 256 bytes; omit to add nothing
+
+[[allow]]                       # zero or more rules
+team = "T0FAKE"
+channels = ["C0FAKE1", "C0FAKE2"]   # conversation ids; "*" = any channel in this team
+actions = ["send", "react"]         # action names from the table; "*" = any action
+```
+
+A missing file means defaults: deny every write unless `--yes` is passed. A write
+is allowed without `--yes` only when one rule matches its team, every target and
+its action (pieces of different rules never combine; `*` is the only wildcard).
+For `dm` the targets are the recipient user ids. `--yes` authorizes that single
+invocation for any valid action but never bypasses the rate limit or the
+descriptor limits (exactly one channel, at most eight DM recipients). Unknown
+keys, an invalid rate or a signature that looks like a credential make the file
+invalid (`usage`, exit 2); parser diagnostics never quote the file. The
+signature is appended after a blank line to `send`/`schedule` text and, when
+`--blocks` is used, as a final context block.
+
+This is a safety net against mistakes by an automated caller, not a security
+boundary: a caller that can run `flek` can also pass `--yes`, `--agent-config`
+or `--agent-log`. Keep the owner's own config out of the agent's reach if that
+matters.
+
+Global flags: `--yes`, `--dry-run`, `--agent-config PATH`, `--agent-log PATH`.
+
+### `--dry-run`
+
+Prints exactly the prepared form and whether the policy would authorize it:
+
+```json
+{"schema_version":1,"dry_run":true,"authorized":false,"write":{"action":{"action":"react","team_id":"T0FAKE","targets":["C0FAKE"]},"request":{"method":"reactions.add","params":{"channel":"C0FAKE","name":"tada","timestamp":"1700000000.123456"}},"no_op":false,"warning":null}}
+```
+
+`request.params` are the form fields before encoding; credentials are added by
+the HTTP client only and never appear. `send` includes a random
+`client_msg_id`. `no_op` is true when the write is already satisfied locally
+(`mark-read` to an already read position). Without `--json` the same object is
+printed pretty-printed (without `schema_version`).
+
+### Receipt (successful write, without `--dry-run`)
+
+`action`, `channel`, `ts`, `permalink`: string or null; `scheduled_message_id`
+and `post_at` for `schedule`; `not_stored_locally`: boolean (the write was
+accepted by Slack but local state could not be updated: sync before retrying,
+never blindly resend); `warning`: string or null (`permalink_unavailable_message_accepted`,
+`legacy_star_only_later_api_unavailable`); `message`: Message or null (`send`);
+`conversation`: Conversation or null (`dm`). Remote acceptance is always success,
+even when the permalink lookup or local persistence fails.
+
+### Action log: `flek log [--limit N]`
+
+A separate SQLite file, `agent-actions.db` next to the main database (mode 0600),
+also the shared store for the rate limit, so parallel `flek` processes share it.
+`log` needs no credentials, creates nothing and prints newest first:
+`{"entries":[{"id","started_at","finished_at","team_id","action","targets","outcome"}]}`
+(unix seconds; `finished_at` null while pending). `targets` are conversation or
+user ids. `outcome` is `pending` (in flight, or the process died: check history
+before retrying), `accepted`, or `failed:<exit code>`. The log never stores
+message text, blocks, signatures, request bodies, error text, tokens or cookies.
+The limit counts entries of the last 60 seconds across all teams and actions.

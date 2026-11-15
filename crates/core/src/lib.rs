@@ -30,4 +30,9 @@ mod private_fs;
 /// Logging policy shared by executable entry points.
 pub mod logging;
 
+/// Agent write authorization, audit and rate limits.
+pub mod agent;
 pub mod notifications;
+
+/// Prepared, guarded CLI write operations.
+pub mod writes;

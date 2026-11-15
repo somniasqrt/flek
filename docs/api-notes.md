@@ -525,3 +525,24 @@ TODO (owner verification): confirm self DND snapshots/events and mention text
 fallbacks for the target workspace. Keep subteam/keyword support disabled until
 there is a verified membership/preference source. See [notification behavior and
 test recipe](notifications.md); missing/stale DND currently suppresses banners.
+
+### Guarded CLI writes (M8.4 / M8.7)
+
+All methods below are documented Web API calls sent through the shared client
+(`crates/core/src/api/write.rs` allow-lists exactly these and refuses any
+`token`/`cookie`/`authorization` parameter). None is verified on a real
+workspace with an `xoxc` session; fixtures are synthetic.
+
+| Method | Fields | Notes |
+|---|---|---|
+| `chat.postMessage` | `channel`, `text`, optional `blocks` (JSON), `thread_ts`, `reply_broadcast`, `client_msg_id` | `ts` and `channel` come from the response; the permalink is built locally from the cached workspace URL, falling back to `chat.getPermalink` |
+| `chat.scheduleMessage` | `channel`, `text`, optional `blocks`, `thread_ts`, `reply_broadcast`, `post_at` | Returns `scheduled_message_id`; nothing is stored locally (a scheduled message is not in history yet). Slack limits `post_at` to 120 days |
+| `conversations.open` | `users` (comma separated, 1 to 8), `return_im=true` | Response `channel` object is upserted so the conversation is resolvable offline |
+| `conversations.mark` | `channel`, `ts` | Reuses the monotonic mark logic; skipped when the local read cursor is already at or beyond `ts` |
+| `reactions.add` / `reactions.remove` | `channel`, `timestamp`, `name` | `already_reacted` / `no_reaction` are treated as success |
+| `pins.add` / `pins.remove` | `channel`, `timestamp` | `already_pinned` / `no_pin` are treated as success; local `pins` table updated after confirmation |
+| `stars.add` | `channel`, `timestamp` | Legacy stars. The modern "Later" list has no documented API, so `flek save` sets only the legacy star and warns (`legacy_star_only_later_api_unavailable`). **Unverified:** whether a legacy star appears in the modern "Later" view of the target workspace. No undocumented endpoint is used |
+
+- **Fallback:** none needed beyond the Open in Slack deep link; errors surface
+  as typed CLI errors (`auth`, `rate_limited`, `network`).
+- **Date checked:** 2026-11-15, source review and wiremock fixtures only.

@@ -221,3 +221,5 @@ impl Store {
 }
 
 pub mod channel_browser;
+
+pub mod message_actions;
