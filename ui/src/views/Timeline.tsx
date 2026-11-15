@@ -1,3 +1,4 @@
+import { attachTimelineProbe } from "../dev/performance";
 import { dayLabel, JoinChannelBar } from "./timeline-parts";
 import {
   createEffect,
@@ -491,6 +492,7 @@ export default function Timeline(props: {
   });
   createEffect(() => {
     if (scroller) {
+      onCleanup(attachTimelineProbe(scroller, () => rows.length));
       viewportObserver.observe(scroller);
       updateViewport();
     }

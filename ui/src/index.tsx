@@ -1,3 +1,4 @@
+import "./dev/performance";
 import { render } from "solid-js/web";
 import App from "./App";
 import { initPlatform } from "./platform";

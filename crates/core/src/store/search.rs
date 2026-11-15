@@ -242,15 +242,30 @@ pub fn search_page(
     } else {
         "substr(COALESCE(m.text, ''), 1, 200)".to_owned()
     };
-    let mut sql = format!(
+    // Newest-first free-text search: pick the page first and render snippets only
+    // for it. Sorting by ts while snippet() is in the select list makes SQLite
+    // probe FTS per row (~4x slower on frequent words, M6.6.3). Relevance order
+    // and filter-only queries keep the single-query shape, which is faster there.
+    let page_first = text_search && sort == Sort::Recent;
+    let mut sql = if page_first {
         "
+            WITH matched_page AS MATERIALIZED (
+            SELECT m.id
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+        "
+        .to_owned()
+    } else {
+        format!(
+            "
             SELECT m.conversation_id, COALESCE(c.label, c.name, c.id), m.ts, m.thread_ts,
                 COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit, m.user_id
             FROM messages m
             JOIN conversations c ON c.id = m.conversation_id
             LEFT JOIN users u ON u.id = m.user_id
         "
-    );
+        )
+    };
     if text_search {
         sql.push_str(
             "
@@ -265,11 +280,9 @@ pub fn search_page(
         ",
         arg(team_id.to_owned().into())
     ));
-    if text_search {
-        sql.push_str(&format!(
-            " AND messages_fts MATCH {}",
-            arg(q.fts.clone().into())
-        ));
+    let match_arg = text_search.then(|| arg(q.fts.clone().into()));
+    if let Some(matched) = &match_arg {
+        sql.push_str(&format!(" AND messages_fts MATCH {matched}"));
     }
     if !q.from.is_empty() {
         let mut ors = Vec::new();
@@ -362,6 +375,23 @@ pub fn search_page(
         " OFFSET {}",
         arg(i64::try_from(offset).unwrap_or(i64::MAX).into())
     ));
+    if let Some(matched) = match_arg.filter(|_| page_first) {
+        // Scan MATCH once and probe the bounded materialized page; probing MATCH
+        // per result would rebuild prefix posting-list unions for every row.
+        sql.push_str(&format!(
+            "
+            )
+            SELECT m.conversation_id, COALESCE(c.label, c.name, c.id), m.ts, m.thread_ts,
+                COALESCE(u.display_name, u.name, m.author_name), {snippet}, m.hidden_by_limit, m.user_id
+            FROM messages_fts CROSS JOIN matched_page p ON p.id = messages_fts.rowid
+            JOIN messages m ON m.id = p.id
+            JOIN conversations c ON c.id = m.conversation_id
+            LEFT JOIN users u ON u.id = m.user_id
+            WHERE messages_fts MATCH {matched}
+            ORDER BY m.ts DESC, m.conversation_id
+        "
+        ));
+    }
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt
         .query_map(params_from_iter(args), |r| {

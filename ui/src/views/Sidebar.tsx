@@ -1,3 +1,4 @@
+import { markSidebarPaint } from "../dev/performance";
 import { createEffect, createMemo, createSignal, For, on, Show, type JSX } from "solid-js";
 import { t, locale } from "../i18n/index";
 import { settings } from "../stores/settings";
@@ -19,6 +20,10 @@ export default function Sidebar(props: {
   onContext: (target: ConversationMenuTarget) => void;
   onChannelsMenu: (position: { x: number; y: number }) => void;
 }) {
+  let sidebar!: HTMLElement;
+  createEffect(() => {
+    if (props.conversations.length) markSidebarPaint(sidebar, () => props.conversations.length);
+  });
   const [query, setQuery] = createSignal("");
   createEffect(on(() => props.selected, () => setQuery(""), { defer: true }));
   const live = () => {
@@ -98,7 +103,7 @@ export default function Sidebar(props: {
   );
 
   return (
-    <nav class="sidebar">
+    <nav class="sidebar" ref={sidebar}>
       <header>
         <div class="team">{props.team}</div>
       </header>

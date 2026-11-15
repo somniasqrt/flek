@@ -52,3 +52,7 @@ wiremock.workspace = true
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "budgets"
+harness = false

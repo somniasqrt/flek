@@ -480,6 +480,8 @@ Media discovery reads through Store::read, at most 1000 dirty messages per batch
 
 Migration 0007 owns counters and uses NULL-safe IS comparisons. Unread means undeleted, newer than last_read, top-level/root/broadcast and from someone else. Read-marker changes recount one conversation. Migration 0016's INSERT trigger clears closed_at only for a newer undeleted message, so replay cannot reopen a DM.
 
+Performance budgets (start-up, 10k-message scroll, search) and how to measure them: see `docs/performance.md`.
+
 ## Invariants and guards
 
 - A successful remote send remains successful if the local write/read fails: sync::send::Sent carries ts and not_stored_locally, app forwards it, and CLI JSON retains message (null if unavailable) plus ts/not_stored_locally. The outbox records remote acceptance, shows a local-sync warning when needed and permits Retry only for failed sends. Only SQLite can replace the provisional message. Client message ids correlate optimistic entries/echoes; remote deduplication of repeated sends is not assumed. send.rs currently contains no edit/delete/react write paths.

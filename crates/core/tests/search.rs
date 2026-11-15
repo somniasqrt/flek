@@ -5,7 +5,9 @@ use std::time::Instant;
 use flek_core::store::messages::{self, MessageRow};
 use flek_core::store::search::{self, Sort};
 use flek_core::store::{migrations, Store};
-use rusqlite::params;
+#[allow(dead_code)]
+#[path = "../benches/support/mod.rs"]
+mod budget_fixture;
 
 fn store() -> Store {
     let store = Store::open_in_memory().unwrap();
@@ -212,69 +214,23 @@ fn upgrade_from_v4_keeps_reactions_and_indexes_old_messages() {
 #[test]
 #[ignore]
 fn bench_100k_messages() {
-    let store = store();
-    let words = [
-        "оцінки",
-        "таблиця",
-        "звіт",
-        "дедлайн",
-        "grades",
-        "sheet",
-        "report",
-        "deadline",
-        "meeting",
-        "lunch",
-        "release",
-        "bug",
-        "fix",
-        "deploy",
-        "review",
-        "design",
-        "проєкт",
-        "зустріч",
-        "питання",
-        "відповідь",
-    ];
-    store
-        .with_conn(|c| {
-            let tx = c.transaction()?;
-            {
-                let mut stmt = tx.prepare(
-                    "INSERT INTO messages (conversation_id, ts, user_id, text, raw_json) VALUES (?1, ?2, ?3, ?4, '{}')",
-                )?;
-                let mut seed: u64 = 42;
-                for i in 0..100_000u64 {
-                    let mut text = String::new();
-                    for _ in 0..12 {
-                        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-                        text.push_str(words[(seed >> 33) as usize % words.len()]);
-                        text.push(' ');
-                    }
-                    if i % 10_000 == 0 {
-                        text.push_str("needle");
-                    }
-                    let conv = if i % 2 == 0 { "C1" } else { "C2" };
-                    let user = if i % 3 == 0 { "U1" } else { "U2" };
-                    stmt.execute(params![conv, format!("{}.000000", 1_600_000_000 + i * 60), user, text])?;
-                }
-            }
-            tx.commit()?;
-            Ok(())
-        })
-        .unwrap();
+    let fixture = budget_fixture::Fixture::new().unwrap();
+    let store = fixture.open().unwrap();
 
     for query in [
         "needle",
         "grades",
         "звіт дедлайн",
-        "from:alice in:#general deploy",
+        "from:person001 in:#channel000 deploy",
         "репорт*",
         "has:link",
     ] {
         let q = search::parse(query).unwrap();
         let start = Instant::now();
         let hits = store
-            .with_conn(|c| search::search(c, "T1", &q, Sort::Relevance, 50, ("[", "]")))
+            .with_read(|c| {
+                search::search(c, budget_fixture::TEAM, &q, Sort::Relevance, 50, ("[", "]"))
+            })
             .unwrap();
         let elapsed = start.elapsed();
         println!(

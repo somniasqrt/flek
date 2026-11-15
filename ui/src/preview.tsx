@@ -1,3 +1,4 @@
+import "./dev/performance";
 // Session-free preview. All content and IPC live under preview/.
 import { render } from "solid-js/web";
 import App from "./App";
