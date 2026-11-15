@@ -123,6 +123,9 @@ pub async fn run(cmd: ReadCommand, creds: &CredentialStore, g: &Global) -> Resul
                 }
             }
         }
+        ReadCommand::Channel(ChannelCommand::Manage(cmd)) => {
+            crate::channel_commands::channel(cmd, creds, g, &db, &team).await?;
+        }
         ReadCommand::Channel(ChannelCommand::Info { reference, fresh }) => {
             let id = conv(&db, &team, &reference)?;
             if fresh {

@@ -3,6 +3,7 @@
 mod account_commands;
 mod archive_commands;
 mod args;
+mod channel_commands;
 mod common;
 mod dispatch;
 mod event_commands;

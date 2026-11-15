@@ -117,6 +117,24 @@ pub async fn set_status(
     me: &str,
     status: CustomStatus,
 ) -> Result<()> {
+    if set_status_confirmed(client, store, bus, me, status).await? {
+        Ok(())
+    } else {
+        Err(crate::Error::Store(
+            "Status changed remotely; local profile unavailable. Sync to recover it.".into(),
+        ))
+    }
+}
+
+/// Return whether the confirmed remote profile was stored. A local failure
+/// must not make machine callers mistake acceptance for a rejected mutation.
+pub async fn set_status_confirmed(
+    client: &Client,
+    store: &Store,
+    bus: &Bus,
+    me: &str,
+    status: CustomStatus,
+) -> Result<bool> {
     let user = me.to_owned();
     if !store.read(move |c| presence::user_exists(c, &user)).await? {
         return Err(crate::Error::Store(
@@ -125,11 +143,12 @@ pub async fn set_status(
     }
     let profile = client.users_profile_set(&status).await?;
     let user = me.to_owned();
-    store
+    let stored = store
         .call(move |c| presence::set_profile(c, &user, &profile))
-        .await?;
+        .await
+        .is_ok();
     let _ = bus.send(Change::Directory);
-    Ok(())
+    Ok(stored)
 }
 
 pub async fn set_presence(

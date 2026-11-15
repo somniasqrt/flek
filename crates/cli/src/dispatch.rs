@@ -46,6 +46,7 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
             .await
         }
         Command::Read(cmd) => read_commands::run(cmd, &store, g).await,
+        Command::Status(cmd) => crate::channel_commands::status(cmd, &store, g).await,
         Command::History { channel, options } => {
             read_commands::history(&store, g, &channel, options).await
         }

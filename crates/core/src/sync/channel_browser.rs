@@ -131,10 +131,17 @@ pub async fn join(
     let channel = client.conversations_join(id).await?;
     let key = channel.id.clone();
     let team = team.to_owned();
-    store
+    let stored = store
         .call(move |c| channel_browser::upsert(c, &team, &channel, true))
-        .await?;
+        .await
+        .is_ok();
     let _ = bus.send(Change::Directory);
+    if !stored {
+        return Ok(ChannelAction {
+            id: key,
+            warning: Some("not_stored_locally".into()),
+        });
+    }
     let warning = super::fresh_conversation(client, store, &key, None)
         .await
         .err()
@@ -160,10 +167,17 @@ pub async fn create(
     let id = channel.id.clone();
     let team = team.to_owned();
     // Persist creation BEFORE the optional second write, including on purpose failure.
-    store
+    let stored = store
         .call(move |c| channel_browser::upsert(c, &team, &channel, true))
-        .await?;
+        .await
+        .is_ok();
     let _ = bus.send(Change::Directory);
+    if !stored {
+        return Ok(ChannelAction {
+            id,
+            warning: Some("not_stored_locally".into()),
+        });
+    }
     let mut warning = None;
     if !purpose.trim().is_empty() {
         match client.conversations_set_purpose(&id, purpose.trim()).await {

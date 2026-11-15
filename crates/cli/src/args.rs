@@ -45,6 +45,9 @@ pub(super) struct Global {
 pub(super) enum Command {
     #[command(flatten)]
     Read(read_commands::ReadCommand),
+    /// Set or clear your own custom status.
+    #[command(subcommand)]
+    Status(crate::channel_commands::StatusCommand),
     /// Manage stored sessions.
     #[command(subcommand)]
     Auth(AuthCommand),

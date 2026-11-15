@@ -60,7 +60,7 @@ pub enum ReadCommand {
     },
     /// Show one stored person's profile.
     User { reference: String },
-    /// Read channel details.
+    /// Read channel details or explicitly manage channels.
     #[command(subcommand)]
     Channel(ChannelCommand),
     /// Locally stored mentions of me, newest first.
@@ -95,6 +95,8 @@ pub enum ReadCommand {
 }
 #[derive(Subcommand)]
 pub enum ChannelCommand {
+    #[command(flatten)]
+    Manage(crate::channel_commands::ChannelMutation),
     /// Stored metadata; --fresh also fetches members and pins.
     Info {
         reference: String,

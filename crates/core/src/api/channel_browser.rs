@@ -15,6 +15,58 @@ fn conversation(raw: Value) -> Result<Conversation> {
 }
 
 impl Client {
+    /// One person per explicit action; bulk invitations are intentionally unsupported.
+    pub async fn conversations_invite(&self, channel: &str, user: &str) -> Result<()> {
+        self.call::<Value>(
+            "conversations.invite",
+            &[("channel", channel), ("users", user)],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn conversations_kick(&self, channel: &str, user: &str) -> Result<()> {
+        self.call::<Value>(
+            "conversations.kick",
+            &[("channel", channel), ("user", user)],
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn conversations_set_topic(&self, channel: &str, topic: &str) -> Result<String> {
+        let response: Value = self
+            .call(
+                "conversations.setTopic",
+                &[("channel", channel), ("topic", topic)],
+            )
+            .await?;
+        Ok(response["channel"]["topic"]["value"]
+            .as_str()
+            .or_else(|| response["topic"].as_str())
+            .unwrap_or(topic)
+            .to_owned())
+    }
+
+    pub async fn conversations_rename(&self, channel: &str, name: &str) -> Result<String> {
+        let response: Value = self
+            .call(
+                "conversations.rename",
+                &[("channel", channel), ("name", name)],
+            )
+            .await?;
+        Ok(response["channel"]["name"]
+            .as_str()
+            .unwrap_or(name)
+            .to_owned())
+    }
+
+    pub async fn conversations_archive(&self, channel: &str) -> Result<()> {
+        self.call::<Value>("conversations.archive", &[("channel", channel)])
+            .await?;
+        Ok(())
+    }
+
     /// At most 4,000 results; even empty pages can carry a next cursor.
     pub async fn conversations_list(&self, include_archived: bool) -> Result<ChannelDirectory> {
         let mut channels = Vec::new();

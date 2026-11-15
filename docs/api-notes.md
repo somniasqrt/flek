@@ -480,6 +480,42 @@ Documented methods, **unverified with an `xoxc` session + `d` cookie**:
 - `conversations.create` (`name`, `is_private`) then optional `conversations.setPurpose`. Names are lowercased and whitespace becomes `-` before sending; letters of any script, ASCII digits, `-` and `_` are accepted, 80 characters at most (`crates/core/tests/fixtures/channel-names.json` is shared by the Rust and UI tests). Slack's own errors (`name_taken`, `invalid_name_*`, `restricted_action`) are shown translated.
 
 
+## CLI channel management and own status (M8.5)
+
+Only documented methods are used. All request/response shapes below are based
+on Slack's reference; compatibility with `xoxc` + `d` is **not verified on a
+real workspace**. No Slack session, Keychain or real app was used to verify this
+implementation.
+
+| Method | Request fields (authentication omitted) | Success data used |
+|---|---|---|
+| [`conversations.create`](https://docs.slack.dev/reference/methods/conversations.create/) | `name`, `is_private` | `channel`; existing M6.11 create/store path |
+| [`conversations.join`](https://docs.slack.dev/reference/methods/conversations.join/) | `channel` | `channel`; existing join/store/catch-up path |
+| [`conversations.invite`](https://docs.slack.dev/reference/methods/conversations.invite/) | `channel`, `users` (one resolved user id) | `ok`; the returned channel is not treated as a complete member list |
+| [`conversations.kick`](https://docs.slack.dev/reference/methods/conversations.kick/) | `channel`, `user` | `ok` |
+| [`conversations.leave`](https://docs.slack.dev/reference/methods/conversations.leave/) | `channel` | `ok` |
+| [`conversations.setTopic`](https://docs.slack.dev/reference/methods/conversations.setTopic/) | `channel`, `topic` | `channel.topic.value`; a top-level `topic` string or the confirmed requested value is a compatibility fallback |
+| [`conversations.setPurpose`](https://docs.slack.dev/reference/methods/conversations.setPurpose/) | `channel`, `purpose` | top-level `purpose` string, otherwise confirmed requested value (reference also permits `ok` only) |
+| [`conversations.rename`](https://docs.slack.dev/reference/methods/conversations.rename/) | `channel`, `name` | `channel.name` (server normalization), otherwise confirmed submitted normalized name |
+| [`conversations.archive`](https://docs.slack.dev/reference/methods/conversations.archive/) | `channel` | `ok` |
+| [`users.profile.set`](https://docs.slack.dev/reference/methods/users.profile.set/) | `profile`: JSON containing `status_text`, `status_emoji`, `status_expiration`; no `user` field | returned `profile`, merged through M6.7 core status code |
+
+The prepared request (dry-run report) omits credentials and shows `profile` as
+the JSON string that is sent in the API form field. Status
+clear submits `{"status_text":"","status_emoji":"","status_expiration":0}`.
+No undocumented membership/status endpoint or fallback write is enabled.
+Membership deltas are idempotent and raw metadata is updated alongside columns.
+The existing RTM conversation-change path still schedules directory refresh;
+profile echoes merge through `user_change`. Neither path adds member counts,
+so local confirmed writes do not double-count their echoes. Complete membership
+snapshots remain explicit `channel info --fresh` work.
+
+TODO (owner verification): confirm all above methods with the owner's session,
+including private-channel restrictions, canonical rename/topic/purpose responses,
+emoji/expiration acceptance, live echoes and join catch-up. The response-value
+fallbacks for topic/rename are not verified on a real workspace. Do not add an
+undocumented alternative until its shape is captured and documented.
+
 ### Stored file thumbnails (`thumb_*`)
 
 - **Source:** optional fields of Slack file objects already stored in `files.raw_json`;

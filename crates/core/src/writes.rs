@@ -572,9 +572,7 @@ impl PreparedWrite {
         })
     }
 
-    /// The only path to a real write: policy check and atomic rate-limit reservation
-    /// come first, the session is resolved lazily afterwards, and the outcome is
-    /// logged as a stable category only (never request data or error text).
+    /// The only path to a real write: see [`guarded`].
     pub async fn run_guarded<F, Fut>(
         &self,
         log: &ActionLog,
@@ -587,23 +585,52 @@ impl PreparedWrite {
         F: FnOnce() -> Fut,
         Fut: std::future::Future<Output = Result<WriteSession>>,
     {
-        let reservation = log.reserve(config, &self.action, yes)?;
-        let result = async {
-            let session = session().await?;
-            if session.team_id != self.action.team_id {
-                return Err(Error::Forbidden);
-            }
-            self.execute(&session.client, store, &session.user_id).await
-        }
-        .await;
-        let status = result.as_ref().map(|_| ()).map_err(Error::kind);
-        // Remote acceptance must never become a retryable failure because the
-        // audit completion failed; the entry then stays `pending`.
-        if reservation.finish(status).is_err() {
-            tracing::warn!("action-log completion unavailable; entry remains pending");
-        }
-        result
+        guarded(
+            log,
+            config,
+            yes,
+            &self.action,
+            session,
+            |session| async move { self.execute(&session.client, store, &session.user_id).await },
+        )
+        .await
     }
+}
+
+/// Policy check and atomic rate-limit reservation come first, the session is
+/// resolved lazily afterwards and must belong to the descriptor's team, and the
+/// outcome is logged as a stable category only (never request data or error
+/// text). Every write, including channel management, runs through here.
+pub async fn guarded<T, F, Fut, E, EFut>(
+    log: &ActionLog,
+    config: &AgentConfig,
+    yes: bool,
+    action: &ActionDescriptor,
+    session: F,
+    execute: E,
+) -> Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<WriteSession>>,
+    E: FnOnce(WriteSession) -> EFut,
+    EFut: std::future::Future<Output = Result<T>>,
+{
+    let reservation = log.reserve(config, action, yes)?;
+    let result = async {
+        let session = session().await?;
+        if session.team_id != action.team_id {
+            return Err(Error::Forbidden);
+        }
+        execute(session).await
+    }
+    .await;
+    let status = result.as_ref().map(|_| ()).map_err(Error::kind);
+    // Remote acceptance must never become a retryable failure because the
+    // audit completion failed; the entry then stays `pending`.
+    if reservation.finish(status).is_err() {
+        tracing::warn!("action-log completion unavailable; entry remains pending");
+    }
+    result
 }
 
 pub fn validate_schedule(at: i64, now: i64) -> Result<()> {

@@ -192,3 +192,4 @@ pub mod conversation;
 pub mod read;
 
 pub mod channel_browser;
+pub mod management;

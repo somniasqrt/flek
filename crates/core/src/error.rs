@@ -49,6 +49,14 @@ pub enum Error {
         needed: Option<String>,
     },
 
+    /// Contextual write rejection; legacy API error classification stays stable.
+    #[error("Slack API error: {code}{}", needed.as_deref().map(|n| format!(" (needed scope: {n})")).unwrap_or_default())]
+    WriteRejected {
+        code: String,
+        needed: Option<String>,
+        kind: ErrorKind,
+    },
+
     #[error("unexpected HTTP status {0}")]
     HttpStatus(u16),
 
@@ -131,6 +139,7 @@ impl Error {
             Self::Usage(_) => ErrorKind::Usage,
             Self::Forbidden => ErrorKind::Forbidden,
             Self::Timeout => ErrorKind::Timeout,
+            Self::WriteRejected { kind, .. } => *kind,
             Self::NoCredentials
             | Self::DesktopNotFound { .. }
             | Self::DesktopNotLoggedIn

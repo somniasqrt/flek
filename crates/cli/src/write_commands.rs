@@ -86,7 +86,7 @@ pub(super) fn config_path(g: &Global) -> Result<PathBuf> {
         .map(Ok)
         .unwrap_or_else(agent::default_config_path)?)
 }
-fn log_path(g: &Global) -> Result<PathBuf> {
+pub(super) fn log_path(g: &Global) -> Result<PathBuf> {
     Ok(g.agent_log
         .clone()
         .map(Ok)
@@ -155,6 +155,16 @@ pub(super) async fn run(command: WriteCommand, creds: &CredentialStore, g: &Glob
     execute(creds, g, &db, &config, prepared).await
 }
 
+/// Denials explain how to authorize; every other error passes through unchanged.
+pub(super) fn guard_error(e: Error) -> anyhow::Error {
+    match e {
+        Error::Forbidden => anyhow::Error::new(e).context(
+            "write guard: pass --yes or add an exact team/channel/action rule to agent.toml",
+        ),
+        other => other.into(),
+    }
+}
+
 pub(super) async fn execute(
     creds: &CredentialStore,
     g: &Global,
@@ -181,12 +191,7 @@ pub(super) async fn execute(
             })
         })
         .await
-        .map_err(|e| match e {
-            Error::Forbidden => anyhow::Error::new(e).context(
-                "write guard: pass --yes or add an exact team/channel/action rule to agent.toml",
-            ),
-            other => other.into(),
-        })?;
+        .map_err(guard_error)?;
     if g.json {
         emit(serde_json::to_value(&receipt)?);
     } else {

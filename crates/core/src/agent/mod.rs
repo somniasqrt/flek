@@ -13,7 +13,8 @@ use std::path::PathBuf;
 pub struct ActionDescriptor {
     pub action: String,
     pub team_id: String,
-    /// One channel, or up to eight recipient user ids for `dm`.
+    /// One channel id, up to eight recipient user ids for `dm`, the own user id for
+    /// `status-*`, or `new:<name>` for `channel-create`.
     pub targets: Vec<String>,
 }
 impl ActionDescriptor {
@@ -27,16 +28,29 @@ impl ActionDescriptor {
             || !valid_id(&self.team_id, "T")
             || self.targets.is_empty()
             || self.targets.len() > if self.action == "dm" { 8 } else { 1 }
-            || self
-                .targets
-                .iter()
-                .any(|t| !valid_id(t, if self.action == "dm" { "UW" } else { "CDG" }))
+            || !self.targets.iter().all(|t| self.valid_target(t))
         {
             return Err(Error::Usage(
                 "invalid action or destination; mass writes are not supported".into(),
             ));
         }
         Ok(())
+    }
+
+    /// Target shape per action: `dm` recipients and `status-*` (own user id) are
+    /// users, `channel-create` is the `new:<normalized-name>` marker (no id exists
+    /// yet), every other action addresses one channel id.
+    fn valid_target(&self, target: &str) -> bool {
+        match self.action.as_str() {
+            "dm" | "status-set" | "status-clear" => valid_id(target, "UW"),
+            "channel-create" => target.strip_prefix("new:").is_some_and(|name| {
+                (1..=80).contains(&name.chars().count())
+                    && name
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_'))
+            }),
+            _ => valid_id(target, "CDG"),
+        }
     }
 }
 

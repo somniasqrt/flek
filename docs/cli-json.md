@@ -467,14 +467,28 @@ are always allowed; the commands below are the only writers in the CLI.
 | `pin` / `unpin <ref>` | `pins.add` / `pins.remove` | `pin` / `unpin` |
 | `save <ref>` | `stars.add` | `save` |
 | `dm <person...>` (1 to 8 people) | `conversations.open` | `dm` |
+| `channel create <name> [--private]` | `conversations.create` | `channel-create` |
+| `channel invite` / `kick <channel> <person>` (one person) | `conversations.invite` / `conversations.kick` | `channel-invite` / `channel-kick` |
+| `channel join` / `leave <channel>` | `conversations.join` / `conversations.leave` | `channel-join` / `channel-leave` |
+| `channel topic` / `purpose` / `rename <channel> <text>` | `conversations.setTopic` / `setPurpose` / `rename` | `channel-topic` / `channel-purpose` / `channel-rename` |
+| `channel archive <channel>` | `conversations.archive` | `channel-archive` |
+| `status set <text>` / `status clear` | `users.profile.set` | `status-set` / `status-clear` |
+
+Guard targets (what allow rules list under `channels`): message and channel
+actions use the resolved conversation id; `dm` the recipient user ids;
+`status-set`/`status-clear` your own user id; `channel-create` the marker
+`new:<normalized-name>` (the channel has no id yet, so a rule can allow
+`new:ops-room` or `*`). The action log stores the same targets, so a created
+channel's name appears there. Every channel/status command takes exactly one
+target, so there are no mass writes.
 
 `<ref>` is a message permalink, or an exact conversation name/id followed by a
 Slack timestamp (`flek react general 1700000000.123456 --emoji tada`). Channels
 and people resolve with the exact matcher from the local database only: a
 prefix or fuzzy match is reported as `ambiguous`/`not_found`, never guessed.
-No command opens a DM implicitly; run `flek dm` first. Edit, delete, upload,
-forward and channel management are not part of this layer yet; when they are
-added they must call the same guard with their own action name.
+No command opens a DM implicitly; run `flek dm` first. Edit, delete, upload and
+forward are not part of this layer yet; when they are added they must call the
+same guard (`writes::guarded`) with their own action name.
 
 Message input: text as an argument, `-`/`--stdin`, piped stdin (when no text is
 given and stdin is not a terminal) or `--file PATH` (UTF-8, at most 1 MiB).
@@ -521,9 +535,11 @@ actions = ["send", "react"]         # action names from the table; "*" = any act
 A missing file means defaults: deny every write unless `--yes` is passed. A write
 is allowed without `--yes` only when one rule matches its team, every target and
 its action (pieces of different rules never combine; `*` is the only wildcard).
-For `dm` the targets are the recipient user ids. `--yes` authorizes that single
+For `dm` the targets are the recipient user ids, for `status-*` your own user
+id, for `channel-create` the `new:<name>` marker. `--yes` authorizes that single
 invocation for any valid action but never bypasses the rate limit or the
-descriptor limits (exactly one channel, at most eight DM recipients). Unknown
+descriptor limits (exactly one target, at most eight DM recipients; the target
+shape must fit the action). Unknown
 keys, an invalid rate or a signature that looks like a credential make the file
 invalid (`usage`, exit 2); parser diagnostics never quote the file. The
 signature is appended after a blank line to `send`/`schedule` text and, when
@@ -641,3 +657,90 @@ thread (or DM) is fetched again, so a reply that arrived while disconnected is
 still found. `--timeout` elapsing exits 9 (`timeout`); the default is to wait
 forever. Ctrl-C exits 0 without output. An unknown reference is `not_found` (3)
 and an invalid timestamp `usage` (2), both before any network work.
+
+## Channel and own-status writes (M8.5, additive version 1)
+
+```text
+flek channel create <name> [--private]
+flek channel invite <channel> <person>
+flek channel kick <channel> <person>
+flek channel join <channel>
+flek channel leave <channel>
+flek channel topic <channel> <text>
+flek channel purpose <channel> <text>
+flek channel rename <channel> <name>
+flek channel archive <channel>
+flek status set <text> [--emoji :name:] [--expires TIME]
+flek status clear
+```
+
+These commands are listed in the guarded-writes table above (action names and
+targets) and accept the shared `--dry-run`, `--yes` and `--json` flags. `channel info` retains its
+existing read behavior. Invite/kick accept exactly one person per invocation.
+An empty quoted topic/purpose clears the value. Create/rename share the M6.11
+core normalization and validation: lowercase, whitespace to hyphens, 1–80
+letters, ASCII digits, hyphens or underscores. Rename stores Slack's returned
+name. Create has no optional purpose write; use `channel purpose` separately.
+
+Team selection uses `--team` or the sole identity in SQLite. Channel/person
+references use shared `Match::Exact` resolution **before** credentials are
+accessed. Prefix-only matches, even a unique prefix, fail as `ambiguous` (4)
+with `error.candidates`; unresolved targets fail as `not_found` (3). There is
+no implicit directory refresh. Sync first when an identity is absent. Personal
+and group DMs are rejected by these channel operations. Known general channels
+cannot be left/archived; self-kick directs callers to `channel leave`.
+
+Status targets only the stored self identity. Text is at most 100 Unicode code
+points. Emoji is an empty string (default) or a Slack shortcode such as
+`:calendar:`. `--expires` (alias `--expiration`) defaults to `0` (no expiry).
+It accepts `0`/`never`, future integer Unix seconds, RFC3339, local calendar
+date or an integer duration `30m`/`12h`/`7d` **from now**. Unlike read TIME
+arguments, these durations point forward. Absolute fractional timestamps are
+truncated to whole seconds. Past/out-of-range/overflow expirations are usage
+errors (2). Clear sends empty text and emoji with expiration zero.
+
+These commands are guarded like every other write (see "Agent writes" above:
+deny unless `--yes` or an `agent.toml` allow rule, rate limit, action log, session
+resolved only afterwards). `--dry-run`, `--yes`, `--agent-config` and `--agent-log`
+are the shared global flags. Dry-run prints the same report as the M8.4 writes
+(`schema_version`, `dry_run`, `authorized`, `write`); it never resolves a session,
+sends a request or touches the log, and does not apply the action to SQLite
+(normal DB opening/migrations still apply):
+
+```json
+{"schema_version":1,"dry_run":true,"authorized":false,"write":{"action":{"action":"channel-invite","team_id":"T1","targets":["C1"]},"request":{"method":"conversations.invite","params":{"channel":"C1","users":"U2"}},"no_op":false,"warning":null}}
+```
+
+`create` targets `new:<normalized-name>`; `status-*` target your own user id.
+`params` are string form fields: the status `profile` is the JSON string that is
+sent. The prepared plan is immutable; session team and user must match before
+execution (`forbidden`, 8, otherwise).
+
+Successful execution returns exactly one object with `schema_version:1`,
+`ok:true`, `dry_run:false`, `action` (the action name string), `targets`
+(the guard targets), nullable `conversation_id` and `user_id`, `conversation:Conversation|null`, `user:User|null`,
+`warning:string|null`, and `not_stored_locally:boolean`. Channel commands return
+the conversation view; status returns the self user view. All views are read
+from SQLite after confirmation. For create, the resulting id is in the top-level
+`conversation_id` (the guard target was the `new:` marker). Invite/kick identify
+their target person in `user_id` but return no user view.
+
+Join reuses the core history catch-up. Failure of that secondary read returns
+`warning:"catch_up_failed"` and exit 0, with confirmed membership retained.
+If persistence or post-write hydration fails after remote acceptance, the
+affected views are null, `warning:"not_stored_locally"`,
+`not_stored_locally:true`, and exit 0. **Do not retry an accepted mutation**;
+sync to recover the local view. API rejection leaves local state unchanged and
+uses the standard typed failure envelope. Missing channels/users map to exit 3;
+permission, membership and archived-channel restrictions to 8; invalid names
+and arguments to 2; auth/rate-limit/network retain 5/6/7.
+This contextual API error classification applies only to these management
+actions; existing callers retain the legacy `Error::Slack` exit contract.
+
+Membership deltas are transactional/idempotent, retain history, and do not mark
+an incomplete member list as complete. A known complete snapshot supplies the
+updated count; otherwise a stale directory count is removed. Topic, purpose,
+name, archived flag and own membership update both indexed columns and stored
+raw metadata. Status merges the returned profile using the same core path as
+M6.7. Confirmed writes emit directory invalidation; join also emits history
+invalidation. No channel write advances history sync markers itself.
