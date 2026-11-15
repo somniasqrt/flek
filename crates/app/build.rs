@@ -45,6 +45,7 @@ const COMMANDS: &[&str] = &[
     "thread",
     "import_desktop",
     "sign_in",
+    "manual_sign_in",
     "people",
     "composer_people",
     "avatars",

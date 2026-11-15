@@ -88,6 +88,7 @@ const readyStatus: Status = {
 let previewStatus: Status = query.has("signin")
   ? { phase: "sign_in", desktop: true, reason: "token_revoked" }
   : readyStatus;
+let previewOrigin = "desktop";
 
 function setPreviewStatus(status: Status) {
   previewStatus = status;
@@ -132,7 +133,7 @@ mockIPC(
       case "storage_info":
         return { db_path: "/demo/flek/flek.db", db_bytes: 5242880, cache_bytes: 10485760 };
       case "account_origin":
-        return "desktop";
+        return previewOrigin;
       case "show_storage":
         return;
       case "clear_file_cache":
@@ -152,6 +153,7 @@ mockIPC(
         setPreviewStatus({ phase: "sign_in", desktop: true, reason: null });
         return;
       case "import_desktop":
+        previewOrigin = "desktop";
         if (!previewSettings.load_error) {
           previewSettings.desktop_import_on_start = true;
           emit("flek://settings", { ...previewSettings });
@@ -159,6 +161,16 @@ mockIPC(
         setPreviewStatus(readyStatus);
         return;
       case "sign_in":
+        previewOrigin = "webview";
+        setPreviewStatus(readyStatus);
+        return;
+      case "manual_sign_in":
+        // Synthetic outcome only: never retain, log or reflect supplied fields.
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        if (query.has("manualFail")) throw "Slack API error: invalid_auth";
+        if (query.has("manualNetwork")) throw "Slack API error: manual_validation_failed";
+        if (query.has("manualSaveFail")) throw "keychain: manual_session_save_failed";
+        previewOrigin = "manual";
         setPreviewStatus(readyStatus);
         return;
       case "team_icon":

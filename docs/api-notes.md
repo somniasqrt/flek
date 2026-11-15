@@ -137,6 +137,40 @@ Not reproduced: `_x_*` / `fp` / `slack_route` parameters (internal client
 telemetry with values Flek cannot honestly produce), `accept-language`,
 `priority`, the flannel websocket (Flek uses documented `rtm.connect`).
 
+### Manual browser session entry (M6.3.3)
+
+- Uses the existing documented `auth.test` path on `https://slack.com/api`:
+  multipart body containing `token`, plus `Cookie: d=<normalized value>` and
+  the existing client profile headers. No new undocumented endpoint is used.
+  Successful responses supply `team_id`, `user_id`, `team`, `user`, and `url`
+  through the existing `AuthTest` type. Credentials are saved only after success
+  (and after matching `--team`, if supplied by the CLI).
+- The main sign-in screen hides masked fields under **Advanced**. In browser
+  DevTools, use **Application** (**Storage** in Firefox): **Local Storage →
+  https://app.slack.com → localConfig_v2 → teams.<team>.token** for the token,
+  and **Cookies → https://app.slack.com → d** for the cookie. Both must come
+  from the same signed-in browser session. Treat them as passwords; do not paste
+  them into shell commands, logs, issue reports, or chat.
+- The parser accepts a raw `xoxd-…` value, `d=…` (including quoted values and
+  cookie attributes), or a full `Cookie:` header containing exactly one `d`.
+  It trims outer whitespace, decodes percent escapes once without form-decoding
+  `+`, and percent-encodes the value for the cookie header without double encoding.
+  Duplicate `d` entries, invalid prefixes/characters, missing values and oversized
+  input fail before any network or credential-store access.
+- Manual origin is recorded explicitly using the existing generic desktop Chrome
+  profile; Flek cannot infer the issuer's exact browser identity from pasted
+  credentials. Manual sessions never qualify for automatic desktop recovery.
+  Signing in manually does not change the desktop auto-import preference.
+- Rust values use `Secret` (redacted Debug/Display and zeroizing drop). UI fields
+  clear immediately on submission, on completion/error, on collapse and on unmount;
+  no UI persistence is used. Validation/storage failures expose fixed descriptions.
+  This does not erase the OS clipboard or guarantee erasure of JavaScript/IPC copies.
+- **Not verified on a real workspace:** this manual browser-copy flow, browser
+  storage layout across current browser/Slack versions, raw-versus-encoded cookie
+  normalization with a real session, and acceptance of the generic profile for
+  a browser-issued session. TODO (owner): verify these paths and credential-store
+  prompts with the real app/CLI; agents must use mocks only.
+
 ### `chat.postMessage` (sending as the user)
 
 - **Documented:** yes. Not yet captured from Slack desktop, which may use

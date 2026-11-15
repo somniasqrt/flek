@@ -8,6 +8,15 @@ IPC entry point; it does not launch Tauri, access Keychain or contact Slack.
   session** asks for confirmation; Cancel keeps it, confirmation uses mocked
   sign-out and clears local drafts/outbox while preserving UI preferences.
   **Try the Slack desktop app again** imports a synthetic session.
+- On `/preview.html?signin`, expand **Advanced** for manual session entry. Use
+  invented values only: the mock ignores credentials and succeeds after 700 ms.
+  Add `&manualFail`, `&manualNetwork`, or `&manualSaveFail` to exercise rejected
+  credentials, validation failure, or credential-store failure. Check that both
+  masked fields clear, repeat attempts work, and alternate sign-in actions are
+  disabled while waiting. Check collapse/reopen, keyboard focus, scrolling in a
+  short window, both themes and `&lang=uk`. Success opens the synthetic workspace;
+  Preferences → Account shows a manual session source. No supplied values are
+  recorded or printed by the mock.
 - `/preview.html?settingsError&preferences&lang=uk` shows the settings-read
   warning in Preferences and refuses settings saves. In the console,
   `__settingsError(false)` clears the diagnostic through mocked settings/change

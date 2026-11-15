@@ -4,6 +4,7 @@ pub mod chromium;
 pub mod desktop_import;
 pub mod desktop_profile;
 pub mod keychain;
+pub mod manual;
 pub mod origin;
 pub mod webview;
 

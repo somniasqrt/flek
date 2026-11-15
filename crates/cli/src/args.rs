@@ -36,6 +36,17 @@ pub(super) enum Command {
     /// Manage stored sessions.
     #[command(subcommand)]
     Auth(AuthCommand),
+    /// Sign in with a browser session (last resort).
+    ///
+    /// In browser DevTools, find the xoxc token under Application → Local Storage →
+    /// https://app.slack.com → localConfig_v2 → teams.<team>.token, and the d cookie
+    /// under Application → Cookies → https://app.slack.com. Treat both as passwords.
+    /// Terminal input is hidden. Piped stdin: token on line 1, cookie on line 2.
+    Login {
+        /// Read the token and d cookie securely; never pass credentials as arguments.
+        #[arg(long, required = true)]
+        manual: bool,
+    },
     /// Show the current team and user (imports from Slack desktop if needed).
     Whoami,
     /// Open (create, migrate) the local database and show where it lives.

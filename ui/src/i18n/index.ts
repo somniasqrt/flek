@@ -65,6 +65,11 @@ export function plural(key: PluralKey, n: number, lang: string = locale()): stri
 // error code (not user content, paths, session values, or an English error body).
 export function errorMessage(error: unknown): string {
   const raw = String(error);
+  if (raw === "manual_token_invalid") return t("Enter an xoxc-… session token.");
+  if (raw === "manual_cookie_invalid") return t("Enter an xoxd-… cookie value or a d=… cookie string.");
+  if (raw === "keychain: manual_session_save_failed") return t("Could not save the session in the system credential store. Check access permissions and retry.");
+  if (raw === "Slack API error: invalid_auth") return t("Slack rejected this session. Copy fresh values from the same signed-in workspace and retry.");
+  if (raw === "Slack API error: manual_validation_failed") return t("Could not validate the session. Check your connection and retry with fresh values.");
   const code = raw.match(
     /^(?:Slack API error: )?([a-z]+(?:_[a-z0-9]+)+)(?: \(needed scope: [a-z:,]+\))?$/,
   )?.[1];

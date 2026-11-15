@@ -14,6 +14,7 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
     let g = &cli.global;
 
     match cli.command {
+        Command::Login { manual: _ } => login_manual(&store, g).await,
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
         Command::Sync {

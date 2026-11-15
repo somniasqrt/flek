@@ -29,10 +29,23 @@ The table lists payload fields alongside the common `schema_version: integer`.
 | `auth list` | `teams`: string[] of stored team ids |
 | `auth import` | `teams`: objects with `team_id`, `name` strings and `ok` boolean; successful rows have `user`, `user_id` strings (authentication identity labels); failed rows have `error: string` |
 | `auth logout` | `removed`: string[] of removed team ids |
+| `login --manual` | `saved`: true; no credential or session object |
 
 `whoami`'s authentication label `user_name` and the per-team `auth import` label
 are identity metadata; all stored user entities use the User shape below.
 No token, cookie, or raw session object is included.
+
+`flek login --manual` is the last-resort browser session entry. With terminal
+stdin it prompts twice without echo (token, then `d` cookie); stderr must also
+be a terminal. With redirected/piped stdin it reads exactly two lines in that
+order, accepting a final line without a newline. Never put credentials in argv,
+shell history, environment variables, or files. `--json` requires non-terminal
+stdin so prompts cannot mix with the JSON failure envelope. Success returns only
+`saved: true`; `--team` checks the validated identity before saving. Input failures
+use the existing usage category, rejected credentials the auth category, validation
+failures the network category, and credential-store failures the auth category.
+See [API notes](api-notes.md#manual-browser-session-entry-m633) for browser DevTools
+locations, accepted cookie forms, origin behavior and unverified assumptions.
 
 Examples:
 

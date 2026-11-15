@@ -8,6 +8,17 @@ use flek_core::{
 };
 use serde_json::json;
 
+pub(super) async fn login_manual(store: &CredentialStore, g: &Global) -> Result<()> {
+    let (token, cookie) = crate::manual_login::read(g.json)?;
+    auth::manual::login(store, token, cookie, g.team.as_deref()).await?;
+    if g.json {
+        emit(json!({"saved": true}));
+    } else {
+        println!("Session validated and saved.");
+    }
+    Ok(())
+}
+
 pub(super) async fn whoami(store: &CredentialStore, g: &Global) -> Result<()> {
     let session = auth::resolve_session(store, g.team.as_deref()).await?;
     let Session {

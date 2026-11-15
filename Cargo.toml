@@ -15,6 +15,7 @@ anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 cbc = { version = "0.1", features = ["alloc"] }
 clap = { version = "4", features = ["derive"] }
+console = "0.16"
 dirs = "6"
 fastrand = "2"
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
@@ -22,6 +23,7 @@ indicatif = "0.18"
 keyring = { version = "3", features = ["apple-native"] }
 plist = "1"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+percent-encoding = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 rusty-leveldb = "3"

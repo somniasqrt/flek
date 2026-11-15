@@ -3,7 +3,7 @@
 use super::{text, CmdResult};
 use crate::state::{self, AppState, Status};
 use flek_core::sync::live::Progress;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn status(state: State<'_, AppState>) -> Status {
@@ -26,6 +26,23 @@ pub async fn import_desktop(app: AppHandle) {
 pub async fn sign_in(app: AppHandle) -> CmdResult<()> {
     crate::browsing_data::upgrade(&app).await?;
     crate::login::open(&app).map_err(text)
+}
+
+/// Last-resort entry from the trusted main window. Core owns parsing/auth/save.
+#[tauri::command]
+pub async fn manual_sign_in(app: AppHandle, token: String, cookie: String) -> CmdResult<()> {
+    let token = flek_core::Secret::new(token);
+    let cookie = flek_core::Secret::new(cookie);
+    let state = app.state::<AppState>();
+    let _maintenance = state.maintenance.lock().await;
+    if !matches!(state.status(), Status::SignIn { .. }) {
+        return Err("manual_sign_in_unavailable".into());
+    }
+    let session = flek_core::auth::manual::login(&state.creds, token, cookie, None)
+        .await
+        .map_err(text)?;
+    state::start(&app, session);
+    Ok(())
 }
 
 #[tauri::command]
@@ -183,6 +200,7 @@ pub fn account_origin(state: State<'_, AppState>) -> String {
     {
         Some(OriginKind::Desktop { .. }) => "desktop",
         Some(OriginKind::Webview) => "webview",
+        Some(OriginKind::Manual) => "manual",
         _ => "unknown",
     }
     .into()

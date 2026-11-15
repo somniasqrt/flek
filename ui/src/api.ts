@@ -306,6 +306,7 @@ export const api = {
   clearFileCache: () => invoke<void>("clear_file_cache"),
   fullResync: () => invoke<void>("full_resync"),
   signOut: () => invoke<void>("sign_out"),
+  manualSignIn: (token: string, cookie: string) => invoke<void>("manual_sign_in", { token, cookie }),
   accountOrigin: () => invoke<string>("account_origin"),
   markRead: (conversationId: string, ts: string) =>
     invoke<void>("mark_read", { conversationId, ts }),

@@ -43,7 +43,9 @@ export default function AccountSection(props: { ctx: PrefsContext }) {
                     ? t("Slack desktop import")
                     : origin() === "webview"
                       ? t("Sign-in")
-                      : t("Session source unknown")}
+                      : origin() === "manual"
+                        ? t("Manual session")
+                        : t("Session source unknown")}
                 </span>
               </Row>
             </Card>

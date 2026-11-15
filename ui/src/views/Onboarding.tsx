@@ -4,6 +4,7 @@ import T from "../i18n/T";
 import { api, type Status } from "../api";
 import { isMac } from "../platform";
 import { signOut } from "../stores/session";
+import ManualSignIn from "./ManualSignIn";
 
 /// First launch and lost sessions: import from Slack desktop, else sign in.
 export default function Onboarding(props: { status: Status }) {
@@ -88,17 +89,18 @@ export default function Onboarding(props: { status: Status }) {
                       </button>
                     </div>
                   }>
-                    <button class="primary" onClick={() => api.signIn()}>
+                    <button class="primary" disabled={busy()} onClick={() => api.signIn()}>
                       {t("Sign in to Slack")}
                     </button>
                     <Show when={st().desktop}>
-                      <button class="link" onClick={() => api.importDesktop()}>
+                      <button class="link" disabled={busy()} onClick={() => api.importDesktop()}>
                         {t("Try the Slack desktop app again")}
                       </button>
                     </Show>
-                    <button ref={clearButton} class="link" onClick={() => setConfirmClear(true)}>
+                    <button ref={clearButton} class="link" disabled={busy()} onClick={() => setConfirmClear(true)}>
                       {t("Clear saved session")}
                     </button>
+                    <ManualSignIn busy={busy()} onBusyChange={setBusy} />
                   </Show>
                 </>
               );

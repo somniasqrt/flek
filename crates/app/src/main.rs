@@ -72,6 +72,7 @@ fn main() {
             commands::full_resync,
             commands::sign_out,
             commands::account_origin,
+            commands::manual_sign_in,
             commands::show_storage,
             commands::team_icon,
             commands::mark_read,

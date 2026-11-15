@@ -4,7 +4,29 @@
   place-items: center;
   height: 100vh;
   padding: 24px;
+  overflow-y: auto;
+  align-items: safe center;
 }
+.manual-signin {
+  width: 100%;
+  margin-top: 16px;
+  text-align: left;
+}
+.manual-signin summary { cursor: pointer; color: var(--accent); }
+.manual-signin form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.manual-signin label { font-weight: 600; }
+.manual-signin input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.manual-signin input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.manual-signin p { overflow-wrap: anywhere; }
+.manual-signin .primary { margin-top: 4px; }
 .card {
   max-width: min(420px, 100%);
   text-align: center;

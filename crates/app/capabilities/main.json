@@ -33,6 +33,7 @@
     "allow-thread",
     "allow-import-desktop",
     "allow-sign-in",
+    "allow-manual-sign-in",
     "allow-people",
     "allow-composer-people",
     "allow-avatars",
