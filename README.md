@@ -107,6 +107,18 @@ cargo tauri dev
 
 On first launch Flek reads your session from the Slack desktop app. macOS asks once for access to the "Slack Safe Storage" Keychain item, allow it.
 
+**macOS release bundles (M6.4.2)**:
+
+```bash
+scripts/build-macos.sh
+```
+
+Builds the locked frontend and release app, then packages `Flek.app` and a DMG
+for the host architecture (macOS 13+). The default is ad-hoc signing for local
+testing. Developer ID signing and opt-in notarization use environment variables;
+see [Building for macOS](docs/build-macos.md) for prerequisites, artifact paths,
+other architectures and verification. Building does not launch Flek.
+
 ## CLI
 
 ### Install and run

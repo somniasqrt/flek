@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Hardened runtime is enabled by codesign, not by an entitlement.
+     Flek's native executable needs no runtime exceptions. WKWebView runs
+     web content in system-managed processes. See docs/build-macos.md. -->
+<dict/>
+</plist>

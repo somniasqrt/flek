@@ -7,7 +7,7 @@
     "devUrl": "http://localhost:5173",
     "frontendDist": "../../ui/dist",
     "beforeDevCommand": "npm run dev --workspace ui",
-    "beforeBuildCommand": "npm run build --workspace ui"
+    "beforeBuildCommand": "npm run build --workspace ui -- --configLoader runner"
   },
   "app": {
     "windows": [
@@ -34,6 +34,8 @@
   },
   "bundle": {
     "active": true,
+    "category": "Productivity",
+    "shortDescription": "A local-first workspace messenger and archive",
     "targets": [
       "app",
       "dmg"
@@ -46,7 +48,11 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "minimumSystemVersion": "12.0"
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "Entitlements.plist",
+      "infoPlist": "Info.plist"
     }
   }
 }

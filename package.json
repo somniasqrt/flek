@@ -5,7 +5,8 @@
   "scripts": {
     "tauri": "tauri",
     "app": "tauri dev --no-watch",
-    "app:build": "tauri build"
+    "app:build": "tauri build",
+    "app:build:macos": "sh scripts/build-macos.sh"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4"
