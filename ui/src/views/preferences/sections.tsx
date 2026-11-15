@@ -200,3 +200,20 @@ export function MediaSection(props: Props) {
     </Card>
   );
 }
+
+export function NotificationsSection(props: Props) {
+  const ctx = props.ctx;
+  return (
+    <Card>
+      <Row label={t("Enable notifications")} description={t("Flek respects conversation notification preferences and Do Not Disturb.")}>
+        <Switch label={t("Enable notifications")} {...toggle(ctx, "notifications_enabled")} />
+      </Row>
+      <Row label={t("Play notification sounds")}>
+        <Switch label={t("Play notification sounds")} {...toggle(ctx, "notification_sound")} disabled={ctx.busy() || !settings().notifications_enabled} />
+      </Row>
+      <Row label={t("Show message previews")} description={t("Include sender names and message text in system notifications.")}>
+        <Switch label={t("Show message previews")} {...toggle(ctx, "notification_preview")} disabled={ctx.busy() || !settings().notifications_enabled} />
+      </Row>
+    </Card>
+  );
+}

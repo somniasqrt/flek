@@ -72,7 +72,7 @@ pub fn resolve(conn: &Connection, team: &str, query: &str, mode: Match) -> Resul
                 CASE
             WHEN json_valid(u.raw_json) THEN json_extract(u.raw_json, '$.profile.email') END, c.last_read,
                 c.starred, c.notification, COALESCE(json_extract(c.raw_json, '$.is_general'), 0),
-                c.is_member
+                c.is_member, c.notification_explicit
             FROM conversations c
             LEFT JOIN users u ON u.id = c.dm_user_id
             WHERE c.team_id = ?1
@@ -89,6 +89,7 @@ pub fn resolve(conn: &Connection, team: &str, query: &str, mode: Match) -> Resul
             last_read: r.get(14)?,
             starred: r.get(15)?,
             notification: r.get(16)?,
+            notification_explicit: r.get(19)?,
             is_general: r.get(17)?,
             id: r.get(0)?,
             kind: r.get(1)?,

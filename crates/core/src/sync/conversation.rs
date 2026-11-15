@@ -6,6 +6,8 @@ use crate::{
     Error, Result,
 };
 
+/// Passing a notification value records an explicit Flek-local choice, even
+/// when it equals the inherited default. None leaves both value and flag alone.
 pub async fn preference(
     store: &Store,
     bus: &Bus,
@@ -25,7 +27,9 @@ pub async fn preference(
             c.execute(
                 "
                     UPDATE conversations
-                    SET starred = COALESCE(?2, starred), notification = COALESCE(?3, notification)
+                    SET starred = COALESCE(?2, starred), notification = COALESCE(?3, notification),
+                        notification_explicit = CASE WHEN ?3 IS NOT NULL THEN 1
+                            ELSE notification_explicit END
                     WHERE id = ?1
                 ",
                 rusqlite::params![id, starred, notification],

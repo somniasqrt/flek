@@ -38,9 +38,11 @@ pub enum Key {
     Window,
     Minimize,
     CloseWindow,
+    NewMessage,
+    NewMessages,
 }
 
-const STRINGS: [[&str; 2]; 35] = [
+const STRINGS: [[&str; 2]; 37] = [
     ["Starting…", "Запуск…"],
     ["Open Flek", "Відкрити Flek"],
     ["Open at Login", "Запускати при вході"],
@@ -82,6 +84,8 @@ const STRINGS: [[&str; 2]; 35] = [
     ["Window", "Вікно"],
     ["Minimize", "Згорнути"],
     ["Close Window", "Закрити вікно"],
+    ["New message", "Нове повідомлення"],
+    ["New messages", "Нові повідомлення"],
 ];
 
 pub fn resolve(language: Language, system: &str) -> usize {

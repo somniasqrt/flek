@@ -1,4 +1,10 @@
 export const en = {
+  "Notifications": "Notifications",
+  "Enable notifications": "Enable notifications",
+  "Play notification sounds": "Play notification sounds",
+  "Show message previews": "Show message previews",
+  "Flek respects conversation notification preferences and Do Not Disturb.": "Flek respects conversation notification preferences and Do Not Disturb.",
+  "Include sender names and message text in system notifications.": "Include sender names and message text in system notifications.",
   // Conversation header.
   "Unstar channel": "Unstar channel",
   "Star conversation": "Star conversation",

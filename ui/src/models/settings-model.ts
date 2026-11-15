@@ -12,6 +12,9 @@ export type Settings = {
   dm_sort: "recent" | "name";
   show_muted: boolean;
   presence_dots: boolean;
+  notifications_enabled: boolean;
+  notification_sound: boolean;
+  notification_preview: boolean;
   link_previews: boolean;
   image_previews: boolean;
   max_file_bytes: number | null;
@@ -31,6 +34,9 @@ export const defaultSettings: Settings = {
   dm_sort: "recent",
   show_muted: true,
   presence_dots: true,
+  notifications_enabled: true,
+  notification_sound: true,
+  notification_preview: true,
   link_previews: true,
   image_previews: true,
   max_file_bytes: 100 * 1024 * 1024,

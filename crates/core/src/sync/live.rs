@@ -46,6 +46,8 @@ pub enum Change {
     /// Users or conversations changed.
     Directory,
     Presence,
+    /// Reconnect catch-up and the initial self DND snapshot have settled.
+    CaughtUp,
     Connection(ConnectionState),
     /// Preferences failed to load (or have recovered); no file content.
     SettingsError {

@@ -170,6 +170,8 @@ pub struct ConversationRow {
     pub last_read: Option<String>,
     pub starred: bool,
     pub notification: String,
+    /// Whether the user chose notification, rather than inheriting the kind default.
+    pub notification_explicit: bool,
     pub is_general: bool,
     pub id: String,
     pub kind: String,
@@ -202,7 +204,7 @@ pub fn list_conversations_including(
             SELECT id, kind, COALESCE(label, name, id), is_archived, topic, message_count, CASE
             WHEN notification = 'muted' THEN 0
             ELSE unread_count END, latest_ts, dm_user_id, last_read, starred, notification,
-                COALESCE(json_extract(raw_json, '$.is_general'), 0), is_member
+                COALESCE(json_extract(raw_json, '$.is_general'), 0), is_member, notification_explicit
             FROM conversations
             WHERE team_id = ?1
             AND (?2
@@ -222,6 +224,7 @@ pub fn list_conversations_including(
                 last_read: r.get(9)?,
                 starred: r.get(10)?,
                 notification: r.get(11)?,
+                notification_explicit: r.get(14)?,
                 is_general: r.get(12)?,
                 id: r.get(0)?,
                 kind: r.get(1)?,

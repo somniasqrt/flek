@@ -31,6 +31,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (18, include_str!("migrations/0018_activity_reads.sql")),
     (19, include_str!("migrations/0019_thread_retry.sql")),
     (20, include_str!("migrations/0020_download_retries.sql")),
+    (
+        21,
+        include_str!("migrations/0021_notification_explicit.sql"),
+    ),
 ];
 
 /// Latest schema version this build knows.

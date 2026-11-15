@@ -2,7 +2,7 @@ import { emit } from "@tauri-apps/api/event";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { defaultSettings, type Settings } from "../models/settings-model";
 import { fileType } from "../models/rail-model";
-import type { Conversation, Status } from "../api";
+import type { Conversation, NotificationTarget, Status } from "../api";
 import { people, conversations, now, msg, ROOT, replies, messages, bigMessages } from "./messages";
 import { hits, profiles, elsewhere, presence, closed, directRows, activityRows, storedFiles } from "./directory";
 import { pdf, svgFixture } from "./assets";
@@ -102,10 +102,25 @@ function setPreviewStatus(status: Status) {
   emit("flek://settings", { ...previewSettings });
 };
 
+let notificationTarget: NotificationTarget | null = null;
+(window as unknown as { __notificationClick: (conversationId?: string, ts?: string, threadTs?: string | null) => void }).__notificationClick =
+  (conversationId = "C1", ts = ROOT, threadTs = null) => {
+    notificationTarget = { team_id: "T1", conversation_id: conversationId, ts, thread_ts: threadTs };
+    emit("flek://notification-open", null);
+  };
+
 mockIPC(
   async (cmd, args) => {
     const a = args as Record<string, string | null>;
     switch (cmd) {
+      case "notification_context":
+        (window as unknown as { __notificationContext: string | null }).__notificationContext = a.conversationId;
+        return;
+      case "notification_target": {
+        const target = notificationTarget;
+        notificationTarget = null;
+        return target;
+      }
       case "get_settings":
         return { ...previewSettings };
       case "set_settings": {
@@ -290,8 +305,10 @@ mockIPC(
         const c = conversations.find((c) => c.id === a.conversationId);
         if (c) {
           if (typeof a.starred === "boolean") c.starred = a.starred;
-          if (a.notification)
+          if (a.notification) {
             c.notification = String(a.notification) as Conversation["notification"];
+            c.notification_explicit = true;
+          }
         }
         emit("flek://change", { type: "directory" });
         return;

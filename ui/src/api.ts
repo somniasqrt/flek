@@ -42,6 +42,7 @@ export type Change =
   | { type: "directory" }
   | { type: "presence" }
   | { type: "connection"; data: ConnectionState }
+  | { type: "caught_up" }
   | { type: "settings_error"; data: { error: string | null } }
   | { type: "progress"; data: Progress };
 
@@ -50,6 +51,7 @@ export type Conversation = {
   last_read?: string | null;
   starred?: boolean;
   notification?: "all" | "mentions" | "muted";
+  notification_explicit?: boolean;
   is_general?: boolean;
   id: string;
   kind: "public_channel" | "private_channel" | "mpim" | "im";
@@ -279,7 +281,14 @@ export type ChannelDirectory = {
 };
 export type ChannelAction = { id: string; warning: string | null };
 
+export type NotificationTarget = { team_id: string; conversation_id: string; ts: string; thread_ts: string | null };
+
+export const onNotificationOpen = (f: () => void): Promise<UnlistenFn> =>
+  listen("flek://notification-open", f);
+
 export const api = {
+  notificationContext: (conversationId: string | null) => invoke<void>("notification_context", { conversationId }),
+  notificationTarget: () => invoke<NotificationTarget | null>("notification_target"),
   channelDirectory: (refresh = false, force = false) =>
     invoke<ChannelDirectory>("channel_directory", { refresh, force }),
   channelPreview: (conversationId: string, fresh = false) =>

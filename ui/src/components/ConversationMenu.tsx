@@ -8,6 +8,7 @@ import {
   conversationMenuPosition,
   conversationStarLabel,
   hasUnread,
+  notificationPreference,
 } from "../models/conversation-model";
 
 export type ConversationMenuTarget = { id: string; x: number; y: number };
@@ -312,10 +313,10 @@ function NotificationChoices(props: { conversation: Conversation; onSelect: (val
         {([value, label]) => (
           <button
             role="menuitemradio"
-            aria-checked={(props.conversation.notification ?? "all") === value}
+            aria-checked={notificationPreference(props.conversation) === value}
             onClick={() => props.onSelect(value)}
           >
-            {(props.conversation.notification ?? "all") === value ? "✓ " : ""}
+            {notificationPreference(props.conversation) === value ? "✓ " : ""}
             {label}
           </button>
         )}

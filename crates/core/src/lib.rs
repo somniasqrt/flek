@@ -29,3 +29,5 @@ mod private_fs;
 
 /// Logging policy shared by executable entry points.
 pub mod logging;
+
+pub mod notifications;

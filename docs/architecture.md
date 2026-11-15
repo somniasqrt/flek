@@ -82,6 +82,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `search.rs` — Agent search: resolve locally, optionally ingest remote evidence, read SQLite.
 - `secret.rs` — A string that never shows up in logs.
 - `settings.rs` — Versioned, non-secret preferences shared by desktop and sync.
+- `notifications.rs` — Pure notification policy, committed-message aggregation/watermark and cached unread badge count.
 - `store/channel_browser.rs` — Cached channel directory. Metadata stays in conversations, including raw JSON.
 - `store/directory/conversations.rs` — Conversation merges, labels, member-only sidebar listing and resolution.
 - `store/directory/mod.rs` — Public facade for store/directory; grouped implementations are re-exported here.
@@ -125,7 +126,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `views/text.rs` — Timestamp rendering and Slack reference/entity resolution.
 - `views/users.rs` — Hydrated user output including stored presence and DND.
 - `views/version.rs` — Machine-view schema version (independent of SQLite version).
-- `store/migrations/` — append-only SQL 0001–0019; schema evolution described below.
+- `store/migrations/` — append-only SQL 0001–0021; schema evolution described below.
 
 ### crates/cli/src
 
@@ -160,6 +161,7 @@ Paths below are relative to each source root. `mod.rs` facades keep existing pub
 - `files.rs` — `flekfile://localhost/<file id>[/preview]` and `…/link/<hash>`: cached
 - `i18n.rs` — Native strings. Fixed-size pairs enforce completeness for both languages.
 - `login.rs` — "Sign in to Slack": an embedded webview on app.slack.com (ADR 0001).
+- `notifications.rs` — Tauri notification delivery/actions, native focus context, main-only target IPC and Dock/tray badges.
 - `main.rs` — Flek desktop: a thin Tauri shell over `flek-core`. Business logic lives in
 - `platform.rs` — Everything that behaves differently per OS, in one place. macOS keeps its
 - `state.rs` — What the app holds: the database, the credential store, the change bus,
@@ -444,11 +446,11 @@ The synthetic preview supports `?settingsError&preferences` and live failure/rec
 
 Migrations are compiled by store/migrations.rs from numbered SQL files. Startup inspects schema_version, then rechecks under an IMMEDIATE transaction before applying pending files. Foreign keys are off during rebuilds, checked using pragma_foreign_key_check afterwards, then re-enabled. No checksum is stored; applied text is nevertheless immutable. For future schema work append a numbered file and MIGRATIONS entry, include old-schema/backfill tests, and rebuild any message-derived data from existing raw_json. Migration 0018 adds conversation activity_seen and local thread_reads cursors. Migration 0019 adds a nullable thread_sync.retry_after deadline; existing successful progress is unchanged.
 
-Every table (schema through 0020), with its writer and notable semantics:
+Every table (schema through 0021), with its writer and notable semantics:
 - `schema_version`: migration runner; version primary key and applied_at, separate from JSON v1.
 - `teams`: directory/auth sync; identity, self_user_id, workspace raw_json/icon; self change recounts unread.
 - `users`: directory/live/import; names, bot/deleted flags and raw_json profile fields.
-- `conversations`: directory/channel/action sync; kind, label, topic/purpose, is_member gates engine/sidebar. last_read feeds unread triggers; remote_latest drives skip; starred/notification/closed_at are local preferences. message_count counts undeleted messages; latest_ts is newest ever stored; unread_count=NULL means unknown.
+- `conversations`: directory/channel/action sync; kind, label, topic/purpose, is_member gates engine/sidebar. last_read feeds unread triggers; remote_latest drives skip; starred/notification/notification_explicit/closed_at are local preferences. message_count counts undeleted messages; latest_ts is newest ever stored; unread_count=NULL means unknown.
 - `messages`: backfill/live/send/import/search ingestion; identity=(conversation_id, ts), ts TEXT, integer id for FTS. thread_ts/latest_reply/reply_count, edited_ts, deleted, hidden_by_limit, author_name, blocks_json and raw_json preserve evidence.
 - `reactions`: message merges/live actions; per message/name/user, cascading FK; nullable event_ts preserves observed activity time.
 - `files`: message merges/cache sync; metadata/raw_json, hidden_by_limit, is_external, local_path, preview_path and auto_download_paused.
@@ -555,3 +557,22 @@ For a feature (schema changes belong to feature work, not architecture-only pass
 6. Update relevant docs and Ukrainian ROADMAP (step status plus Journal); run checks.
 
 Offline checks: cargo fmt; cargo clippy --workspace --all-targets -- -D warnings; cargo test --workspace; in ui/: npm run check; npm test; npm run build. Do not launch app/session commands, use real Slack, run Playwright/WebKit or retain QA scripts for this pass.
+
+## Desktop notifications
+
+See [notifications.md](notifications.md) for M6.2.1 behavior, limitations and the
+unit/manual test recipe. Notification policy and message aggregation live in
+core and read SQLite. The app holds delivery until `Change::CaughtUp` after
+successful catch-up, the initial DND snapshot attempt and directory replay,
+then emits one alert for the batch. New message IDs plus a startup timestamp
+exclude duplicate echoes, edits and historical backfill. Main-only notification
+context/target commands connect native clicks to existing timeline/thread jumps.
+
+Migration 0021 distinguishes unchosen notification defaults from explicit values
+without a table rebuild. Conversation rows expose the raw `notification` and
+`notification_explicit` boolean. The existing preference setter marks any chosen
+value explicit; star-only writes preserve the flag. Core notification collection
+projects unchosen values to an in-memory `default` marker (DMs all, channels
+mentions); shared UI menu selection resolves the same rule. Raw `muted` checks
+for grouping/unread/badges remain unchanged. See notifications.md for the API
+and legacy-all migration limitation.

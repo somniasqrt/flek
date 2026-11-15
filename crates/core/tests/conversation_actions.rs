@@ -272,3 +272,37 @@ async fn slack_cant_leave_general_keeps_unknown_general_in_the_directory() {
     })
     .unwrap();
 }
+
+#[tokio::test]
+async fn notification_choice_is_explicit_and_star_keeps_it() {
+    let s = store();
+    let bus = bus();
+    let explicit = |s: &Store| {
+        s.with_read(|c| {
+            let row = directory::list_conversations(c, "T1")?
+                .into_iter()
+                .find(|r| r.id == "C1")
+                .unwrap();
+            Ok((row.notification, row.notification_explicit))
+        })
+        .unwrap()
+    };
+    // The DB default 'all' is not a choice: channels then notify on mentions only.
+    assert_eq!(explicit(&s), ("all".into(), false));
+    conversation::preference(&s, &bus, "C1", Some(true), None)
+        .await
+        .unwrap();
+    assert_eq!(explicit(&s), ("all".into(), false), "star-only change");
+    conversation::preference(&s, &bus, "C1", None, Some("all".into()))
+        .await
+        .unwrap();
+    assert_eq!(explicit(&s), ("all".into(), true));
+    conversation::preference(&s, &bus, "C1", Some(false), None)
+        .await
+        .unwrap();
+    assert_eq!(
+        explicit(&s),
+        ("all".into(), true),
+        "unstar keeps the choice"
+    );
+}

@@ -36,3 +36,14 @@ export function conversationMenuPosition(
     top: Math.max(8, Math.min(y, viewportHeight - height - 8)),
   };
 }
+
+/// Resolve inherited defaults without changing the raw preference used by mute UI.
+export function notificationPreference(c: {
+  kind: string;
+  notification?: "all" | "mentions" | "muted";
+  notification_explicit?: boolean;
+}): "all" | "mentions" | "muted" {
+  if (c.notification === "muted") return "muted";
+  if (c.notification_explicit && c.notification) return c.notification;
+  return c.kind === "im" || c.kind === "mpim" ? "all" : "mentions";
+}

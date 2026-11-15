@@ -183,6 +183,9 @@ pub fn set_status(app: &AppHandle, status: Status) {
     if let Ok(mut s) = state.status.lock() {
         *s = status.clone();
     }
+    if !matches!(status, Status::Ready { .. }) {
+        crate::notifications::clear(app);
+    }
     let _ = app.emit(STATUS_EVENT, status);
     crate::tray::refresh(app);
 }

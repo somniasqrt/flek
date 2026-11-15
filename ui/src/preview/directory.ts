@@ -147,6 +147,7 @@ conversations[1].notification = "muted";
 conversations[1].topic = "Muted in Flek — expand the Muted group";
 for (const c of conversations) {
   c.notification ??= "all";
+  c.notification_explicit ??= c.notification !== "all";
   c.starred ??= false;
 }
 

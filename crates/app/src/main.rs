@@ -10,6 +10,7 @@ mod files;
 mod i18n;
 mod login;
 mod navigation;
+mod notifications;
 mod platform;
 mod state;
 mod tray;
@@ -53,6 +54,7 @@ fn main() {
             show_main(app)
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             platform::autostart_launcher(),
             Some(vec![HIDDEN_ARG]),
@@ -61,6 +63,8 @@ fn main() {
         .manage(AppState::new(store))
         .invoke_handler(tauri::generate_handler![
             platform::platform,
+            notifications::notification_context,
+            notifications::notification_target,
             commands::get_settings,
             commands::set_settings,
             commands::storage_info,
@@ -128,6 +132,7 @@ fn main() {
             zoom::apply(handle);
             tray::create(handle)?;
             state::forward_changes(handle);
+            notifications::start(handle)?;
             if hidden {
                 hide_main(handle);
             } else {

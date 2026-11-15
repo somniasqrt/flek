@@ -11,6 +11,8 @@
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
     "allow-platform",
+    "allow-notification-context",
+    "allow-notification-target",
     "allow-team-icon",
     "allow-direct-messages",
     "allow-activity",

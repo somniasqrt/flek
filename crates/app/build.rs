@@ -4,6 +4,8 @@
 
 const COMMANDS: &[&str] = &[
     "platform",
+    "notification_context",
+    "notification_target",
     "channel_directory",
     "channel_preview",
     "join_channel",

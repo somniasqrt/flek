@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-notification-context"
+description = "Enables the notification_context command without any pre-configured scope."
+commands.allow = ["notification_context"]
+
+[[permission]]
+identifier = "deny-notification-context"
+description = "Denies the notification_context command without any pre-configured scope."
+commands.deny = ["notification_context"]

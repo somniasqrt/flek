@@ -4,6 +4,12 @@
 import type { Dictionary } from "./en.ts";
 
 export const uk = {
+  "Notifications": "Сповіщення",
+  "Enable notifications": "Увімкнути сповіщення",
+  "Play notification sounds": "Звуки сповіщень",
+  "Show message previews": "Показувати текст повідомлень",
+  "Flek respects conversation notification preferences and Do Not Disturb.": "Flek враховує налаштування сповіщень розмов і режим «Не турбувати».",
+  "Include sender names and message text in system notifications.": "Показувати імена авторів і текст у системних сповіщеннях.",
   // Conversation header.
   "Unstar channel": "Прибрати канал з обраного",
   "Star conversation": "Додати розмову до обраного",

@@ -12,7 +12,7 @@ Switch,
 import { Portal } from "solid-js/web";
 import { t, errorMessage } from "../i18n/index";
 import { api, type Status } from "../api";
-import { Cross, Gear, ImageIcon, Palette, Person, Refresh, SidebarPanel } from "../components/icons";
+import { Bell, Cross, Gear, ImageIcon, Palette, Person, Refresh, SidebarPanel } from "../components/icons";
 import { changeSetting, settings, setPreferencesOpen } from "../stores/settings";
 import { signOut } from "../stores/session";
 import type { Settings } from "../models/settings-model";
@@ -21,6 +21,7 @@ import type { Confirmable, PrefsContext } from "./preferences/context";
 import {
 AppearanceSection,
 GeneralSection,
+NotificationsSection,
 MediaSection,
 SidebarSection,
 } from "./preferences/sections";
@@ -30,6 +31,7 @@ const sections = [
   ["General", Gear],
   ["Appearance", Palette],
   ["Sidebar", SidebarPanel],
+  ["Notifications", Bell],
   ["Messages & media", ImageIcon],
   ["Sync & storage", Refresh],
   ["Account", Person],
@@ -181,6 +183,9 @@ export default function Preferences(props: { status: Status }) {
                   </Match>
                   <Match when={section() === "Sidebar"}>
                     <SidebarSection ctx={ctx} />
+                  </Match>
+                  <Match when={section() === "Notifications"}>
+                    <NotificationsSection ctx={ctx} />
                   </Match>
                   <Match when={section() === "Messages & media"}>
                     <MediaSection ctx={ctx} />

@@ -12,6 +12,7 @@ import { t } from "../i18n/index";
 import {
 api,
 onChange,
+onNotificationOpen,
 type Change,
 type ConnectionState,
 type Conversation,
@@ -23,7 +24,7 @@ type Status,
 import { setMe } from "../stores/outbox";
 import { adjacentConversation, conversationShortcut } from "../models/switcher";
 import { sidebarOrder } from "../models/sidebar-navigation";
-import { settings } from "../stores/settings";
+import { settings, setPreferencesOpen } from "../stores/settings";
 import { locale } from "../i18n/index";
 import { isMac } from "../platform";
 import { loadPeople } from "../stores/people";
@@ -264,6 +265,34 @@ export function useWorkspace(props: { status: Ready }) {
     });
     if (target.thread_ts && target.thread_ts !== target.ts) setThread(target.thread_ts);
   };
+  // Native focus is checked in Rust; the UI supplies only what is actually visible.
+  createEffect(() => {
+    const id = !browsing() && !searching() && !compose() && view() !== "files"
+      ? current()?.id ?? null : null;
+    api.notificationContext(id).catch(() => {});
+  });
+  onCleanup(() => { api.notificationContext(null).catch(() => {}); });
+  onMount(() => {
+    let disposed = false;
+    let openingNotification = 0;
+    const openNotification = async () => {
+      try {
+        const target = await api.notificationTarget();
+        if (disposed || !target || target.team_id !== props.status.team_id) return;
+        const request = ++openingNotification;
+        await loadConversations();
+        if (disposed || request !== openingNotification) return;
+        setPreferencesOpen(false);
+        setCompose(false);
+        chooseView("home");
+        closeProfile();
+        openJump(target);
+      } catch (error) { if (!disposed) setActionError(String(error)); }
+    };
+    const listener = onNotificationOpen(() => { void openNotification(); });
+    listener.then(() => { if (!disposed) void openNotification(); });
+    onCleanup(() => { disposed = true; listener.then((off) => off()); });
+  });
   const composeIn = (id: string) => {
     chooseView("home");
     select(id);

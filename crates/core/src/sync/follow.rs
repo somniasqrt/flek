@@ -233,6 +233,7 @@ async fn session(
     let mut snapshot_pending = presence_rx.is_some();
     let mut catching_up = pin!(catch_up_with_retry(catch_up, bus, cfg));
     let mut caught_up = false;
+    let mut announced_catch_up = false;
     let mut ticker = interval(cfg.ping_every);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     ticker.tick().await;
@@ -244,6 +245,16 @@ async fn session(
     let mut replay = None;
 
     loop {
+        if caught_up
+            && !snapshot_pending
+            && !directory_pending
+            && deferred.is_empty()
+            && replay.is_none()
+            && !announced_catch_up
+        {
+            let _ = bus.send(Change::CaughtUp);
+            announced_catch_up = true;
+        }
         if replay_directory && replay.is_none() {
             replay = deferred
                 .pop_front()

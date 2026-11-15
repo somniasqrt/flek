@@ -422,7 +422,12 @@ verified**. This is a research note, not a captured request/response contract.
 Blindly replacing workspace preference blobs risks losing unrelated settings.
 
 The permitted fallback is implemented instead: migration 0016 stores Flek-local
-`notification = all | mentions | muted` and `starred`. The UI labels notification
+`notification = all | mentions | muted` and `starred`. Migration 0021 adds
+`notification_explicit`: absent an explicit choice, im/mpim defaults to all and
+channels to mentions. Choosing any notification value sets the flag in core;
+star-only writes preserve it. Existing mentions/muted migrate as explicit;
+legacy all is ambiguous and inherits the kind default. The raw preference
+remains unchanged for mute/unread consumers. The UI labels notification
 choices “In Flek only”; stars also do not sync to Slack (sections/stars APIs are
 undocumented). No internal prefs calls, parsing, directory prefs fetch, or writes
 are enabled. Mute suppresses unread emphasis/badges and Activity unread, and
@@ -471,3 +476,18 @@ Documented methods, **unverified with an `xoxc` session + `d` cookie**:
   their ordinary card/icon and can still open in the existing 50 MiB viewer.
 - **Date checked:** 2026-11-14, source review and synthetic fixtures only; no live
   Slack traffic.
+
+## M6.2.1 notification inputs
+
+No additional endpoint or undocumented preference blob is used. Notification
+policy reads committed `messages.text`, `user_id`, `subtype`, `thread_ts`,
+conversation-local all/mentions/muted preferences, `last_read`, and the existing
+M6.7 self DND snapshot/events. Direct `<@USER_ID>` and broadcast `<!channel>`,
+`<!here>`, `<!everyone>` text tokens are recognized. User-group membership and
+keyword preferences are not fetched. New native notifications and the existing
+DND methods with xoxc+d are **not verified on a real workspace**.
+
+TODO (owner verification): confirm self DND snapshots/events and mention text
+fallbacks for the target workspace. Keep subteam/keyword support disabled until
+there is a verified membership/preference source. See [notification behavior and
+test recipe](notifications.md); missing/stale DND currently suppresses banners.
