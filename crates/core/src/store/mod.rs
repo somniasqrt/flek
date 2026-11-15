@@ -59,6 +59,16 @@ pub struct Store {
 }
 
 impl Store {
+    /// Open an existing archive without creating, migrating or repairing it.
+    /// Reads include committed WAL data; an outdated schema must be migrated separately.
+    pub fn open_read_only(path: &Path) -> Result<Self> {
+        Ok(Self {
+            conn: Arc::new(Mutex::new(open_reader(path)?)),
+            path: Some(path.to_owned()),
+            readers: Some(Arc::default()),
+        })
+    }
+
     /// Opens (creating if needed) the database at `path` and migrates it.
     pub fn open(path: &Path) -> Result<Self> {
         Self::open_with_busy_timeout(path, Duration::from_secs(5))

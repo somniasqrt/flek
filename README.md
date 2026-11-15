@@ -173,6 +173,7 @@ Examples use fictional destinations and timestamps; replace them with your own.
 | `search <QUERY>...` | Search the local archive, including history hidden in Slack. `--limit` defaults to 20; `--recent` sorts newest first. `--since/--until`, `--context N`, `--offset` or `--cursor` select windows/context/pages. `--remote` stores Slack search candidates before reading merged SQLite results; JSON includes parsed filters, sources and remote status. | `flek search 'release in:#project-demo after:2026-01-01' --recent --limit 10` |
 | `send <CHANNEL> <TEXT>` | Send as you, using Slack mrkdwn (`&`, `<`, `>` are escaped). `--thread <TS>` replies to a thread; `--broadcast` requires it and also shows the reply in the channel. Writes require an exact name or id. | `flek send '#project-demo' 'The release notes are ready.' --thread 1700000000.123456 --broadcast` |
 | `import <PATH>` | Import a simple JSON file or Slack export / slackdump file or directory. `--channel <CHANNEL>` puts every message of a single-file archive into that conversation. | `flek import ./archives/project-demo.json --channel C0FAKE` |
+| `export --obsidian <VAULT>` | [Offline Markdown export](docs/obsidian-export.md), with per-conversation notes, links/files tables and copied cached attachments. Supports `--channel`, `--since`, `--until` and incremental re-export. | `flek export --obsidian ~/Notes --channel '#project-demo'` |
 | `auth import` | Explicitly import desktop sessions into Keychain. | `flek auth import` |
 | `auth list` | List teams with stored credentials in Keychain. | `flek auth list` |
 | `auth logout` | Remove stored credentials; `--team` selects a team, `--all` removes every stored team. | `flek auth logout --team T0FAKE` |
@@ -220,7 +221,7 @@ a prefix produces suggestions even if there is only one candidate.
 ### Offline and online
 
 `channels`, `history`, `unread`, `thread`, `message`, `users`, `user`,
-`channel info`, `mentions`, `files`, `search`, `import` and `db` work locally without
+`channel info`, `mentions`, `files`, `search`, `import`, `export` and `db` work locally without
 reading Keychain. Reads reflect what is already stored; import writes to
 the local archive. If several teams are in the DB, pass `--team` for
 team-scoped commands. `db` can create an empty DB, but does not populate it.

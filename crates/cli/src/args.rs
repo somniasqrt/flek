@@ -111,6 +111,8 @@ pub(super) enum Command {
         #[arg(long)]
         channel: Option<String>,
     },
+    /// Export the local archive to an Obsidian vault (offline).
+    Export(crate::export_commands::Options),
     /// Send one guarded message; reads piped stdin when text is omitted.
     Send {
         /// Exact conversation name, #name, person for an existing DM, or id.

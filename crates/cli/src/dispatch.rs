@@ -10,11 +10,15 @@ use tracing_subscriber::prelude::*;
 
 pub(super) async fn run(cli: Cli) -> Result<()> {
     init_tracing(cli.global.verbose, cli.global.json);
+    if let Command::Export(options) = cli.command {
+        return crate::export_commands::run(&cli.global, options).await;
+    }
     let store = CredentialStore::keychain();
     let g = &cli.global;
 
     match cli.command {
         Command::Login { manual: _ } => login_manual(&store, g).await,
+        Command::Export(_) => unreachable!("offline export dispatched before credentials"),
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
         Command::Sync {

@@ -3,6 +3,7 @@
 pub mod api;
 pub mod auth;
 pub mod error;
+pub mod export;
 pub mod files;
 pub mod rtm;
 pub mod secret;

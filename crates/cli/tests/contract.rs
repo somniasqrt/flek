@@ -591,3 +591,38 @@ fn stub_teams_of_shared_channels_do_not_force_the_team_flag() {
     flek().arg("channels").assert().failure();
     flek().args(["--team", "T1", "channels"]).assert().success();
 }
+
+#[test]
+fn export_obsidian_is_offline_json_and_incremental() {
+    let (dir, path) = fixture();
+    let vault = dir.path().join("vault");
+    let vault_arg = vault.to_str().unwrap();
+    let first = success(&path, &["export", "--obsidian", vault_arg]);
+    let summary = &first["summary"];
+    assert_eq!(summary["conversations"], 3);
+    assert_eq!(summary["messages"], 1);
+    assert_eq!(summary["notes_written"], 5);
+    let second = success(&path, &["export", "--obsidian", vault_arg]);
+    assert_eq!(second["summary"]["notes_written"], 0);
+    assert_eq!(second["summary"]["notes_unchanged"], 5);
+    let one = success(
+        &path,
+        &["export", "--obsidian", vault_arg, "--channel", "#general"],
+    );
+    assert_eq!(one["summary"]["conversations"], 1);
+
+    let output = command(&path)
+        .args(["export", "--obsidian", vault_arg, "--channel", "gen"])
+        .assert()
+        .code(4)
+        .get_output()
+        .clone();
+    assert!(output.stdout.is_empty());
+    let missing = dir.path().join("absent.db");
+    command(&missing)
+        .args(["export", "--obsidian", vault_arg])
+        .assert()
+        .failure();
+    assert!(!missing.exists());
+    command(&path).arg("export").assert().failure();
+}

@@ -5,6 +5,7 @@ mod archive_commands;
 mod args;
 mod common;
 mod dispatch;
+mod export_commands;
 mod manual_login;
 mod output;
 mod read_commands;
@@ -44,7 +45,11 @@ async fn main() {
         }
         Err(e) => e.exit(),
     };
-    if let Err(error) = flek_core::auth::chromium::cleanup_stale_copies() {
+    if let Err(error) = if matches!(&cli.command, args::Command::Export(_)) {
+        Ok(())
+    } else {
+        flek_core::auth::chromium::cleanup_stale_copies()
+    } {
         eprintln!(
             "warning: could not remove stale session copies: {}",
             output::safe_message(&error.to_string())
