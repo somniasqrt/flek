@@ -1,0 +1,3 @@
+# Keep LF on every platform: rustfmt.toml sets newline_style = "Unix",
+# and Windows checkouts would otherwise get CRLF via core.autocrlf.
+* text=auto eol=lf
