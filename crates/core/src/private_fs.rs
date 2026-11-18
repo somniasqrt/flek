@@ -34,6 +34,16 @@ pub(crate) fn dir(path: &Path) -> Result<()> {
     mode(path, 0o700)
 }
 
+/// Persist a rename. Windows cannot open directories as files and has no
+/// directory fsync; NTFS journals the rename itself.
+pub(crate) fn sync_dir(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    std::fs::File::open(path)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 pub(crate) fn tree(path: &Path) -> Result<()> {
     dir(path)?;
     for entry in std::fs::read_dir(path)? {

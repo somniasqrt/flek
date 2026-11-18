@@ -196,7 +196,7 @@ impl Settings {
         temp.write_all(&serde_json::to_vec_pretty(&persisted)?)?;
         temp.as_file().sync_all()?;
         temp.persist(path).map_err(|e| Error::Io(e.error))?;
-        std::fs::File::open(parent)?.sync_all()?;
+        crate::private_fs::sync_dir(parent)?;
         Ok(())
     }
 
