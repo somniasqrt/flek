@@ -544,7 +544,10 @@ fn stale_copy_cleanup_failure_is_a_warning_not_a_failed_command() {
     std::fs::write(&not_a_dir, b"").unwrap();
     let result = command(&path)
         .arg("channels")
+        // temp_dir() reads TMPDIR on Unix and TMP/TEMP on Windows.
         .env("TMPDIR", &not_a_dir)
+        .env("TMP", &not_a_dir)
+        .env("TEMP", &not_a_dir)
         .assert()
         .success()
         .get_output()
