@@ -315,6 +315,8 @@ async fn a_stored_message_is_not_flagged() {
     assert_eq!(stored(&store).len(), 1);
 }
 
+// Windows cannot rename an open database, and its permission repair is a no-op.
+#[cfg(unix)]
 #[tokio::test]
 async fn a_committed_write_is_not_reported_as_failed_by_permission_repair() {
     // M9.13.4: the chmod after a write used to replace the write's own result.
