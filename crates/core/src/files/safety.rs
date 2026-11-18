@@ -227,6 +227,8 @@ pub fn save_to_downloads(source: &Path, directory: &Path, name: &str) -> Result<
         match save_copy_with(source, &destination, true) {
             Ok(()) => return Ok(destination),
             Err(Error::Io(e)) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            // Windows reports an existing directory as access denied.
+            Err(Error::Io(_)) if destination.symlink_metadata().is_ok() => continue,
             Err(e) => return Err(Error::File(format!("downloads_save_failed: {e}"))),
         }
     }

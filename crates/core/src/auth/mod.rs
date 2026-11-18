@@ -455,15 +455,19 @@ mod sign_out_tests {
     fn settings_failure_still_purges_credentials() {
         for unreadable in [false, true] {
             let dir = tempfile::tempdir().unwrap();
-            let path = dir.path().join(if unreadable {
-                "settings.json"
+            let path = if unreadable {
+                dir.path().join("settings.json")
+            } else if cfg!(windows) {
+                // Windows reads a path under a file as missing, but cannot create its parent.
+                std::fs::write(dir.path().join("file"), b"").unwrap();
+                dir.path().join("file").join("settings.json")
             } else {
-                "missing-settings.json/"
-            });
+                dir.path().join("missing-settings.json/")
+            };
             if unreadable {
                 std::fs::write(&path, "malformed settings").unwrap();
             } else {
-                // Missing file loads defaults, but rename to a trailing slash fails.
+                // Missing file loads defaults, but the save fails.
                 assert!(crate::settings::Settings::load(&path).is_ok());
             }
             let credentials = CredentialStore::with_backend(keychain::MemoryBackend::default());

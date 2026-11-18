@@ -293,9 +293,17 @@ mod tests {
         assert_eq!(cached.theme, Theme::Dark);
         assert!(!cached.desktop_import_on_start);
         // A read error, distinct from a JSON/validation error.
-        let parent = dir.path().join("not-a-directory");
-        std::fs::write(&parent, b"file").unwrap();
-        cached.reload(&parent.join("settings.json"));
+        let unreadable = if cfg!(windows) {
+            // Windows reads a path under a file as missing; a directory is unreadable.
+            let path = dir.path().join("a-directory");
+            std::fs::create_dir(&path).unwrap();
+            path
+        } else {
+            let parent = dir.path().join("not-a-directory");
+            std::fs::write(&parent, b"file").unwrap();
+            parent.join("settings.json")
+        };
+        cached.reload(&unreadable);
         assert!(cached.load_error.is_some());
         assert_eq!(cached.refresh_days, 3);
     }
