@@ -99,10 +99,18 @@ impl Upload {
     }
 
     pub async fn from_path(path: &Path) -> Result<Self> {
-        let mut source = tokio::fs::File::open(path).await?;
+        let not_a_file = || Error::Usage("upload requires a regular file".into());
+        let mut source = match tokio::fs::File::open(path).await {
+            Ok(source) => source,
+            // Windows cannot open a directory as a file.
+            Err(_) if tokio::fs::metadata(path).await.is_ok_and(|m| !m.is_file()) => {
+                return Err(not_a_file())
+            }
+            Err(e) => return Err(e.into()),
+        };
         let metadata = source.metadata().await?;
         if !metadata.is_file() {
-            return Err(Error::Usage("upload requires a regular file".into()));
+            return Err(not_a_file());
         }
         let name = path
             .file_name()
