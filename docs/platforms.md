@@ -207,9 +207,19 @@ an inference from that documented scope, not a verified runtime side effect; a s
 exclusion policy across configurable paths is more than a one-line bundle change.
 M6.4 therefore retains explicit per-download marking and defers a bundle-wide layer.
 
-`cfg(target_os = "windows")` TODO (M7.1): apply Zone.Identifier ADS to downloads and
-saved copies. Quarantine is currently a no-op on Windows/Linux; the shared launch
-allowlist and canonical cache containment still apply on every OS.
+On Windows (M7.2.8) the same call writes the Mark of the Web: an NTFS alternate
+data stream `<file>:Zone.Identifier` containing `[ZoneTransfer]` / `ZoneId=3`
+(Internet zone), which SmartScreen, Office Protected View and the shell check before
+running or opening the file
+([Microsoft: Zone.Identifier stream](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/6e3f7352-d11c-4d76-8c39-2516a9df36e8)).
+No `ReferrerUrl`/`HostUrl` is written, so no Slack URL leaves a trace. An existing
+stream is kept. Volumes without named streams (FAT, exFAT, some network shares)
+cannot carry the mark; the file is still saved and a warning is logged, the same
+outcome as on Linux.
+
+Linux has no equivalent the desktop enforces (`user.xdg.origin.url` xattrs are
+informational only), so `quarantine` is a no-op there. The shared launch allowlist
+and canonical cache containment still apply on every OS.
 
 Direct OS opening requires an exact, case-insensitive extension/MIME pair from
 `core::files::can_open`, using the resolved cached filename. Images (raster formats),

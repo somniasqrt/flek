@@ -151,7 +151,33 @@ pub fn quarantine(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Windows "Mark of the Web": a `Zone.Identifier` stream with the Internet
+/// zone (3), which SmartScreen, Office and the shell check before running or
+/// opening the file. No referrer or host URL is recorded. An existing mark is
+/// kept. Volumes without alternate data streams (FAT, exFAT, some network
+/// shares) cannot carry it; the file is still written, like on Linux.
+#[cfg(windows)]
+pub fn quarantine(path: &Path) -> Result<()> {
+    let mut stream = path.as_os_str().to_owned();
+    stream.push(":Zone.Identifier");
+    let stream = std::path::PathBuf::from(stream);
+    if stream.is_file() {
+        return Ok(());
+    }
+    match std::fs::write(&stream, "[ZoneTransfer]\r\nZoneId=3\r\n") {
+        Ok(()) => Ok(()),
+        // ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED, ERROR_INVALID_NAME:
+        // the file system has no named streams.
+        Err(e) if matches!(e.raw_os_error(), Some(1 | 50 | 123)) => {
+            tracing::warn!("no Mark of the Web on this volume: {e}");
+            Ok(())
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Linux and other systems have no equivalent mark.
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn quarantine(_path: &Path) -> Result<()> {
     Ok(())
 }
@@ -269,6 +295,32 @@ fn save_copy_with(source: &Path, destination: &Path, create_new: bool) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_marks_files_from_the_internet_zone_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("report.pdf");
+        std::fs::write(&file, b"synthetic").unwrap();
+        let mut stream = file.as_os_str().to_owned();
+        stream.push(":Zone.Identifier");
+        quarantine(&file).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&stream).unwrap(),
+            "[ZoneTransfer]\r\nZoneId=3\r\n"
+        );
+        // A mark set by someone else (e.g. a stricter zone) is left alone.
+        std::fs::write(&stream, "[ZoneTransfer]\r\nZoneId=4\r\n").unwrap();
+        quarantine(&file).unwrap();
+        assert!(std::fs::read_to_string(&stream)
+            .unwrap()
+            .contains("ZoneId=4"));
+        assert_eq!(
+            std::fs::read(&file).unwrap(),
+            b"synthetic",
+            "main stream untouched"
+        );
+    }
     #[test]
     fn exact_extension_and_mime_must_agree() {
         for (name, mime) in [
