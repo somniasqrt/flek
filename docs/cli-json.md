@@ -28,7 +28,7 @@ The table lists payload fields alongside the common `schema_version: integer`.
 | `upload <file> --channel <conversation> [--thread <root-ts>] [--comment <text>]` | `file_id`, `conversation_id`: strings; `message`: Message or null from SQLite; `ts`: string or null; `not_stored_locally`, `completion_unknown`: booleans; guarded, see "Agent writes" |
 | `import <path>` | `summary`: `{format: string, read: integer, written: integer, unknown_channels: string[]}` |
 | `export --obsidian <vault>` | `summary`: `{directory: string, conversations: integer, messages: integer, links: integer, files: integer, notes_written: integer, notes_unchanged: integer, attachments_copied: integer, attachments_unchanged: integer, attachments_unavailable: integer}`; see [offline Obsidian export](obsidian-export.md) |
-| `sync` | `summary`: `{conversations: integer, messages: integer, deleted: integer, failed: integer, files_downloaded: integer}` |
+| `sync` | `summary`: `{conversations: integer, messages: integer, deleted: integer, failed: integer, files_downloaded: integer, elapsed_secs: integer}` (`elapsed_secs` counts from start-up, including session and directory work) |
 | `auth list` | `teams`: string[] of stored team ids |
 | `auth import` | `teams`: objects with `team_id`, `name` strings and `ok` boolean; successful rows have `user`, `user_id` strings (authentication identity labels); failed rows have `error: string` |
 | `auth logout` | `removed`: string[] of removed team ids |

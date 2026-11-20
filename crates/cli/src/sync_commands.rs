@@ -24,6 +24,7 @@ pub(super) async fn sync(
     use flek_core::sync::engine::{Engine, EngineOptions, Priority};
     use flek_core::sync::live::{bus, Change, ConnectionState, Progress};
 
+    let started = std::time::Instant::now();
     let db = open_db(g)?;
     let mut settings = flek_core::settings::Settings::safe_defaults();
     settings.reload(&flek_core::settings::default_path()?);
@@ -165,15 +166,19 @@ pub(super) async fn sync(
         }
     }
 
+    let elapsed = started.elapsed().as_secs();
     if g.json {
+        let mut summary = serde_json::to_value(stats)?;
+        summary["elapsed_secs"] = json!(elapsed);
         if follow {
-            emit(json!({"type":"summary","summary":stats}));
+            emit(json!({"type":"summary","summary":summary}));
         } else {
-            emit(json!({"summary":stats}));
+            emit(json!({"summary":summary}));
         }
     } else {
         println!(
-            "done: {} messages fetched, {} deleted, {} conversations, {} failed, {} files downloaded",
+            "done in {}: {} messages fetched, {} deleted, {} conversations, {} failed, {} files downloaded",
+            duration(elapsed),
             stats.messages,
             stats.deleted,
             stats.conversations,
@@ -251,9 +256,26 @@ pub(super) fn say(bar: &indicatif::ProgressBar, line: String) {
     }
 }
 
+/// `42s`, `3m 05s`, `1h 02m`: enough to compare full-sync runs.
+fn duration(secs: u64) -> String {
+    match secs {
+        0..=59 => format!("{secs}s"),
+        60..=3599 => format!("{}m {:02}s", secs / 60, secs % 60),
+        _ => format!("{}h {:02}m", secs / 3600, secs % 3600 / 60),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::shutdown_signal;
+    use super::{duration, shutdown_signal};
+
+    #[test]
+    fn durations_read_naturally() {
+        assert_eq!(duration(0), "0s");
+        assert_eq!(duration(59), "59s");
+        assert_eq!(duration(185), "3m 05s");
+        assert_eq!(duration(3720), "1h 02m");
+    }
     use std::time::Duration;
 
     #[tokio::test]
