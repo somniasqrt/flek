@@ -4,7 +4,8 @@ import FileSafety from "./FileSafety";
 import SvgPreview from "./SvgPreview";
 import { documentKind } from "../models/document";
 import { isRasterImage, isInlineVideo, fileName, unavailable } from "../models/file-presentation";
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { pdfThumb } from "./pdf-thumb";
 import { t } from "../i18n/index";
 import { settings } from "../stores/settings";
 import { fileUrl, type FileRef } from "../api";
@@ -136,10 +137,15 @@ function Card(props: { f: FileRef; preview: boolean; busy: boolean; onOpen: (f: 
   const available = !unavailable(f);
   const preview = () =>
     settings().image_previews && props.preview && available && !!f.preview_path;
+  // Imported PDFs have no Slack thumbnail; draw the cached first page instead.
+  const [thumbFailed, setThumbFailed] = createSignal(false);
+  const localPdf = () =>
+    settings().image_previews && props.preview && available && !f.preview_path &&
+    !!f.local_path && kind(f) === "pdf" && !thumbFailed();
   return (
     <button
       class="file-card"
-      classList={{ "with-preview": preview() }}
+      classList={{ "with-preview": preview() || localPdf() }}
       disabled={!available || props.busy}
       onClick={() => props.onOpen(f)}
       aria-label={name(f)}
@@ -170,7 +176,36 @@ function Card(props: { f: FileRef; preview: boolean; busy: boolean; onOpen: (f: 
           <img src={fileUrl(f.id, true)} alt="" loading="lazy" />
         </span>
       </Show>
+      <Show when={localPdf()}>
+        <LocalPdfPreview id={f.id} onFail={() => setThumbFailed(true)} />
+      </Show>
     </button>
+  );
+}
+
+/// The space is reserved up front (like Slack's own previews), and the page is
+/// drawn only once the card scrolls near the viewport.
+function LocalPdfPreview(props: { id: string; onFail: () => void }) {
+  const [src, setSrc] = createSignal<string | null>(null);
+  let box!: HTMLSpanElement;
+  onMount(() => {
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        seen.disconnect();
+        void pdfThumb(props.id, box.clientWidth || 320).then((url) => (url ? setSrc(url) : props.onFail()));
+      },
+      { rootMargin: "400px 0px" },
+    );
+    seen.observe(box);
+    onCleanup(() => seen.disconnect());
+  });
+  return (
+    <span class="file-preview" ref={box}>
+      <Show when={src()}>
+        <img src={src()!} alt="" />
+      </Show>
+    </span>
   );
 }
 

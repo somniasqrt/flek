@@ -288,6 +288,11 @@ export const messages: Message[] = [
   }),
 ];
 
+// An imported PDF: cached locally, but Slack never made a thumbnail for it.
+messages.push(msg(1762500030, "U2", "Lecture notes from the old archive", {
+  files: [file({ id: "FPDF_LOCAL", name: "lecture-3.pdf", filetype: "pdf", mimetype: "application/pdf", size: 90_000, local_path: "/synthetic/lecture-3.pdf", can_open: true })],
+}));
+
 // Files deleted in Slack: one never saved, one with a copy saved before.
 messages.push(msg(1762500040, "U3", "Two old drafts of the notes", {
   files: [
