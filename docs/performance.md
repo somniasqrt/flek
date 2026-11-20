@@ -115,7 +115,24 @@ newest-first case from ~400-800 ms to ~100-250 ms with identical results, order 
 (regression test above). Relevance order and filter-only queries keep the original query: the
 rewrite was slower for them.
 
-Still over budget (frequent words, 40-50% of messages matching). The floor is reading the full
+M6.6.3 (2026-11-20): migration 0025 adds the narrow covering index
+`messages_search_cover(id, deleted, ts, conversation_id, user_id)`, and the newest-first page CTE
+selects it with `INDEXED BY` when every filter reads covered columns (no `has:link`/`has:file`, and
+`from:` already resolved to user ids, which `search::prepare` always does). SQLite's planner never
+picks it on its own: it prefers the rowid lookup. Quiet machine, 30 samples, p50 / p95 ms:
+
+| Query | before | after |
+| --- | --- | --- |
+| newest, `grades` | 55.1 / 55.7 | 40.2 / 40.7 |
+| newest, `таблиц*` | 55.2 / 55.9 | 40.2 / 40.6 |
+| newest, `звіт дедлайн` | 35.7 / 36.5 | 26.5 / 27.1 |
+| relevance, `grades` | 44.4 / 44.9 | 44.4 / 47.5 (unchanged path) |
+
+Every query is now inside 50 ms at p50; `has:link` relevance showed a single 54 ms p95 outlier
+(p50 33 ms). Relevance on frequent words stays near the edge because `bm25()` must score every hit
+(~45 ms for 46k hits by itself); item 3 below is what remains if that becomes a problem.
+
+Before M6.6.3, still over budget (frequent words, 40-50% of messages matching). The floor is reading the full
 `messages` row for every FTS hit just to sort by `ts` or apply the `team`/`deleted` filters, ~90 ms
 here because rows carry large `raw_json`. Plan, not implemented:
 

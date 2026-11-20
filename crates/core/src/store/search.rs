@@ -247,14 +247,24 @@ pub fn search_page(
     // probe FTS per row (~4x slower on frequent words, M6.6.3). Relevance order
     // and filter-only queries keep the single-query shape, which is faster there.
     let page_first = text_search && sort == Sort::Recent;
+    // The page is sorted from the narrow covering index (0025) instead of full
+    // rows, but only when every filter reads covered columns; otherwise each
+    // hit would cost an index probe plus the row lookup it was meant to avoid.
+    let covered = !q.has_link && !q.has_file && (q.from.is_empty() || q.resolved);
     let mut sql = if page_first {
-        "
+        format!(
+            "
             WITH matched_page AS MATERIALIZED (
             SELECT m.id
-            FROM messages m
+            FROM messages m{}
             JOIN conversations c ON c.id = m.conversation_id
-        "
-        .to_owned()
+        ",
+            if covered {
+                " INDEXED BY messages_search_cover"
+            } else {
+                ""
+            }
+        )
     } else {
         format!(
             "
