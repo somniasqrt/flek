@@ -19,6 +19,8 @@ pub struct FileRow {
     pub permalink: Option<String>,
     pub is_external: bool,
     pub hidden_by_limit: bool,
+    /// Slack sent a tombstone: the file was deleted there.
+    pub deleted: bool,
     pub raw_json: String,
 }
 
@@ -41,14 +43,28 @@ impl FileRow {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
             hidden_by_limit: s("mode").as_deref() == Some("hidden_by_limit"),
+            deleted: s("mode").as_deref() == Some("tombstone"),
             raw_json: v.to_string(),
         })
     }
 }
 
 /// Upserts a file; hidden versions cannot replace full ones, and tombstones
-/// never overwrite stored metadata. Cache paths are never touched here.
+/// never overwrite stored metadata: they only mark the file deleted, for good.
+/// Cache paths are never touched here.
 pub(crate) fn upsert_file(tx: &Transaction<'_>, f: &FileRow) -> Result<()> {
+    if f.deleted {
+        tx.prepare_cached(
+            "
+                INSERT INTO files(id, deleted, raw_json)
+                VALUES (?1, 1, ?2)
+                ON CONFLICT (id) DO UPDATE
+                SET deleted = 1
+            ",
+        )?
+        .execute(params![f.id, f.raw_json])?;
+        return Ok(());
+    }
     tx.prepare_cached(
         "
             INSERT INTO files(id, name, title, mimetype, filetype, SIZE, url_private,
@@ -60,8 +76,7 @@ pub(crate) fn upsert_file(tx: &Transaction<'_>, f: &FileRow) -> Result<()> {
                 url_private_download = excluded.url_private_download, permalink = excluded.permalink,
                 is_external = excluded.is_external, hidden_by_limit = excluded.hidden_by_limit,
                 raw_json = excluded.raw_json
-            WHERE COALESCE(json_extract(excluded.raw_json, '$.mode'), '') != 'tombstone'
-            AND (excluded.hidden_by_limit = 0
+            WHERE (excluded.hidden_by_limit = 0
                 OR files.hidden_by_limit = 1)
         ",
     )?
@@ -101,6 +116,7 @@ pub fn downloadable(conn: &Connection, max_size: Option<i64>) -> Result<Vec<Pend
             SELECT id, name, mimetype, SIZE, url_private_download, local_path
             FROM files
             WHERE hidden_by_limit = 0
+            AND deleted = 0
             AND is_external = 0
             AND auto_download_paused = 0
             AND NOT EXISTS (
@@ -153,6 +169,7 @@ pub fn previews_to_fetch(conn: &Connection) -> Result<Vec<PendingDownload>> {
             SELECT id, name, mimetype, local_path, raw_json, preview_path
             FROM files
             WHERE hidden_by_limit = 0
+            AND deleted = 0
             AND is_external = 0
             AND auto_download_paused = 0
             AND COALESCE(json_extract(raw_json, '$.thumb_pdf'),
@@ -262,4 +279,32 @@ pub(crate) fn retrying(conn: &Connection) -> Result<std::collections::HashSet<(S
     let mut stmt = conn.prepare("SELECT file_id, preview FROM file_download_failures")?;
     let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
     Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// RTM `file_deleted`: marks the file and returns the conversations that show it.
+pub fn mark_deleted(conn: &Connection, id: &str) -> Result<Vec<String>> {
+    let changed = conn.execute(
+        "
+            UPDATE files
+            SET deleted = 1
+            WHERE id = ?1
+            AND deleted = 0
+        ",
+        [id],
+    )?;
+    if changed == 0 {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "
+            SELECT DISTINCT conversation_id
+            FROM message_files
+            WHERE file_id = ?1
+            ORDER BY conversation_id
+        ",
+    )?;
+    let rows = stmt
+        .query_map([id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
 }

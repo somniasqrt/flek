@@ -101,6 +101,8 @@ pub fn bus() -> Bus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Applied {
     Changed(Change),
+    /// One event touched several conversations (a deleted file shared twice).
+    ChangedMany(Vec<Change>),
     /// The event names a conversation or user whose directory identity is
     /// unknown: refresh the directory and apply it again.
     NeedsDirectory,
@@ -198,6 +200,19 @@ pub async fn apply(store: &Store, event: Event) -> Result<Applied> {
                     Applied::Changed(Change::ReadMarker {
                         conversation_id: channel,
                     })
+                }
+                Event::FileDeleted { file_id } => {
+                    let conversations = crate::store::files::mark_deleted(c, &file_id)?;
+                    if conversations.is_empty() {
+                        Applied::Ignored
+                    } else {
+                        Applied::ChangedMany(
+                            conversations
+                                .into_iter()
+                                .map(|conversation_id| Change::History { conversation_id })
+                                .collect(),
+                        )
+                    }
                 }
                 Event::Typing { channel, user } => Applied::Changed(Change::Typing {
                     conversation_id: channel,

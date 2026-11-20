@@ -342,6 +342,11 @@ async fn session(
                     Applied::Changed(change) => {
                         let _ = bus.send(change);
                     }
+                    Applied::ChangedMany(changes) => {
+                        for change in changes {
+                            let _ = bus.send(change);
+                        }
+                    }
                     Applied::NeedsDirectory => {
                         deferred.push_back(event);
                         if !directory_pending {
@@ -368,8 +373,16 @@ async fn session(
             }
             result = async { replay.as_mut().expect("pending replay").await }, if replay.is_some() => {
                 replay = None;
-                if let Applied::Changed(change) = result? {
-                    let _ = bus.send(change);
+                match result? {
+                    Applied::Changed(change) => {
+                        let _ = bus.send(change);
+                    }
+                    Applied::ChangedMany(changes) => {
+                        for change in changes {
+                            let _ = bus.send(change);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

@@ -288,6 +288,14 @@ export const messages: Message[] = [
   }),
 ];
 
+// Files deleted in Slack: one never saved, one with a copy saved before.
+messages.push(msg(1762500040, "U3", "Two old drafts of the notes", {
+  files: [
+    file({ id: "FDEL1", name: "draft-1.pdf", filetype: "pdf", mimetype: "application/pdf", size: 120_000, deleted: true, can_open: true }),
+    file({ id: "FDEL2", name: "draft-2.pdf", filetype: "pdf", mimetype: "application/pdf", size: 130_000, deleted: true, local_path: "/synthetic/draft-2.pdf", can_open: true }),
+  ],
+}));
+
 // Synthetic security fixture: no executable contents or real cache path.
 messages.push(msg(1762500050, "U2", "File safety preview", {
   files: [file({ id: "FSECURITY", name: "x.terminal", title: "Розклад.pdf", mimetype: "application/pdf", local_path: "/synthetic/x.terminal", can_open: false })],

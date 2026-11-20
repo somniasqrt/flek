@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canOpen, fileName, isRasterImage } from "./file-presentation.ts";
+import { canOpen, fileName, isRasterImage, unavailable } from "./file-presentation.ts";
 
 test("real name wins over a misleading sender title and bidi controls", () => {
   const file = { name: "x.terminal", title: "Розклад.pdf" };
@@ -27,4 +27,11 @@ test("inline video requires the cache and explicit core launch approval", async 
   assert.equal(isInlineVideo({ ...f, mimetype: "Video/MP4; codecs=avc1" }), true);
   for (const patch of [{ local_path: null }, { can_open: false }, { can_open: undefined }, { hidden_by_limit: true }, { mimetype: "video/html" }])
     assert.equal(isInlineVideo({ ...f, ...patch }), false);
+});
+
+test("deleted files stay usable only through a saved copy", () => {
+  assert.equal(unavailable({ hidden_by_limit: false, deleted: true, local_path: null }), true);
+  assert.equal(unavailable({ hidden_by_limit: false, deleted: true, local_path: "/cache/F1/a.pdf" }), false);
+  assert.equal(unavailable({ hidden_by_limit: true, local_path: "/cache/F1/a.pdf" }), true);
+  assert.equal(unavailable({ hidden_by_limit: false, local_path: null }), false, "not downloaded yet is still available");
 });

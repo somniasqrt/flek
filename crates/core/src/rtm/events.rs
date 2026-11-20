@@ -75,6 +75,10 @@ pub enum Event {
     UserChanged {
         user: Box<User>,
     },
+    /// A file was deleted in Slack (`file_deleted`).
+    FileDeleted {
+        file_id: String,
+    },
     /// Anything else; logged at debug level.
     Unknown {
         kind: String,
@@ -186,6 +190,10 @@ impl Event {
                     }
                 }
                 _ => Event::Unknown { kind },
+            },
+            "file_deleted" => match str_at(&v, "file_id") {
+                Some(file_id) => Event::FileDeleted { file_id },
+                None => Event::Unknown { kind },
             },
             k if is_conversation_change(k) => Event::ConversationsChanged { kind },
             _ => Event::Unknown { kind },

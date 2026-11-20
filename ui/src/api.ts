@@ -77,6 +77,8 @@ export type FileRef = {
   local_path: string | null;
   permalink: string | null;
   hidden_by_limit: boolean;
+  /// Deleted in Slack; local_path is a copy saved before that, if any.
+  deleted?: boolean;
   width: number | null;
   height: number | null;
   preview_path: string | null;
@@ -247,6 +249,7 @@ export type StoredFile = {
   ts: string | null;
   user_id: string | null;
   hidden_by_limit: boolean;
+  deleted?: boolean;
   permalink: string | null;
 };
 

@@ -3,7 +3,7 @@ import { DownloadButton, downloading } from "./Download";
 import FileSafety from "./FileSafety";
 import SvgPreview from "./SvgPreview";
 import { documentKind } from "../models/document";
-import { isRasterImage, isInlineVideo, fileName } from "../models/file-presentation";
+import { isRasterImage, isInlineVideo, fileName, unavailable } from "../models/file-presentation";
 import { createSignal, For, Show } from "solid-js";
 import { t } from "../i18n/index";
 import { settings } from "../stores/settings";
@@ -48,7 +48,7 @@ export default function Files(props: { files: FileRef[]; from?: Sender }) {
   );
 }
 
-const isImage = (f: FileRef) => !f.hidden_by_limit && (
+const isImage = (f: FileRef) => !unavailable(f) && (
   (isRasterImage(f.mimetype) && !!f.local_path) ||
   (f.viewer_kind === "svg" && !!(f.preview_path || f.local_path))
 );
@@ -76,6 +76,9 @@ function Image(props: { f: FileRef; src?: string; single: boolean; busy: boolean
         </Show>
       </button>
       <span class="file-name">{name(props.f)}</span>
+      <Show when={props.f.deleted}>
+        <span class="muted small">{t("Deleted in Slack · saved copy")}</span>
+      </Show>
       <FileSafety file={props.f} />
     </div>
   );
@@ -86,11 +89,11 @@ function Attachment(props: { f: FileRef; from?: Sender; preview: boolean; image?
   const busy = () => attachmentAction(props.f.id).busy || downloading(props.f.id);
   const error = () => attachmentAction(props.f.id).error;
   const open = () => {
-    if (!props.f.hidden_by_limit) void openAttachment(props.f.id, props.from);
+    if (!unavailable(props.f)) void openAttachment(props.f.id, props.from);
   };
   return (
     <div class="video-or-card" aria-busy={busy()} {...fileMenu(() => props.f, () => props.from)}>
-      <DownloadButton id={props.f.id} disabled={attachmentAction(props.f.id).busy} hidden={props.f.hidden_by_limit} />
+      <DownloadButton id={props.f.id} disabled={attachmentAction(props.f.id).busy} hidden={unavailable(props.f)} />
       <Show when={props.image} fallback={
         <Show when={isInlineVideo(props.f) && !failed()} fallback={<Card {...props} busy={busy()} onOpen={open} />}>
           <video
@@ -130,9 +133,9 @@ function Attachment(props: { f: FileRef; from?: Sender; preview: boolean; image?
 
 function Card(props: { f: FileRef; preview: boolean; busy: boolean; onOpen: (f: FileRef) => void }) {
   const f = props.f;
-  const available = !f.hidden_by_limit;
+  const available = !unavailable(f);
   const preview = () =>
-    settings().image_previews && props.preview && !f.hidden_by_limit && !!f.preview_path;
+    settings().image_previews && props.preview && available && !!f.preview_path;
   return (
     <button
       class="file-card"
@@ -151,9 +154,13 @@ function Card(props: { f: FileRef; preview: boolean; busy: boolean; onOpen: (f: 
           <span class="muted">
             {f.hidden_by_limit
               ? t("Hidden by Slack's Free plan")
-              : f.local_path
-                ? kindLabel(f)
-                : t("{kind} · not downloaded", { kind: kindLabel(f) ?? t("File") })}
+              : f.deleted
+                ? f.local_path
+                  ? t("{kind} · deleted in Slack, saved copy", { kind: kindLabel(f) ?? t("File") })
+                  : t("Deleted in Slack")
+                : f.local_path
+                  ? kindLabel(f)
+                  : t("{kind} · not downloaded", { kind: kindLabel(f) ?? t("File") })}
           </span>
         </span>
       </span>

@@ -4,6 +4,10 @@ export const canOpen = (file: FilePresentation) => file.can_open === true;
 export const fileName = (file: FilePresentation, fallback: string) =>
   file.name?.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "") || fallback;
 
+/** Nothing to show or fetch: hidden by the Free plan, or deleted in Slack before it was saved. */
+export const unavailable = (file: { hidden_by_limit: boolean; deleted?: boolean; local_path: string | null }) =>
+  file.hidden_by_limit || (!!file.deleted && !file.local_path);
+
 // Only raster images can use the attachment's flekfile URL directly.
 export const isRasterImage = (mime: string | null | undefined) =>
   /^(image\/(png|jpeg|gif|webp|avif|bmp|x-ms-bmp|x-icon|vnd.microsoft.icon))$/i.test(mime?.split(";")[0].trim() ?? "");

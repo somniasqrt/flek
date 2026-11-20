@@ -105,6 +105,7 @@ for integrations that request them explicitly.
 | `local_path` | string or null, cached file path |
 | `can_open` | boolean, core extension/MIME launch policy; OS opening rechecks the resolved cache path |
 | `viewer_kind` | `image`, `svg`, `video`, `pdf`, `xlsx`, `docx` or null; core in-app viewer policy, separate from OS launch eligibility |
+| `deleted` | boolean, the file was deleted in Slack (Slack now sends a tombstone); stored metadata and any `local_path` saved earlier remain, and `file get` without a local copy fails with `not_found` |
 
 | Reaction field | Type |
 |---|---|

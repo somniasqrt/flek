@@ -3,7 +3,7 @@ import { downloadAttachment, downloading } from "../components/Download";
 import SvgPreview from "../components/SvgPreview";
 import { settings } from "../stores/settings";
 import FileSafety, { fileActionLabel } from "../components/FileSafety";
-import { isRasterImage, fileName } from "../models/file-presentation";
+import { isRasterImage, fileName, unavailable } from "../models/file-presentation";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { t, errorMessage, locale } from "../i18n/index";
 import { api, fileUrl, tsDate, type Conversation, type StoredFile } from "../api";
@@ -130,7 +130,7 @@ export default function FileBrowser(props: {
     if (!c) return f.conversation_id ?? t("Unknown conversation");
     return c.kind === "im" || c.kind === "mpim" ? c.label : `#${c.label}`;
   };
-  const available = (f: StoredFile) => !f.hidden_by_limit;
+  const available = (f: StoredFile) => !unavailable(f);
   return (
     <div class="timeline file-browser">
       <header class="conv-header">

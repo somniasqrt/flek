@@ -50,6 +50,8 @@ pub struct FileRef {
     pub local_path: Option<String>,
     pub permalink: Option<String>,
     pub hidden_by_limit: bool,
+    /// Deleted in Slack; `local_path` is a copy saved before that, if any.
+    pub deleted: bool,
     /// Pixel size of images and videos, when Slack told it.
     pub width: Option<i64>,
     pub height: Option<i64>,
@@ -446,7 +448,7 @@ fn attach_files(
                     '$.original_h'), f.preview_path, COALESCE(json_extract(f.raw_json,
                         '$.thumb_pdf_w'), json_extract(f.raw_json, '$.thumb_video_w')), COALESCE(
                     json_extract(f.raw_json, '$.thumb_pdf_h'), json_extract(f.raw_json,
-                        '$.thumb_video_h'))
+                        '$.thumb_video_h')), f.deleted
             FROM message_files mf
             JOIN files f ON f.id = mf.file_id
             WHERE mf.conversation_id = ?1
@@ -489,6 +491,7 @@ fn attach_files(
                 preview_path: r.get(12)?,
                 preview_width: r.get(13)?,
                 preview_height: r.get(14)?,
+                deleted: r.get(15)?,
             },
         ))
     })?;

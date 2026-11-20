@@ -47,7 +47,7 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
     let mut stmt = c.prepare(
         "
             SELECT f.id, f.name, f.mimetype, f.size, f.local_path, m.conversation_id, m.ts, m.user_id,
-                t.url, f.hidden_by_limit, m.thread_ts, f.title, f.preview_path, f.permalink
+                t.url, f.hidden_by_limit, m.thread_ts, f.title, f.preview_path, f.permalink, f.deleted
             FROM message_files mf
             JOIN files f ON f.id = mf.file_id
             JOIN messages m ON m.conversation_id = mf.conversation_id
@@ -119,15 +119,17 @@ pub fn files(c: &Connection, team: &str, f: &FileFilter) -> Result<Vec<File>> {
             let ts: String = r.get(6)?;
             let url: Option<String> = r.get(8)?;
             let thread: Option<String> = r.get::<_, Option<String>>(10)?.filter(|root| root != &ts);
+            let mut file = views::File::new(
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get::<_, Option<String>>(4)?
+                    .filter(|p| std::path::Path::new(p).is_file()),
+            );
+            file.deleted = r.get(14)?;
             Ok(File {
-                file: views::File::new(
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get::<_, Option<String>>(4)?
-                        .filter(|p| std::path::Path::new(p).is_file()),
-                ),
+                file,
                 permalink: url.map(|u| {
                     let mut link = format!(
                         "{}/archives/{id}/p{}",
@@ -185,6 +187,16 @@ pub fn file(c: &Connection, team: &str, id: &str) -> Result<File> {
 }
 
 pub fn pending_file(c: &Connection, id: &str) -> Result<crate::store::files::PendingDownload> {
+    let deleted: Option<bool> = c
+        .query_row("SELECT deleted FROM files WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    if deleted == Some(true) {
+        return Err(Error::NotFound(format!(
+            "file {id:?} was deleted in Slack and has no local copy"
+        )));
+    }
     c.query_row(
         "
             SELECT id, name, mimetype, SIZE, COALESCE(url_private_download, url_private),

@@ -15,6 +15,8 @@ pub struct File {
     pub local_path: Option<String>,
     pub can_open: bool,
     pub viewer_kind: Option<crate::files::ViewerKind>,
+    /// Deleted in Slack; `local_path` is a copy saved before that, if any.
+    pub deleted: bool,
 }
 
 impl File {
@@ -40,6 +42,7 @@ impl File {
             local_path,
             can_open,
             viewer_kind,
+            deleted: false,
         }
     }
 }
@@ -144,7 +147,8 @@ pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Mess
         .collect();
     let mut stmt = conn.prepare(
         "
-            SELECT mf.conversation_id, mf.ts, f.id, f.name, f.mimetype, f.size, f.local_path
+            SELECT mf.conversation_id, mf.ts, f.id, f.name, f.mimetype, f.size, f.local_path,
+                f.deleted
             FROM json_each(?1) k
             JOIN message_files mf ON mf.conversation_id = json_extract(k.value, '$[0]')
             AND mf.ts = json_extract(k.value, '$[1]')
@@ -156,13 +160,9 @@ pub fn messages(conn: &Connection, keys: &[(String, String)]) -> Result<Vec<Mess
     while let Some(r) = cursor.next()? {
         let key = (r.get::<_, String>(0)?, r.get::<_, String>(1)?);
         if let Some(&i) = positions.get(&key) {
-            rows[i].files.push(File::new(
-                r.get(2)?,
-                r.get(3)?,
-                r.get(4)?,
-                r.get(5)?,
-                r.get(6)?,
-            ));
+            let mut file = File::new(r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?);
+            file.deleted = r.get(7)?;
+            rows[i].files.push(file);
         }
     }
     let mut stmt = conn.prepare(

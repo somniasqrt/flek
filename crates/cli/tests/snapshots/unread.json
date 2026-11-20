@@ -39,6 +39,7 @@
           "files": [
             {
               "can_open": true,
+              "deleted": false,
               "id": "F1",
               "local_path": "<tmp>/cached.txt",
               "mimetype": "text/plain",

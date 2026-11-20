@@ -3,6 +3,7 @@
     {
       "can_open": true,
       "conversation_id": "C1",
+      "deleted": false,
       "file_permalink": null,
       "hidden_by_limit": false,
       "id": "F1",

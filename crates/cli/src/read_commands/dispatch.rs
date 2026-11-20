@@ -225,11 +225,17 @@ pub async fn run(cmd: ReadCommand, creds: &CredentialStore, g: &Global) -> Resul
                 emit(json!({"files":files}));
             } else {
                 for f in files {
+                    let path = f.file.local_path.as_deref();
+                    let deleted = match (f.file.deleted, path) {
+                        (false, _) => "",
+                        (true, Some(_)) => " [deleted in Slack, local copy]",
+                        (true, None) => " [deleted in Slack]",
+                    };
                     println!(
-                        "{} {} {}",
+                        "{} {} {}{deleted}",
                         f.file.id,
                         f.file.name.as_deref().unwrap_or("?"),
-                        f.file.local_path.as_deref().unwrap_or("[not cached]")
+                        path.unwrap_or(if f.file.deleted { "-" } else { "[not cached]" })
                     );
                 }
             }
