@@ -159,6 +159,7 @@ Examples use fictional destinations and timestamps; replace them with your own.
 |---|---|---|
 | `whoami` | Show the current team and user; import a session if needed. | `flek whoami` |
 | `db` | Open, create or migrate the local DB and show its path and schema version. | `flek db --db /tmp/flek-demo.db` |
+| `schema [COMMAND...]` | Describe commands, arguments, write guards and exit codes; offline. | `flek schema channel --json` |
 | `sync` | Fetch users, conversations, history, threads and files. `--channel <CHANNEL>` selects one exact conversation; `--follow` stays connected until Ctrl+C; `--full` re-reads all history and threads. `--refresh-days <DAYS>` defaults to 7 (0 disables refresh); `--no-files` skips downloads; `--max-file-size <MB>` defaults to 100 (0 means no limit). | `flek sync --channel '#project-demo' --follow --max-file-size 25` |
 | `channels` | List stored conversations with message/unread counts; `--archived` includes archived channels; `--include-non-member` includes conversations discovered by search. | `flek channels --archived` |
 | `history <CHANNEL>` | Read recent stored messages; `--limit <LIMIT>` defaults to 30. `--thread <TS>` pages a thread. `--since/--until`, `--around <TS or permalink>`, `--cursor` select windows/pages; JSON returns older/newer cursors. `--fresh` catches up first. | `flek history '#project-demo' --limit 20` |
@@ -274,11 +275,15 @@ disconnect. Keep Slack timestamps as strings.
 | 5 | `auth` | Missing/invalid/revoked session, Keychain or import failure. |
 | 6 | `rate_limited` | Rate-limit retries exhausted. |
 | 7 | `network` | Transport, HTTP, websocket or other Slack API failure. |
-| 8 | `forbidden` | Reserved for the planned write guard; currently unused. |
+| 8 | `forbidden` | The write guard denied the action (no `--yes`, no matching rule in `agent.toml`). |
+| 9 | `timeout` | `flek wait --timeout` elapsed with no reply. |
 
-See [the CLI JSON contract](docs/cli-json.md) for full schemas and stream
-semantics. Agent reads are available; editing, reactions and channel creation
-remain on the roadmap.
+`flek schema --json` describes every command, argument, write guard and exit
+code, generated from the parser. Recipes for agents (catch up, reply in a
+thread, find and forward, wait for an answer) are in [docs/cli.md](docs/cli.md);
+full schemas and stream semantics in [the CLI JSON contract](docs/cli-json.md).
+A Claude Code skill lives in [`skills/flek/SKILL.md`](skills/flek/SKILL.md):
+link it with `ln -s "$PWD/skills/flek" ~/.claude/skills/flek`.
 
 ## Navigation shortcuts
 

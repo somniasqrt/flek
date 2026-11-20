@@ -1,0 +1,2484 @@
+{
+  "cli_version": "<varies>",
+  "commands": [
+    {
+      "about": "List unread conversations (offline unless --fresh)",
+      "arguments": [
+        {
+          "default": [
+            "0"
+          ],
+          "help": "Also include up to N unread messages per conversation",
+          "kind": "option",
+          "long": "--messages",
+          "multiple": false,
+          "name": "messages",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "N"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Also list conversations whose read marker is unknown",
+          "kind": "flag",
+          "long": "--include-unknown",
+          "multiple": false,
+          "name": "include_unknown",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Catch up conversations with new messages from Slack first (needs a session)",
+          "kind": "flag",
+          "long": "--fresh",
+          "multiple": false,
+          "name": "fresh",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "unread"
+    },
+    {
+      "about": "Root and all stored replies; a reply reference resolves to its root",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Slack permalink or conversation reference followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Fetch the thread from Slack first (needs a session)",
+          "kind": "flag",
+          "long": "--fresh",
+          "multiple": false,
+          "name": "fresh",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "thread"
+    },
+    {
+      "about": "One message with adjacent messages from the same timeline",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Slack permalink or conversation reference followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Fetch the thread from Slack first (needs a session)",
+          "kind": "flag",
+          "long": "--fresh",
+          "multiple": false,
+          "name": "fresh",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [
+            "0"
+          ],
+          "help": "Messages to show before and after it",
+          "kind": "option",
+          "long": "--context",
+          "multiple": false,
+          "name": "context",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "N"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "message"
+    },
+    {
+      "about": "List stored people",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Case-insensitive part of a handle, display name, real name or email",
+          "kind": "option",
+          "long": "--query",
+          "multiple": false,
+          "name": "query",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Include bots and apps",
+          "kind": "flag",
+          "long": "--include-bots",
+          "multiple": false,
+          "name": "include_bots",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Include deactivated accounts",
+          "kind": "flag",
+          "long": "--include-deleted",
+          "multiple": false,
+          "name": "include_deleted",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [
+            "100"
+          ],
+          "help": "Most people to list",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "users"
+    },
+    {
+      "about": "Show one stored person's profile",
+      "arguments": [
+        {
+          "default": [],
+          "help": "@handle, display name or user id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "user"
+    },
+    {
+      "about": "Create a public channel, or a private channel with --private",
+      "arguments": [
+        {
+          "default": [],
+          "help": "New channel name (lowercased; spaces become dashes)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "name",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "NAME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Create a private channel",
+          "kind": "flag",
+          "long": "--private",
+          "multiple": false,
+          "name": "private",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": "channel-create",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel create"
+    },
+    {
+      "about": "Invite one person to a channel",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Exact stored person id, handle, display name or email (one person)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "person",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "PERSON"
+          ]
+        }
+      ],
+      "guarded_action": "channel-invite",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel invite"
+    },
+    {
+      "about": "Remove one person from a channel",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Exact stored person id, handle, display name or email (one person)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "person",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "PERSON"
+          ]
+        }
+      ],
+      "guarded_action": "channel-kick",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel kick"
+    },
+    {
+      "about": "Join a stored channel and catch up its history",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        }
+      ],
+      "guarded_action": "channel-join",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel join"
+    },
+    {
+      "about": "Leave a channel, retaining its local history",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        }
+      ],
+      "guarded_action": "channel-leave",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel leave"
+    },
+    {
+      "about": "Set or clear a channel's topic",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "New value (pass an empty string to clear topic/purpose)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        }
+      ],
+      "guarded_action": "channel-topic",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel topic"
+    },
+    {
+      "about": "Set or clear a channel's purpose",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "New value (pass an empty string to clear topic/purpose)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        }
+      ],
+      "guarded_action": "channel-purpose",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel purpose"
+    },
+    {
+      "about": "Rename a channel (same name normalization as create)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "New value (pass an empty string to clear topic/purpose)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        }
+      ],
+      "guarded_action": "channel-rename",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel rename"
+    },
+    {
+      "about": "Archive a channel, retaining its local history",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact stored channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        }
+      ],
+      "guarded_action": "channel-archive",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "channel archive"
+    },
+    {
+      "about": "Stored metadata; --fresh also fetches members and pins",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Channel name, #name or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Fetch members and pinned messages from Slack first (needs a session)",
+          "kind": "flag",
+          "long": "--fresh",
+          "multiple": false,
+          "name": "fresh",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "channel info"
+    },
+    {
+      "about": "Locally stored mentions of me, newest first",
+      "arguments": [
+        {
+          "default": [
+            "7d"
+          ],
+          "help": "Start of the period: Slack ts, YYYY-MM-DD (local midnight), RFC 3339 or a duration ago (30m, 12h, 7d)",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "End of the period (same formats as --since)",
+          "kind": "option",
+          "long": "--until",
+          "multiple": false,
+          "name": "until",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [
+            "50"
+          ],
+          "help": "Most messages to show",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Also count @here, @channel and @everyone",
+          "kind": "flag",
+          "long": "--include-broadcasts",
+          "multiple": false,
+          "name": "include_broadcasts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "mentions"
+    },
+    {
+      "about": "List stored files with message provenance",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Only files shared in this conversation",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Only files shared by this person",
+          "kind": "option",
+          "long": "--from",
+          "multiple": false,
+          "name": "from",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "PERSON"
+          ]
+        },
+        {
+          "default": [],
+          "help": "image, pdf, video, audio, doc, other, or a mimetype prefix such as `text/`",
+          "kind": "option",
+          "long": "--type",
+          "multiple": false,
+          "name": "kind",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "KIND"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Shared at or after this time: Slack ts, YYYY-MM-DD (local midnight), RFC 3339 or a duration ago (30m, 12h, 7d)",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Shared before this time (same formats as --since)",
+          "kind": "option",
+          "long": "--until",
+          "multiple": false,
+          "name": "until",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [
+            "50"
+          ],
+          "help": "Most files to list",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "files"
+    },
+    {
+      "about": "Print the cache path, downloading only if missing",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Slack file id (F…), as listed by `flek files`",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "id",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "ID"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Also copy the file to this file path (replaced if it exists)",
+          "kind": "option",
+          "long": "--to",
+          "multiple": false,
+          "name": "to",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "PATH"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "file get"
+    },
+    {
+      "about": "Set your own custom status",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Status text",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        },
+        {
+          "default": [
+            ""
+          ],
+          "help": "Slack emoji shortcode, for example :calendar: (empty by default)",
+          "kind": "option",
+          "long": "--emoji",
+          "multiple": false,
+          "name": "emoji",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "EMOJI"
+          ]
+        },
+        {
+          "default": [
+            "0"
+          ],
+          "help": "0/never, future Unix seconds, RFC3339, date, or duration from now (30m/12h/7d)",
+          "kind": "option",
+          "long": "--expires",
+          "multiple": false,
+          "name": "expires",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        }
+      ],
+      "guarded_action": "status-set",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "status set"
+    },
+    {
+      "about": "Clear your status text, emoji and expiration",
+      "arguments": [],
+      "guarded_action": "status-clear",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "status clear"
+    },
+    {
+      "about": "Import the session from the Slack desktop app into the Keychain",
+      "arguments": [],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "auth import"
+    },
+    {
+      "about": "List teams with stored credentials",
+      "arguments": [],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "auth list"
+    },
+    {
+      "about": "Remove stored credentials from the Keychain",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Remove every stored team",
+          "kind": "flag",
+          "long": "--all",
+          "multiple": false,
+          "name": "all",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "auth logout"
+    },
+    {
+      "about": "Sign in with a browser session (last resort)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Read the token and d cookie securely; never pass credentials as arguments",
+          "kind": "flag",
+          "long": "--manual",
+          "multiple": false,
+          "name": "manual",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": "Sign in with a browser session (last resort).\n\nIn browser DevTools, find the xoxc token under Application → Local Storage → https://app.slack.com → localConfig_v2 → teams.<team>.token, and the d cookie under Application → Cookies → https://app.slack.com. Treat both as passwords. Terminal input is hidden. Piped stdin: token on line 1, cookie on line 2.",
+      "needs_session": true,
+      "output": "object",
+      "path": "login"
+    },
+    {
+      "about": "Show the current team and user (imports from Slack desktop if needed)",
+      "arguments": [],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "whoami"
+    },
+    {
+      "about": "Open (create, migrate) the local database and show where it lives",
+      "arguments": [],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "db"
+    },
+    {
+      "about": "Describe commands, arguments, write guards and exit codes (use with --json)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Only this command or namespace, e.g. `channel create`",
+          "kind": "positional",
+          "long": null,
+          "multiple": true,
+          "name": "path",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "PATH"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "schema"
+    },
+    {
+      "about": "Stream committed messages, mentions, edits, deletions and reactions as NDJSON",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Only these conversations (repeatable; names, #names or ids)",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": true,
+          "name": "channels",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Only events on messages mentioning you directly (excludes your messages)",
+          "kind": "flag",
+          "long": "--mentions",
+          "multiple": false,
+          "name": "mentions",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Only personal or group DMs",
+          "kind": "flag",
+          "long": "--dm",
+          "multiple": false,
+          "name": "dm",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Replay stored events after this Slack timestamp, then continue live",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "ndjson",
+      "path": "events"
+    },
+    {
+      "about": "Print the first reply from someone else as JSON (timeout exits with code 9)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "A Slack permalink, or a conversation followed by a Slack timestamp",
+          "kind": "option",
+          "long": "--reply-to",
+          "multiple": true,
+          "name": "reply_to",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE",
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Maximum wait in seconds (default: unlimited)",
+          "kind": "option",
+          "long": "--timeout",
+          "multiple": false,
+          "name": "timeout",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "SECONDS"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "wait"
+    },
+    {
+      "about": "Fetch users, conversations and message history into the local database",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Only this conversation (name, #name or id)",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Skip downloading files into the local cache",
+          "kind": "flag",
+          "long": "--no-files",
+          "multiple": false,
+          "name": "no_files",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [
+            "100"
+          ],
+          "help": "Largest file to download, in MB (0 = no limit)",
+          "kind": "option",
+          "long": "--max-file-size",
+          "multiple": false,
+          "name": "max_file_size",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "MB"
+          ]
+        },
+        {
+          "default": [
+            "7"
+          ],
+          "help": "Re-read the last N days for edits, reactions, deletions and thread replies (0 = off, max 90)",
+          "kind": "option",
+          "long": "--refresh-days",
+          "multiple": false,
+          "name": "refresh_days",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "DAYS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Re-read the whole history and every thread, merging without loss",
+          "kind": "flag",
+          "long": "--full",
+          "multiple": false,
+          "name": "full",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Stay connected and print new messages as they arrive (Ctrl+C to stop)",
+          "kind": "flag",
+          "long": "--follow",
+          "multiple": false,
+          "name": "follow",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "sync"
+    },
+    {
+      "about": "Show recent messages of a conversation from the local database",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Conversation name, #name, person for a DM, or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [
+            "30"
+          ],
+          "help": "Most messages to show",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Show this thread (root timestamp) instead of the channel timeline",
+          "kind": "option",
+          "long": "--thread",
+          "multiple": false,
+          "name": "thread",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Fetch new messages from Slack first (needs a session)",
+          "kind": "flag",
+          "long": "--fresh",
+          "multiple": false,
+          "name": "fresh",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Only messages at or after this time: Slack ts, YYYY-MM-DD (local midnight), RFC 3339 or a duration ago (30m, 12h, 7d)",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Only messages before this time (same formats as --since)",
+          "kind": "option",
+          "long": "--until",
+          "multiple": false,
+          "name": "until",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Center the page on this message (timestamp or permalink); it is marked `target`",
+          "kind": "option",
+          "long": "--around",
+          "multiple": false,
+          "name": "around",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS_OR_PERMALINK"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Continue from `next_cursor` (older) or `prev_cursor` (newer) of a previous page",
+          "kind": "option",
+          "long": "--cursor",
+          "multiple": false,
+          "name": "cursor",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "CURSOR"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "history"
+    },
+    {
+      "about": "Search the local archive (works offline, includes messages Slack hides)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Query, e.g. `grades sheet in:#general after:2024-01-01`",
+          "kind": "positional",
+          "long": null,
+          "multiple": true,
+          "name": "query",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "QUERY"
+          ]
+        },
+        {
+          "default": [
+            "20"
+          ],
+          "help": "Most results to show",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Newest first instead of relevance",
+          "kind": "flag",
+          "long": "--recent",
+          "multiple": false,
+          "name": "recent",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Only messages at or after this time: Slack ts, YYYY-MM-DD (local midnight), RFC 3339 or a duration ago (30m, 12h, 7d)",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Only messages before this time (same formats as --since)",
+          "kind": "option",
+          "long": "--until",
+          "multiple": false,
+          "name": "until",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TIME"
+          ]
+        },
+        {
+          "default": [
+            "0"
+          ],
+          "help": "Messages to show before and after each result",
+          "kind": "option",
+          "long": "--context",
+          "multiple": false,
+          "name": "context",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "N"
+          ]
+        },
+        {
+          "default": [
+            "0"
+          ],
+          "help": "Skip this many results",
+          "kind": "option",
+          "long": "--offset",
+          "multiple": false,
+          "name": "offset",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "OFFSET"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Continue from `next_cursor` of a previous page",
+          "kind": "option",
+          "long": "--cursor",
+          "multiple": false,
+          "name": "cursor",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "CURSOR"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Search Slack too; persist matches before reading merged local results",
+          "kind": "flag",
+          "long": "--remote",
+          "multiple": false,
+          "name": "remote",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": "Search the local archive (works offline, includes messages Slack hides).\n\nFilters: from:<person> in:<channel> has:link has:file before:YYYY-MM-DD after:YYYY-MM-DD. Words: word, prefix*, \"exact phrase\", -excluded.",
+      "needs_session": false,
+      "output": "object",
+      "path": "search"
+    },
+    {
+      "about": "Import an existing archive (simple JSON or Slack export / slackdump)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Archive file or directory",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "path",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "PATH"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Put every message of a single-file archive into this conversation",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "import"
+    },
+    {
+      "about": "Export the local archive to an Obsidian vault (offline)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Destination vault (created if missing)",
+          "kind": "option",
+          "long": "--obsidian",
+          "multiple": false,
+          "name": "obsidian",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "VAULT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Only this stored conversation (name, #name, person or id)",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Inclusive lower bound: Slack ts, YYYY-MM-DD, RFC3339 or 30m/12h/7d",
+          "kind": "option",
+          "long": "--since",
+          "multiple": false,
+          "name": "since",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "SINCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Exclusive upper bound, using the same formats as --since",
+          "kind": "option",
+          "long": "--until",
+          "multiple": false,
+          "name": "until",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "UNTIL"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "export"
+    },
+    {
+      "about": "Send one guarded message; reads piped stdin when text is omitted",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact conversation name, #name, person for an existing DM, or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Text (omit to read piped stdin; '-' explicitly reads stdin)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 message text from a file",
+          "kind": "option",
+          "long": "--file",
+          "multiple": false,
+          "name": "file",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "FILE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 message text from stdin",
+          "kind": "flag",
+          "long": "--stdin",
+          "multiple": false,
+          "name": "stdin",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Block Kit JSON array, @path to a JSON file, or '-' for stdin",
+          "kind": "option",
+          "long": "--blocks",
+          "multiple": false,
+          "name": "blocks",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "JSON"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Root timestamp for a thread reply",
+          "kind": "option",
+          "long": "--thread",
+          "multiple": false,
+          "name": "thread",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Also show the thread reply in the channel",
+          "kind": "flag",
+          "long": "--broadcast",
+          "multiple": false,
+          "name": "broadcast",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": "send",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "send"
+    },
+    {
+      "about": "Replace the text of one of your own messages (Slack mrkdwn)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact channel name or id, or a message permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Replacement text (omit to read piped stdin; '-' explicitly reads stdin)",
+          "kind": "option",
+          "long": "--text",
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 replacement text from a file",
+          "kind": "option",
+          "long": "--file",
+          "multiple": false,
+          "name": "file",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "FILE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 replacement text from stdin",
+          "kind": "flag",
+          "long": "--stdin",
+          "multiple": false,
+          "name": "stdin",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": "edit",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "edit"
+    },
+    {
+      "about": "Delete one of your own messages (not undoable)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": "delete",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "delete"
+    },
+    {
+      "about": "Add one emoji reaction to a message",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Emoji name without colons, e.g. `thumbsup` or `+1`",
+          "kind": "option",
+          "long": "--emoji",
+          "multiple": false,
+          "name": "emoji",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "NAME"
+          ]
+        }
+      ],
+      "guarded_action": "react",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "react"
+    },
+    {
+      "about": "Remove your emoji reaction from a message",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Emoji name without colons, e.g. `thumbsup` or `+1`",
+          "kind": "option",
+          "long": "--emoji",
+          "multiple": false,
+          "name": "emoji",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "NAME"
+          ]
+        }
+      ],
+      "guarded_action": "unreact",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "unreact"
+    },
+    {
+      "about": "Advance the conversation's read marker to this message",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": "mark-read",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "mark-read"
+    },
+    {
+      "about": "Pin one message to its conversation",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": "pin",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "pin"
+    },
+    {
+      "about": "Unpin one message from its conversation",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": "unpin",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "unpin"
+    },
+    {
+      "about": "Add a legacy Slack star (not visible in modern Later; API limitation)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        }
+      ],
+      "guarded_action": "save",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "save"
+    },
+    {
+      "about": "Forward a message by posting its permalink and an optional comment",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Message permalink, or exact channel name/id followed by a timestamp",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "reference",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "REFERENCE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Message timestamp; omit when the reference is a permalink",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "ts",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Exact destination conversation (channel, group or existing DM)",
+          "kind": "option",
+          "long": "--to",
+          "multiple": false,
+          "name": "to",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "TO"
+          ]
+        },
+        {
+          "default": [
+            ""
+          ],
+          "help": "Text posted above the forwarded permalink",
+          "kind": "option",
+          "long": "--comment",
+          "multiple": false,
+          "name": "comment",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "COMMENT"
+          ]
+        }
+      ],
+      "guarded_action": "forward",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "forward"
+    },
+    {
+      "about": "Open one direct or group conversation; does not send a message",
+      "arguments": [
+        {
+          "default": [],
+          "help": "One to eight people (@handle, display name or user id)",
+          "kind": "positional",
+          "long": null,
+          "multiple": true,
+          "name": "people",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "PERSON"
+          ]
+        }
+      ],
+      "guarded_action": "dm",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "dm"
+    },
+    {
+      "about": "Schedule one message for a future time (at most 120 days)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Exact conversation name, #name, person for an existing DM, or id",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Unix seconds or RFC3339 including timezone",
+          "kind": "option",
+          "long": "--at",
+          "multiple": false,
+          "name": "at",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "AT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Text (omit to read piped stdin; '-' explicitly reads stdin)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "text",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TEXT"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 message text from a file",
+          "kind": "option",
+          "long": "--file",
+          "multiple": false,
+          "name": "file",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "FILE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Read UTF-8 message text from stdin",
+          "kind": "flag",
+          "long": "--stdin",
+          "multiple": false,
+          "name": "stdin",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Block Kit JSON array, @path to a JSON file, or '-' for stdin",
+          "kind": "option",
+          "long": "--blocks",
+          "multiple": false,
+          "name": "blocks",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "JSON"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Root timestamp for a thread reply",
+          "kind": "option",
+          "long": "--thread",
+          "multiple": false,
+          "name": "thread",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Also show the thread reply in the channel",
+          "kind": "flag",
+          "long": "--broadcast",
+          "multiple": false,
+          "name": "broadcast",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": "schedule",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "schedule"
+    },
+    {
+      "about": "Read the local, payload-free agent action log (no credentials needed)",
+      "arguments": [
+        {
+          "default": [
+            "50"
+          ],
+          "help": "Most recent entries to show (1 to 1000)",
+          "kind": "option",
+          "long": "--limit",
+          "multiple": false,
+          "name": "limit",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "LIMIT"
+          ]
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "log"
+    },
+    {
+      "about": "Upload one file as you (guarded like send)",
+      "arguments": [
+        {
+          "default": [],
+          "help": "File to upload (1 byte to 100 MiB)",
+          "kind": "positional",
+          "long": null,
+          "multiple": false,
+          "name": "file",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "FILE"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Exact conversation name, #name, person for an existing DM, or id",
+          "kind": "option",
+          "long": "--channel",
+          "multiple": false,
+          "name": "channel",
+          "possible_values": [],
+          "required": true,
+          "short": null,
+          "value_names": [
+            "CHANNEL"
+          ]
+        },
+        {
+          "default": [],
+          "help": "Root timestamp for a thread reply",
+          "kind": "option",
+          "long": "--thread",
+          "multiple": false,
+          "name": "thread",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "TS"
+          ]
+        },
+        {
+          "default": [
+            ""
+          ],
+          "help": "Text introducing the file",
+          "kind": "option",
+          "long": "--comment",
+          "multiple": false,
+          "name": "comment",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": [
+            "COMMENT"
+          ]
+        }
+      ],
+      "guarded_action": "upload",
+      "long_about": null,
+      "needs_session": true,
+      "output": "object",
+      "path": "upload"
+    },
+    {
+      "about": "List conversations from the local database",
+      "arguments": [
+        {
+          "default": [],
+          "help": "Include archived channels",
+          "kind": "flag",
+          "long": "--archived",
+          "multiple": false,
+          "name": "archived",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        },
+        {
+          "default": [],
+          "help": "Include conversations discovered by search without joining them",
+          "kind": "flag",
+          "long": "--include-non-member",
+          "multiple": false,
+          "name": "include_non_member",
+          "possible_values": [],
+          "required": false,
+          "short": null,
+          "value_names": []
+        }
+      ],
+      "guarded_action": null,
+      "long_about": null,
+      "needs_session": false,
+      "output": "object",
+      "path": "channels"
+    }
+  ],
+  "exit_codes": [
+    {
+      "code": 0,
+      "kind": "ok"
+    },
+    {
+      "code": 1,
+      "kind": "internal"
+    },
+    {
+      "code": 2,
+      "kind": "usage"
+    },
+    {
+      "code": 3,
+      "kind": "not_found"
+    },
+    {
+      "code": 4,
+      "kind": "ambiguous"
+    },
+    {
+      "code": 5,
+      "kind": "auth"
+    },
+    {
+      "code": 6,
+      "kind": "rate_limited"
+    },
+    {
+      "code": 7,
+      "kind": "network"
+    },
+    {
+      "code": 8,
+      "kind": "forbidden"
+    },
+    {
+      "code": 9,
+      "kind": "timeout"
+    }
+  ],
+  "global_options": [
+    {
+      "default": [],
+      "help": "Authorize this individual agent write (policy and rate limits still apply)",
+      "kind": "flag",
+      "long": "--yes",
+      "multiple": false,
+      "name": "yes",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": []
+    },
+    {
+      "default": [],
+      "help": "Preview the exact prepared form without credentials or network writes",
+      "kind": "flag",
+      "long": "--dry-run",
+      "multiple": false,
+      "name": "dry_run",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": []
+    },
+    {
+      "default": [],
+      "help": "Agent policy file (default: ~/.config/flek/agent.toml)",
+      "kind": "option",
+      "long": "--agent-config",
+      "multiple": false,
+      "name": "agent_config",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": [
+        "PATH"
+      ]
+    },
+    {
+      "default": [],
+      "help": "Action log database (default: agent-actions.db in Flek's data directory)",
+      "kind": "option",
+      "long": "--agent-log",
+      "multiple": false,
+      "name": "agent_log",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": [
+        "PATH"
+      ]
+    },
+    {
+      "default": [],
+      "help": "Machine-readable JSON output",
+      "kind": "flag",
+      "long": "--json",
+      "multiple": false,
+      "name": "json",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": []
+    },
+    {
+      "default": [],
+      "help": "More logging (-v info, -vv debug, -vvv trace). RUST_LOG overrides",
+      "kind": "flag",
+      "long": "--verbose",
+      "multiple": true,
+      "name": "verbose",
+      "possible_values": [],
+      "required": false,
+      "short": "-v",
+      "value_names": []
+    },
+    {
+      "default": [],
+      "help": "Team id (offline: the only team in the database; online: stored session)",
+      "kind": "option",
+      "long": "--team",
+      "multiple": false,
+      "name": "team",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": [
+        "TEAM_ID"
+      ]
+    },
+    {
+      "default": [],
+      "help": "Database file (default: flek/flek.db in the OS data directory)",
+      "kind": "option",
+      "long": "--db",
+      "multiple": false,
+      "name": "db",
+      "possible_values": [],
+      "required": false,
+      "short": null,
+      "value_names": [
+        "PATH"
+      ]
+    }
+  ],
+  "schema_version": 1
+}

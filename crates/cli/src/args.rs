@@ -66,6 +66,11 @@ pub(super) enum Command {
     Whoami,
     /// Open (create, migrate) the local database and show where it lives.
     Db,
+    /// Describe commands, arguments, write guards and exit codes (use with --json).
+    Schema {
+        /// Only this command or namespace, e.g. `channel create`.
+        path: Vec<String>,
+    },
     /// Stream committed messages, mentions, edits, deletions and reactions as NDJSON.
     Events {
         #[command(flatten)]

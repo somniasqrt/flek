@@ -11,6 +11,7 @@ mod export_commands;
 mod manual_login;
 mod output;
 mod read_commands;
+mod schema_command;
 mod search_commands;
 mod send_commands;
 mod sync_commands;
@@ -48,7 +49,10 @@ async fn main() {
         }
         Err(e) => e.exit(),
     };
-    if let Err(error) = if matches!(&cli.command, args::Command::Export(_)) {
+    if let Err(error) = if matches!(
+        &cli.command,
+        args::Command::Export(_) | args::Command::Schema { .. }
+    ) {
         Ok(())
     } else {
         flek_core::auth::chromium::cleanup_stale_copies()

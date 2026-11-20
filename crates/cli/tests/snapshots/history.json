@@ -1,0 +1,68 @@
+{
+  "conversation": {
+    "history_complete": false,
+    "id": "C1",
+    "is_archived": false,
+    "is_member": true,
+    "kind": "channel",
+    "label": "general",
+    "last_read": "1699999999.000000",
+    "latest_ts": "1700000002.000001",
+    "name": "general",
+    "purpose": null,
+    "synced_at": null,
+    "topic": null,
+    "unread_count": 2
+  },
+  "messages": [
+    {
+      "conversation": "general",
+      "conversation_id": "C1",
+      "datetime": "2023-11-14T22:13:20.123456Z",
+      "deleted": false,
+      "edited": false,
+      "files": [],
+      "hidden_by_limit": false,
+      "permalink": "https://fake.slack.com/archives/C1/p1700000000123456",
+      "reactions": [],
+      "reply_count": 0,
+      "text": "hello offline",
+      "text_resolved": "hello offline",
+      "thread_ts": null,
+      "ts": "1700000000.123456",
+      "user": null,
+      "user_id": null
+    },
+    {
+      "conversation": "general",
+      "conversation_id": "C1",
+      "datetime": "2023-11-14T22:13:21.000001Z",
+      "deleted": false,
+      "edited": false,
+      "files": [
+        {
+          "can_open": true,
+          "id": "F1",
+          "local_path": "<tmp>/cached.txt",
+          "mimetype": "text/plain",
+          "name": "cached.txt",
+          "size": null,
+          "viewer_kind": null
+        }
+      ],
+      "hidden_by_limit": false,
+      "permalink": "https://fake.slack.com/archives/C1/p1700000001000001",
+      "reactions": [],
+      "reply_count": 0,
+      "text": "hello <@U1>",
+      "text_resolved": "hello @U1",
+      "thread_ts": null,
+      "ts": "1700000001.000001",
+      "user": "Alice",
+      "user_id": "U2"
+    }
+  ],
+  "next_cursor": null,
+  "prev_cursor": null,
+  "schema_version": 1
+}

@@ -13,12 +13,17 @@ pub(super) async fn run(cli: Cli) -> Result<()> {
     if let Command::Export(options) = cli.command {
         return crate::export_commands::run(&cli.global, options).await;
     }
+    if let Command::Schema { path } = &cli.command {
+        return crate::schema_command::run(&cli.global, path);
+    }
     let store = CredentialStore::keychain();
     let g = &cli.global;
 
     match cli.command {
         Command::Login { manual: _ } => login_manual(&store, g).await,
-        Command::Export(_) => unreachable!("offline export dispatched before credentials"),
+        Command::Export(_) | Command::Schema { .. } => {
+            unreachable!("offline commands are dispatched before credentials")
+        }
         Command::Whoami => whoami(&store, g).await,
         Command::Db => db(g),
         Command::Events { options } => event_commands::events(&store, g, options).await,

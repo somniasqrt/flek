@@ -20,6 +20,7 @@ The table lists payload fields alongside the common `schema_version: integer`.
 |---|---|
 | `whoami` | `url`, `team`, `team_id`, `user_id`, `user_name`: strings; `user`: User or null from the database; `enterprise_id`: optional string; `client`: object with `issuer`, `user_agent` strings and `client_hints` string-to-string map |
 | `db` | `path`: string; `db_schema_version`: integer |
+| `schema [command...]` | `cli_version`: string; `global_options`: Argument[]; `commands`: Command[] (leaf commands only, filtered to the given path); `exit_codes`: `{code: integer, kind: string}`[]; see "Command schema" below |
 | `channels` | `conversations`: Conversation[]; archived conversations excluded unless `--archived` |
 | `history <conversation>` | `conversation`: Conversation; `messages`: Message[] (oldest first) |
 | `search <query>` | `results`: Message[] with an additional `snippet: string` on each result (`**` marks matches); ordering follows relevance or `--recent` |
@@ -252,9 +253,31 @@ clap's first diagnostic line without ANSI styling (for example,
 | 6 | `rate_limited` | exhausted rate limiting (`429`, `ratelimited`, `rate_limited`); existing API retry behavior still applies |
 | 7 | `network` | transport error, HTTP failure, websocket or other Slack API error |
 | 8 | `forbidden` | the write guard denied the action: no `--yes` and no matching allow rule in `agent.toml` (or the session belongs to another team). Nothing was sent or logged |
-
-| 8 | `forbidden` | reserved for the M8.7 write guard; no command uses it yet |
 | 9 | `timeout` | `flek wait --timeout` elapsed with no reply |
+
+## Command schema (M8.8.1)
+
+`flek schema --json` describes the command line itself, built from the parser at
+run time, so it cannot drift from what `flek` accepts. It needs no database or
+session. `flek schema channel` limits the list to one namespace; an unknown path
+is `not_found` (exit 3). Without `--json` it prints one line per command, with
+`[write]` on guarded writers.
+
+Command: `path` (space-separated, e.g. `"channel create"`), `about` and
+`long_about` (string or null), `guarded_action` (the action name used by
+`agent.toml` and `flek log`, or null for reads), `needs_session` (boolean: the
+command reads stored credentials even without `--fresh`/`--remote`), `output`
+(`"object"`, or `"ndjson"` for streams), `arguments`: Argument[].
+
+Argument: `name`, `kind` (`"positional"`, `"option"` or `"flag"`), `long` and
+`short` (the spelled flag or null), `required`, `multiple` (booleans),
+`value_names`, `default`, `possible_values` (string arrays, empty for flags),
+`help` (string). Global options are listed once in `global_options`, not per
+command.
+
+The golden output lives in `crates/cli/tests/snapshots/schema.json`, next to
+snapshots of every offline read command; a contract change shows up there as a
+diff.
 
 ## Concurrent database opens
 

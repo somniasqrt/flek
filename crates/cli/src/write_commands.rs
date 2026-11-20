@@ -21,6 +21,7 @@ use std::path::PathBuf;
 pub(super) struct MessageTarget {
     /// Message permalink, or exact channel name/id followed by a timestamp.
     reference: String,
+    /// Message timestamp; omit when the reference is a permalink.
     ts: Option<String>,
 }
 #[derive(Subcommand)]
@@ -50,14 +51,16 @@ pub(super) enum WriteCommand {
     React {
         #[command(flatten)]
         target: MessageTarget,
-        #[arg(long)]
+        /// Emoji name without colons, e.g. `thumbsup` or `+1`.
+        #[arg(long, value_name = "NAME")]
         emoji: String,
     },
     /// Remove your emoji reaction from a message.
     Unreact {
         #[command(flatten)]
         target: MessageTarget,
-        #[arg(long)]
+        /// Emoji name without colons, e.g. `thumbsup` or `+1`.
+        #[arg(long, value_name = "NAME")]
         emoji: String,
     },
     /// Advance the conversation's read marker to this message.
@@ -87,16 +90,19 @@ pub(super) enum WriteCommand {
         /// Exact destination conversation (channel, group or existing DM).
         #[arg(long)]
         to: String,
+        /// Text posted above the forwarded permalink.
         #[arg(long, default_value = "")]
         comment: String,
     },
     /// Open one direct or group conversation; does not send a message.
     Dm {
-        #[arg(required = true, num_args = 1..=8)]
+        /// One to eight people (@handle, display name or user id).
+        #[arg(required = true, num_args = 1..=8, value_name = "PERSON")]
         people: Vec<String>,
     },
     /// Schedule one message for a future time (at most 120 days).
     Schedule {
+        /// Exact conversation name, #name, person for an existing DM, or id.
         channel: String,
         /// Unix seconds or RFC3339 including timezone.
         #[arg(long, required = true)]
@@ -106,6 +112,7 @@ pub(super) enum WriteCommand {
     },
     /// Read the local, payload-free agent action log (no credentials needed).
     Log {
+        /// Most recent entries to show (1 to 1000).
         #[arg(long, default_value_t = 50, value_parser = clap::value_parser!(u32).range(1..=1000))]
         limit: u32,
     },

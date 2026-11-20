@@ -1,0 +1,22 @@
+{
+  "files": [
+    {
+      "can_open": true,
+      "conversation_id": "C1",
+      "file_permalink": null,
+      "hidden_by_limit": false,
+      "id": "F1",
+      "local_path": "<tmp>/cached.txt",
+      "mimetype": "text/plain",
+      "name": "cached.txt",
+      "permalink": "https://fake.slack.com/archives/C1/p1700000001000001",
+      "preview_path": null,
+      "size": null,
+      "title": null,
+      "ts": "1700000001.000001",
+      "user_id": "U2",
+      "viewer_kind": null
+    }
+  ],
+  "schema_version": 1
+}

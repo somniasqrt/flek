@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "user": {
+    "deleted": false,
+    "display_name": "Alice",
+    "dm_conversation_id": null,
+    "dnd_until": null,
+    "email": "alice@example.test",
+    "id": "U2",
+    "is_admin": null,
+    "is_bot": false,
+    "is_owner": null,
+    "name": "alice",
+    "presence": "unknown",
+    "real_name": null,
+    "status_emoji": null,
+    "status_expiration": null,
+    "status_text": "Reading",
+    "title": "Engineer",
+    "tz": null,
+    "tz_label": null
+  }
+}

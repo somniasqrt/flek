@@ -1,0 +1,38 @@
+{
+  "after": [],
+  "before": [],
+  "conversation": {
+    "history_complete": false,
+    "id": "C1",
+    "is_archived": false,
+    "is_member": true,
+    "kind": "channel",
+    "label": "general",
+    "last_read": "1699999999.000000",
+    "latest_ts": "1700000002.000001",
+    "name": "general",
+    "purpose": null,
+    "synced_at": null,
+    "topic": null,
+    "unread_count": 2
+  },
+  "message": {
+    "conversation": "general",
+    "conversation_id": "C1",
+    "datetime": "2023-11-14T22:13:22.000001Z",
+    "deleted": false,
+    "edited": false,
+    "files": [],
+    "hidden_by_limit": false,
+    "permalink": "https://fake.slack.com/archives/C1/p1700000002000001?thread_ts=1700000001.000001&cid=C1",
+    "reactions": [],
+    "reply_count": 0,
+    "text": "reply",
+    "text_resolved": "reply",
+    "thread_ts": "1700000001.000001",
+    "ts": "1700000002.000001",
+    "user": "Alice",
+    "user_id": "U2"
+  },
+  "schema_version": 1
+}

@@ -46,7 +46,9 @@ pub struct ChannelText {
 pub enum ChannelMutation {
     /// Create a public channel, or a private channel with --private.
     Create {
+        /// New channel name (lowercased; spaces become dashes).
         name: String,
+        /// Create a private channel.
         #[arg(long)]
         private: bool,
     },
@@ -72,6 +74,7 @@ pub enum ChannelMutation {
 pub enum StatusCommand {
     /// Set your own custom status.
     Set {
+        /// Status text.
         text: String,
         /// Slack emoji shortcode, for example :calendar: (empty by default).
         #[arg(long, default_value = "")]

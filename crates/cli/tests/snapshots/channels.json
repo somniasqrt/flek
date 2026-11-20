@@ -1,0 +1,50 @@
+{
+  "conversations": [
+    {
+      "history_complete": false,
+      "id": "C1",
+      "is_archived": false,
+      "is_member": true,
+      "kind": "channel",
+      "label": "general",
+      "last_read": "1699999999.000000",
+      "latest_ts": "1700000002.000001",
+      "name": "general",
+      "purpose": null,
+      "synced_at": null,
+      "topic": null,
+      "unread_count": 2
+    },
+    {
+      "history_complete": false,
+      "id": "C2",
+      "is_archived": false,
+      "is_member": true,
+      "kind": "channel",
+      "label": "general-help",
+      "last_read": null,
+      "latest_ts": null,
+      "name": "general-help",
+      "purpose": null,
+      "synced_at": null,
+      "topic": null,
+      "unread_count": null
+    },
+    {
+      "history_complete": false,
+      "id": "C3",
+      "is_archived": false,
+      "is_member": true,
+      "kind": "channel",
+      "label": "general-news",
+      "last_read": null,
+      "latest_ts": null,
+      "name": "general-news",
+      "purpose": null,
+      "synced_at": null,
+      "topic": null,
+      "unread_count": null
+    }
+  ],
+  "schema_version": 1
+}

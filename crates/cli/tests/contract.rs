@@ -696,3 +696,69 @@ fn events_and_wait_reject_bad_arguments_before_any_network_or_keychain() {
         assert_eq!(error["error"]["code"], name, "{args:?}");
     }
 }
+
+/// Golden JSON for every offline read command on one fixture. A changed file is
+/// a contract change: review it against docs/cli-json.md (additive fields keep
+/// version 1). Regenerate with `FLEK_UPDATE_SNAPSHOTS=1 cargo test -p flek-cli --test contract`.
+#[test]
+fn offline_read_outputs_match_snapshots() {
+    let (dir, path) = read_fixture();
+    let root = dir.path().to_string_lossy().into_owned();
+    let cases: &[(&str, &[&str])] = &[
+        ("channels", &["channels"]),
+        ("history", &["history", "#general"]),
+        ("search", &["search", "hello", "--context", "1"]),
+        ("unread", &["unread", "--messages", "2"]),
+        ("mentions", &["mentions"]),
+        ("users", &["users"]),
+        ("user", &["user", "@alice"]),
+        ("channel-info", &["channel", "info", "general"]),
+        ("thread", &["thread", "general", "1700000001.000001"]),
+        (
+            "message",
+            &[
+                "message",
+                "https://fake.slack.com/archives/C1/p1700000002000001",
+            ],
+        ),
+        ("files", &["files"]),
+        ("schema", &["schema"]),
+    ];
+    let update = std::env::var_os("FLEK_UPDATE_SNAPSHOTS").is_some();
+    let snapshots = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+    let mut stale = Vec::new();
+    for (name, args) in cases {
+        let mut value = success(&path, args);
+        normalize(&mut value, &root);
+        let actual = serde_json::to_string_pretty(&value).unwrap() + "\n";
+        let file = snapshots.join(format!("{name}.json"));
+        if update {
+            std::fs::create_dir_all(&snapshots).unwrap();
+            std::fs::write(&file, &actual).unwrap();
+        } else if std::fs::read_to_string(&file).ok().as_deref() != Some(actual.as_str()) {
+            stale.push(*name);
+        }
+    }
+    assert!(
+        stale.is_empty(),
+        "JSON contract changed for {stale:?}; review, then run with FLEK_UPDATE_SNAPSHOTS=1"
+    );
+}
+
+/// Temp paths, wall-clock times and the crate version vary between runs.
+fn normalize(value: &mut Value, root: &str) {
+    match value {
+        Value::String(s) if s.contains(root) => *s = s.replace(root, "<tmp>").replace('\\', "/"),
+        Value::Object(map) => {
+            for (key, v) in map.iter_mut() {
+                if key == "cli_version" || (key.ends_with("synced_at") && !v.is_null()) {
+                    *v = json!("<varies>");
+                } else {
+                    normalize(v, root);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(|v| normalize(v, root)),
+        _ => {}
+    }
+}

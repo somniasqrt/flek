@@ -1,0 +1,24 @@
+{
+  "conversation": {
+    "history_complete": false,
+    "id": "C1",
+    "is_archived": false,
+    "is_member": true,
+    "kind": "channel",
+    "label": "general",
+    "last_read": "1699999999.000000",
+    "latest_ts": "1700000002.000001",
+    "name": "general",
+    "purpose": null,
+    "synced_at": null,
+    "topic": null,
+    "unread_count": 2
+  },
+  "created": null,
+  "creator": null,
+  "members": null,
+  "members_synced_at": null,
+  "num_members": null,
+  "pins": null,
+  "schema_version": 1
+}

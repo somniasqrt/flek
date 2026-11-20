@@ -12,19 +12,25 @@ use std::io::IsTerminal;
 
 #[derive(Args)]
 pub struct Options {
+    /// Most results to show.
     #[arg(long, default_value_t = 20)]
     limit: usize,
     /// Newest first instead of relevance.
     #[arg(long)]
     recent: bool,
-    #[arg(long)]
+    /// Only messages at or after this time: Slack ts, YYYY-MM-DD (local midnight), RFC 3339 or a duration ago (30m, 12h, 7d).
+    #[arg(long, value_name = "TIME")]
     since: Option<String>,
-    #[arg(long)]
+    /// Only messages before this time (same formats as --since).
+    #[arg(long, value_name = "TIME")]
     until: Option<String>,
-    #[arg(long, default_value_t = 0)]
+    /// Messages to show before and after each result.
+    #[arg(long, default_value_t = 0, value_name = "N")]
     context: usize,
+    /// Skip this many results.
     #[arg(long, default_value_t = 0, conflicts_with = "cursor")]
     offset: usize,
+    /// Continue from `next_cursor` of a previous page.
     #[arg(long)]
     cursor: Option<String>,
     /// Search Slack too; persist matches before reading merged local results.
