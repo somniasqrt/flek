@@ -129,15 +129,21 @@ impl Store {
         // Table rebuilds in migrations must not cascade, so foreign keys are
         // checked once afterwards instead of during.
         conn.pragma_update(None, "foreign_keys", false)?;
-        migrations::migrate(&mut conn)?;
-        let broken: i64 = conn.query_row(
-            "
+        // The check scans every foreign key in the database (tens of ms on a
+        // large archive), so it runs only when a migration could have broken one.
+        let applied = migrations::migrate(&mut conn)?;
+        let broken: i64 = if applied.is_empty() {
+            0
+        } else {
+            conn.query_row(
+                "
                 SELECT COUNT(*)
                 FROM pragma_foreign_key_check
             ",
-            [],
-            |r| r.get(0),
-        )?;
+                [],
+                |r| r.get(0),
+            )?
+        };
         if broken > 0 {
             return Err(Error::Store(format!(
                 "{broken} foreign key violations after migration"

@@ -130,18 +130,28 @@ export function useWorkspace(props: { status: Ready }) {
     }, 500);
   };
 
+  // The Activity badge is the slowest start-up read (it ranks every mention,
+  // thread and reaction), so the sidebar paints without waiting for it.
+  let badgeRequest = 0;
+  const loadActivityBadge = () => {
+    const n = ++badgeRequest;
+    api.activity("all", true, 1, 0).then(
+      (badge) => n === badgeRequest && setActivityBadge(badge.unread_count),
+      () => {},
+    );
+  };
+
   const loadConversations = async () => {
     let list: Conversation[];
+    loadActivityBadge();
     try {
-      const [convs, direct, badge, image] = await Promise.all([
+      const [convs, direct, image] = await Promise.all([
         api.conversations(),
         api.directMessages(),
-        api.activity("all", true, 1, 0),
         api.teamIcon(),
       ]);
       list = convs;
       setDms(direct);
-      setActivityBadge(badge.unread_count);
       setIcon(image);
       setReadError("");
     } catch (e) {

@@ -57,12 +57,13 @@ fn measure(
     })
 }
 
+/// Reads the UI waits for before painting the channel list. The Activity
+/// badge loads after the first paint and is measured on its own below.
 fn cached_startup(db: &Store) -> Result<usize> {
     db.with_read(|c| {
         black_box(directory::stored_identity(c, TEAM)?);
         let rows = directory::list_conversations(c, TEAM)?.len();
         black_box(rail::direct_messages(c, TEAM)?);
-        black_box(rail::activity(c, TEAM, "all", true, 1, 0)?);
         black_box(directory::team_icon(c, TEAM)?);
         black_box(directory::people(c, TEAM)?);
         black_box(directory::avatars(c, TEAM)?);

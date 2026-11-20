@@ -90,6 +90,23 @@ navigation start (192 ms from entry, 177-695 ms range), scroll 60.0 fps rAF with
 17-18 ms and at most 32 mounted rows, so the timeline is already virtualized and meets M6.6.2 in
 this proxy. Frequent-word search misses the 50 ms budget.
 
+## Start-up after M6.6.1 (2026-11-20, quiet machine, 30 samples)
+
+Two changes took start-up from 212-604 ms p50 to about 1 ms:
+
+- `Store::open` ran `pragma_foreign_key_check` on every open. It walks every foreign key in the
+  database (~55 ms of the ~56 ms open on the 100k fixture). It now runs only when a migration was
+  applied in that open, which is the only time a violation can appear. Open: 0.6 ms p50.
+- The Activity badge (`rail::activity`, ~30 ms) no longer blocks the first paint: the UI loads it
+  separately after the sidebar data, and the benchmark's `cached_startup_reads` covers only what
+  the sidebar waits for. The badge is still measured as `activity_badge`.
+
+| Measurement | p50 | p95 | Budget |
+| --- | --- | --- | --- |
+| connection open | 0.64 | 0.78 | - |
+| open + reads before first paint | 1.19 | 1.35 | 300 |
+| activity badge (after paint) | 30.1 | 30.8 | - |
+
 ## Search: what was done and what remains
 
 Done: newest-first free-text search selects the page of message ids first and renders `snippet()`
@@ -112,5 +129,4 @@ here because rows carry large `raw_json`. Plan, not implemented:
 3. Relevance: bm25 needs every hit. Options are a candidate cap (top ~2000 hits by rowid recency)
    with a "more results" fallback, or accepting >50 ms for frequent single-word queries and
    showing the first page progressively (page 1 from a bounded candidate set).
-4. Cache the activity badge count (a counter updated by live sync and mark-read) so start-up does
-   not run the 85 ms candidate query before first paint.
+4. ~~Cache the activity badge count~~: superseded, the badge loads after the first paint (M6.6.1).
