@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { t, errorMessage, locale, clock24, plural } from "../i18n/index";
 import { api, tsDate, type Conversation, type Hit } from "../api";
 import MaterialResults from "./MaterialResults";
@@ -9,6 +9,8 @@ import { emoji } from "../models/emoji";
 import { people } from "../stores/people";
 import { keyCombo, modKeyLabel } from "../platform";
 import { pieces, readable } from "../models/snippet";
+import { applyFilter, detectFilter, filterSuggestions, type FilterSuggestion } from "../models/search-filter";
+import type { ComposerPerson } from "../models/composer-autocomplete";
 
 // Search over the local archive, like Slack's: a field in the middle of the
 // top bar (⌘G), a dropdown with filter hints and the first few matches while
@@ -51,6 +53,18 @@ export function SearchBar(props: {
   const [query, setQuery] = createSignal("");
   const [open, setOpen] = createSignal(false);
   const [quick, setQuick] = createSignal<Hit[]>([]);
+  // `in:` / `from:` completion: the caret position decides which filter is
+  // being typed; Escape hides the list until the next edit.
+  const [caret, setCaret] = createSignal(0);
+  const [persons, setPersons] = createSignal<ComposerPerson[]>([]);
+  const [active, setActive] = createSignal(0);
+  const [dismissed, setDismissed] = createSignal(false);
+  const token = createMemo(() => (props.materials || dismissed() ? null : detectFilter(query(), caret())));
+  const suggestions = createMemo<FilterSuggestion[]>(() => {
+    const tk = token();
+    return tk ? filterSuggestions(tk, props.conversations, persons()) : [];
+  });
+  createEffect(on(suggestions, () => setActive(0)));
   let input!: HTMLInputElement;
   let wrap!: HTMLDivElement;
 
@@ -107,12 +121,48 @@ export function SearchBar(props: {
     props.onSubmit(q);
     close();
   };
+  const edit = (text: string, at: number) => {
+    setQuery(text);
+    setDismissed(false);
+    input.value = text;
+    input.focus();
+    input.setSelectionRange(at, at);
+    setCaret(at);
+  };
   const insert = (text: string) => {
     const q = query();
-    setQuery(q && !q.endsWith(" ") ? `${q} ${text}` : q + text);
-    input.focus();
+    const next = q && !q.endsWith(" ") ? `${q} ${text}` : q + text;
+    edit(next, next.length);
   };
+  const accept = (s: FilterSuggestion) => {
+    const tk = token();
+    if (!tk) return;
+    const next = applyFilter(query(), tk, s.insert);
+    edit(next.text, next.caret);
+  };
+  // Refreshed on every focus: the directory may have changed since.
+  const loadPersons = () => {
+    api.composerPeople("").then(setPersons, () => {});
+  };
+  const syncCaret = () => setCaret(input.selectionStart ?? query().length);
   const onKey = (e: KeyboardEvent) => {
+    const list = suggestions();
+    if (list.length && !e.isComposing) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setActive((i) => (i + (e.key === "ArrowDown" ? 1 : list.length - 1)) % list.length);
+        return;
+      }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey) {
+        e.preventDefault();
+        accept(list[active()] ?? list[0]);
+        return;
+      }
+      if (e.key === "Escape") {
+        setDismissed(true);
+        return;
+      }
+    }
     if (e.key === "Enter") submit();
     if (e.key === "Escape") {
       if (query()) setQuery("");
@@ -131,9 +181,20 @@ export function SearchBar(props: {
           autocomplete="off"
           placeholder={t("Search {name}", { name: props.team })}
           value={query()}
-          onInput={(e) => setQuery(e.currentTarget.value)}
-          onFocus={() => setOpen(true)}
+          onInput={(e) => {
+            setQuery(e.currentTarget.value);
+            setDismissed(false);
+            syncCaret();
+          }}
+          onFocus={() => {
+            setOpen(true);
+            loadPersons();
+          }}
           onKeyDown={onKey}
+          onKeyUp={(e) => {
+            if (e.key !== "ArrowDown" && e.key !== "ArrowUp") syncCaret();
+          }}
+          onClick={syncCaret}
         />
         <Show when={!open()}>
           <kbd class="search-kbd">{keyCombo([modKeyLabel(), "G"])}</kbd>
@@ -148,7 +209,35 @@ export function SearchBar(props: {
               <span>{t("Browse links and files")}</span>
             </button>
           </Show>
-          <Show when={query().trim()}>
+          <Show when={suggestions().length}>
+            <div class="search-suggestions" role="listbox" aria-label={t("Narrow down")}>
+              <For each={suggestions()}>
+                {(s, i) => (
+                  <button
+                    class="search-row suggestion"
+                    classList={{ active: i() === active() }}
+                    role="option"
+                    aria-selected={i() === active()}
+                    onMouseEnter={() => setActive(i())}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => accept(s)}
+                  >
+                    <Show
+                      when={s.kind === "person"}
+                      fallback={s.kind === "dm" ? <People size={15} /> : s.private ? <Lock size={15} /> : <Hash size={15} />}
+                    >
+                      <Avatar id={s.id} name={s.label} size={20} />
+                    </Show>
+                    <span class="grow">{s.label}</span>
+                    <Show when={s.detail && s.detail !== s.label}>
+                      <span class="muted small">{s.detail}</span>
+                    </Show>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+          <Show when={query().trim() && !suggestions().length}>
             <button class="search-row submit" onClick={submit}>
               <Search size={15} />
               <span class="grow">{query().trim()}</span>

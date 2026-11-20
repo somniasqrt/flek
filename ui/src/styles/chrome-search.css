@@ -341,3 +341,17 @@ mark {
 .material-url { display: block; overflow-wrap: anywhere; }
 .materials-more { display: block; margin: 16px auto; }
 .material-error { color: var(--error); }
+.search-row.suggestion .grow {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-row.suggestion.active {
+  background: var(--accent);
+  color: #fff;
+}
+.search-row.suggestion.active .muted {
+  color: inherit;
+}
