@@ -86,6 +86,7 @@
     "allow-channel-preview",
     "allow-join-channel",
     "allow-create-channel",
-    "allow-validate-channel-name"
+    "allow-validate-channel-name",
+    "allow-open-direct-message"
   ]
 }

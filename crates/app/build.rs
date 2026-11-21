@@ -27,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "channel_header",
     "conversation_link",
     "direct_messages",
+    "open_direct_message",
     "activity",
     "activity_seen",
     "browse_files",

@@ -692,14 +692,7 @@ impl PreparedWrite {
         let team = self.action.team_id.clone();
         let user = user.to_owned();
         receipt.not_stored_locally = store
-            .call(move |c| {
-                crate::store::directory::upsert_conversations(c, &team, &user, &[conv])?;
-                c.execute(
-                    "UPDATE conversations SET closed_at = NULL WHERE id = ?1",
-                    [&id],
-                )?;
-                Ok(())
-            })
+            .call(move |c| crate::store::directory::save_opened_dm(c, &team, &user, conv))
             .await
             .is_err();
         receipt.conversation = store

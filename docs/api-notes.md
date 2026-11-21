@@ -573,7 +573,7 @@ workspace with an `xoxc` session; fixtures are synthetic.
 |---|---|---|
 | `chat.postMessage` | `channel`, `text`, optional `blocks` (JSON), `thread_ts`, `reply_broadcast`, `client_msg_id` | `ts` and `channel` come from the response; the permalink is built locally from the cached workspace URL, falling back to `chat.getPermalink` |
 | `chat.scheduleMessage` | `channel`, `text`, optional `blocks`, `thread_ts`, `reply_broadcast`, `post_at` | Returns `scheduled_message_id`; nothing is stored locally (a scheduled message is not in history yet). Slack limits `post_at` to 120 days |
-| `conversations.open` | `users` (comma separated, 1 to 8), `return_im=true` | Response `channel` object is upserted so the conversation is resolvable offline |
+| `conversations.open` | `users` (comma separated, 1 to 8), `return_im=true` | Response `channel` object is upserted so the conversation is resolvable offline. Also used by the app's New message / profile «Message» (`sync::direct::open`): a cached open 1:1 DM is reused without a request; one user must come back as `D…`, several as `G…`/`C…` (mpim); yourself is dropped from a multi-person list |
 | `conversations.mark` | `channel`, `ts` | Reuses the monotonic mark logic; skipped when the local read cursor is already at or beyond `ts` |
 | `reactions.add` / `reactions.remove` | `channel`, `timestamp`, `name` | `already_reacted` / `no_reaction` are treated as success |
 | `pins.add` / `pins.remove` | `channel`, `timestamp` | `already_pinned` / `no_pin` are treated as success; local `pins` table updated after confirmation |

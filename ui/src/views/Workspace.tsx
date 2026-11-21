@@ -49,7 +49,7 @@ export default function Workspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openConversation, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame,
@@ -267,7 +267,13 @@ export default function Workspace(props: { status: Ready }) {
                 )}
               </Show>
               <Show when={profileUser()}>
-                {(id) => <ProfilePanel userId={id()} onClose={closeProfile} onOpen={select} />}
+                {(id) => (
+                  <ProfilePanel
+                    userId={id()}
+                    onClose={closeProfile}
+                    onOpen={openConversation}
+                  />
+                )}
               </Show>
             </div>
           </Show>
@@ -297,6 +303,7 @@ export default function Workspace(props: { status: Ready }) {
       <Show when={compose()}>
         <NewMessage
           conversations={conversations}
+          me={props.status.user_id}
           onSelect={composeIn}
           onClose={() => setCompose(false)}
         />

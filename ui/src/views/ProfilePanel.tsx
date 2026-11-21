@@ -1,6 +1,6 @@
 import { externalLink } from "../models/external-link";
 import { createEffect, createSignal, on, onCleanup, Show } from "solid-js";
-import { t, locale, clock24 } from "../i18n/index";
+import { t, errorMessage, locale, clock24 } from "../i18n/index";
 import { api, type Profile } from "../api";
 import Avatar from "../components/Avatar";
 import CustomStatus from "../components/CustomStatus";
@@ -24,11 +24,42 @@ export default function ProfilePanel(props: {
   const [p, setP] = createSignal<Profile | null>(null);
   const [loaded, setLoaded] = createSignal(false);
   const [photo, setPhoto] = createSignal<string | null>(null);
+  const [opening, setOpening] = createSignal(false);
+  const [openError, setOpenError] = createSignal("");
+  let alive = true;
 
   // Local time moves while the panel is open.
   const [now, setNow] = createSignal(new Date());
   const timer = window.setInterval(() => setNow(new Date()), 15_000);
-  onCleanup(() => window.clearInterval(timer));
+  onCleanup(() => {
+    alive = false;
+    window.clearInterval(timer);
+  });
+
+  createEffect(
+    on(
+      () => props.userId,
+      () => {
+        setOpening(false);
+        setOpenError("");
+      },
+    ),
+  );
+
+  const openDirect = async () => {
+    if (opening()) return;
+    const target = props.userId;
+    setOpening(true);
+    setOpenError("");
+    try {
+      const result = await api.openDirectMessage([target]);
+      if (alive && props.userId === target) props.onOpen(result.id);
+    } catch (err) {
+      if (alive && props.userId === target) setOpenError(String(err));
+    } finally {
+      if (alive && props.userId === target) setOpening(false);
+    }
+  };
 
   let generation = 0;
   createEffect(
@@ -140,15 +171,30 @@ export default function ProfilePanel(props: {
                   <Show
                     when={x().dm_conversation_id}
                     fallback={
-                      <span
-                        class="profile-button-wrap"
-                        title={t("No direct messages with {name} yet", { name: name() })}
+                      <Show
+                        when={!x().deleted}
+                        fallback={
+                          <span
+                            class="profile-button-wrap"
+                            title={t("No direct messages with {name} yet", { name: name() })}
+                          >
+                            <button class="profile-button" type="button" disabled>
+                              <MessageIcon />
+                              {t("Message")}
+                            </button>
+                          </span>
+                        }
                       >
-                        <button class="profile-button" type="button" disabled>
+                        <button
+                          class="profile-button"
+                          type="button"
+                          disabled={opening()}
+                          onClick={openDirect}
+                        >
                           <MessageIcon />
-                          {t("Message")}
+                          {opening() ? t("Opening…") : t("Message")}
                         </button>
-                      </span>
+                      </Show>
                     }
                   >
                     {(dm) => (
@@ -163,6 +209,11 @@ export default function ProfilePanel(props: {
                     )}
                   </Show>
                 </div>
+                <Show when={openError()}>
+                  <p class="error" role="alert">
+                    {errorMessage(openError())}
+                  </p>
+                </Show>
                 <Show when={x().email || x().phone}>
                   <section class="profile-contact">
                     <h4>{t("Contact information")}</h4>

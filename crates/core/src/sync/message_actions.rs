@@ -317,15 +317,11 @@ pub async fn forward(
     let channel = if let Some(id) = existing_dm {
         id
     } else if person {
-        let mut conversation = client.open_forward_dm(destination).await?;
-        conversation.is_im = true;
-        conversation.user = Some(destination.into());
+        let conversation = client.open_conversation(&[destination.to_owned()]).await?;
         let channel = conversation.id.clone();
         let (team, user) = (me.team_id.clone(), me.user_id.clone());
         store
-            .call(move |c| {
-                crate::store::directory::upsert_conversations(c, &team, &user, &[conversation])
-            })
+            .call(move |c| crate::store::directory::save_opened_dm(c, &team, &user, conversation))
             .await?;
         channel
     } else {

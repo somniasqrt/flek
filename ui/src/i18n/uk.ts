@@ -627,4 +627,8 @@ export const uk = {
   "You can only edit or delete your own messages.": "Можна редагувати або видаляти лише власні повідомлення.",
   "This message is no longer available.": "Це повідомлення більше недоступне.",
   "The workspace does not allow this message to be changed.": "Робочий простір не дозволяє змінювати це повідомлення.",
+  "Opening…": "Відкриваємо…",
+  "Add another person…": "Додати ще людину…",
+  "Remove {name}": "Прибрати {name}",
+  "To:": "Кому:",
 } satisfies Dictionary;

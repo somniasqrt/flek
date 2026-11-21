@@ -92,6 +92,7 @@ fn main() {
             commands::validate_channel_name,
             commands::conversation_link,
             commands::direct_messages,
+            commands::open_direct_message,
             commands::activity,
             commands::activity_seen,
             commands::browse_files,

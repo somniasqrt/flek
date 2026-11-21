@@ -620,6 +620,10 @@ export const en = {
   "You can only edit or delete your own messages.": "You can only edit or delete your own messages.",
   "This message is no longer available.": "This message is no longer available.",
   "The workspace does not allow this message to be changed.": "The workspace does not allow this message to be changed.",
+  "Opening…": "Opening…",
+  "Add another person…": "Add another person…",
+  "Remove {name}": "Remove {name}",
+  "To:": "To:",
 } as const;
 export type Key = keyof typeof en;
 export type Dictionary = { [K in Key]: string };

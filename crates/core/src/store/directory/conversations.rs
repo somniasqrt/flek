@@ -18,6 +18,25 @@ pub fn upsert_conversations(
     Ok(())
 }
 
+/// Upserts an opened direct message and clears any local close marker so it
+/// reappears in the directory and DM list.
+pub fn save_opened_dm(
+    conn: &mut Connection,
+    team_id: &str,
+    self_user: &str,
+    conv: Conversation,
+) -> Result<()> {
+    let id = conv.id.clone();
+    let tx = conn.transaction()?;
+    upsert_rows(&tx, team_id, self_user, &[conv])?;
+    tx.execute(
+        "UPDATE conversations SET closed_at = NULL WHERE id = ?1",
+        [&id],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
 fn upsert_rows(
     conn: &Connection,
     team_id: &str,

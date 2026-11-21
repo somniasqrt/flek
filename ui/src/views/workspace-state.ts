@@ -305,11 +305,19 @@ export function useWorkspace(props: { status: Ready }) {
     onCleanup(() => { disposed = true; listener.then((off) => off()); });
   });
   const composeIn = (id: string) => {
-    chooseView("home");
-    select(id);
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>('.main .composer [contenteditable="true"]')?.focus();
-    });
+    const finish = () => {
+      chooseView("home");
+      select(id);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('.main .composer [contenteditable="true"]')?.focus();
+      });
+    };
+    if (conversations.some((c) => c.id === id)) finish();
+    else void loadConversations().then(finish);
+  };
+  const openConversation = (id: string) => {
+    if (conversations.some((c) => c.id === id)) select(id);
+    else void loadConversations().then(() => select(id));
   };
 
   const openChannel = async (id: string, fresh: boolean) => {
@@ -475,7 +483,7 @@ export function useWorkspace(props: { status: Ready }) {
     setChannelNotice, leaving, setLeaving, menu, setMenu, channelDetails, setChannelDetails,
     menuConversation, details, chooseView, browsing, setBrowsing, creatingChannel,
     setCreatingChannel, channelsMenu, setChannelsMenu, loaded, selected, progress, connection,
-    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openChannel,
+    change, searching, setSearching, searchMaterials, setSearchMaterials, searchRequest, setSearchRequest, jump, select, openHit, openJump, composeIn, openConversation, openChannel,
     actionCompleted, joinChannel, browseChannels, current, thread, setThread, sidebarWidth,
     setSidebarWidth, detailWidth, setDetailWidth, frameWidth, sizes, detailOpen, SIDEBAR_KEY,
     DETAIL_KEY, setFrame: (el: HTMLDivElement) => { frame = el; },

@@ -184,6 +184,64 @@ mockIPC(
         return "a1";
       case "direct_messages":
         return directRows();
+      case "open_direct_message": {
+        const raw = (args as { userIds?: string[] }).userIds ?? [];
+        const unique: string[] = [];
+        for (const id of raw) if (!unique.includes(id)) unique.push(id);
+        const ids = unique.length > 1 ? unique.filter((id) => id !== "U3") : unique;
+        if (ids.length === 0 || ids.length > 8) throw "a direct message takes 1 to 8 people";
+        if (ids.length === 1) {
+          const uid = ids[0];
+          const existing = conversations.find((c) => c.kind === "im" && c.dm_user_id === uid);
+          if (existing) {
+            closed.delete(existing.id);
+            emit("flek://change", { type: "directory" });
+            return { id: existing.id, warning: null };
+          }
+          const id = `D${uid}`;
+          conversations.push({
+            id,
+            kind: "im",
+            label: people[uid] ?? uid,
+            is_archived: false,
+            topic: null,
+            messages: 0,
+            unread: 0,
+            latest_ts: null,
+            dm_user_id: uid,
+            notification: "all",
+            notification_explicit: false,
+            starred: false,
+          });
+          if (profiles[uid]) profiles[uid].dm_conversation_id = id;
+          emit("flek://change", { type: "directory" });
+          return { id, warning: null };
+        }
+        const id = "GPREVIEW";
+        const label = ids.map((uid) => people[uid] ?? uid).join(", ");
+        const existingGroup = conversations.find((c) => c.id === id);
+        if (existingGroup) {
+          existingGroup.label = label;
+          closed.delete(id);
+        } else {
+          conversations.push({
+            id,
+            kind: "mpim",
+            label,
+            is_archived: false,
+            topic: null,
+            messages: 0,
+            unread: 0,
+            latest_ts: null,
+            dm_user_id: null,
+            notification: "all",
+            notification_explicit: false,
+            starred: false,
+          });
+        }
+        emit("flek://change", { type: "directory" });
+        return { id, warning: null };
+      }
       case "activity": {
         const request = args as { tab: string; unread: boolean; limit: number; offset: number };
         const currentActivity = activityRows

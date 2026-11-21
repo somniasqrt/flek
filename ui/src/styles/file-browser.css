@@ -157,6 +157,51 @@
 .new-message-results button:hover {
   background: var(--hover);
 }
+.new-message-to {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.new-message-to-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.new-message-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--hover);
+  color: var(--text);
+  font-size: 13px;
+}
+.new-message-chip button {
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.new-message-chip button:hover:not(:disabled) {
+  color: var(--text);
+}
+.new-message-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.new-message-actions .primary {
+  margin-top: 0;
+}
+.new-message-picker .primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 @media (hover: none) {
   .browser-file-actions {
     opacity: 1;

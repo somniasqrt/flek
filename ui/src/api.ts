@@ -345,6 +345,8 @@ export const api = {
     invoke<string | null>("conversation_link", { conversationId }),
   teamIcon: () => invoke<string | null>("team_icon"),
   directMessages: () => invoke<DirectMessage[]>("direct_messages"),
+  openDirectMessage: (userIds: string[]) =>
+    invoke<ChannelAction>("open_direct_message", { userIds }),
   activity: (tab: string, unread: boolean, limit: number, offset: number) =>
     invoke<ActivityPage>("activity", { tab, unread, limit, offset }),
   browseFiles: (query: string, kind: string | null, sort: string, mine: boolean, offset: number) =>

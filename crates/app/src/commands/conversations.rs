@@ -135,3 +135,27 @@ pub async fn conversation_link(
         .await
         .map_err(text)
 }
+
+#[tauri::command]
+pub async fn open_direct_message(
+    state: State<'_, AppState>,
+    user_ids: Vec<String>,
+) -> CmdResult<flek_core::sync::channel_browser::ChannelAction> {
+    let crate::state::Status::Ready {
+        team_id, user_id, ..
+    } = state.status()
+    else {
+        return Err("not_signed_in".into());
+    };
+    let client = state.client().ok_or("not_connected")?;
+    flek_core::sync::direct::open(
+        &client,
+        &state.store,
+        &state.bus,
+        &team_id,
+        &user_id,
+        &user_ids,
+    )
+    .await
+    .map_err(text)
+}
