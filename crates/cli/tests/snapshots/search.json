@@ -3,18 +3,28 @@
   "query": {
     "after": null,
     "before": null,
+    "during": null,
+    "exclude_from": [],
+    "exclude_in": [],
     "from": [],
     "fts": "\"hello\"*",
     "has_file": false,
     "has_link": false,
+    "has_my_reactions": [],
+    "has_pin": false,
+    "has_reactions": [],
     "in_conversations": [],
+    "is_saved": false,
+    "is_thread": false,
+    "on": null,
     "since": null,
     "since_ts": null,
     "terms": [
       "hello"
     ],
     "until": null,
-    "until_ts": null
+    "until_ts": null,
+    "with": []
   },
   "remote": {
     "error": null,

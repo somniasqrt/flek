@@ -116,7 +116,7 @@ pub(super) enum Command {
     },
     /// Search the local archive (works offline, includes messages Slack hides).
     ///
-    /// Filters: from:<person> in:<channel> has:link has:file before:YYYY-MM-DD after:YYYY-MM-DD.
+    /// Filters: from:<person|me> -from:<person|me> in:<channel> -in:<channel> with:<person> has:link has:file has:pin has::emoji: hasmy::emoji: is:thread is:saved before:YYYY-MM-DD after:YYYY-MM-DD on:YYYY-MM-DD during:YYYY[-MM].
     /// Words: word, prefix*, "exact phrase", -excluded.
     Search {
         /// Query, e.g. `grades sheet in:#general after:2024-01-01`.

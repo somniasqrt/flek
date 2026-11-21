@@ -415,19 +415,41 @@ inherit the search text/date/author filters.
 
 `query` has `fts: string` (the actual SQLite MATCH expression), `terms: string[]`
 (original free-text tokens including quotes, `prefix*` and `-excluded`),
-`from: {id, label}[]`, `in_conversations: {id, label}[]`, `has_link: boolean`,
-`has_file: boolean`, `before`, `after`, `since`, `until` (original strings or
-null), and `since_ts`, `until_ts` (effective normalized bounds or null).
+`from: {id, label}[]`, `exclude_from: {id, label}[]`,
+`in_conversations: {id, label}[]`, `exclude_in: {id, label}[]`,
+`with: {id, label}[]`, `has_link: boolean`, `has_file: boolean`,
+`has_pin: boolean`, `has_reactions: string[]`, `has_my_reactions: string[]`,
+`is_thread: boolean`, `is_saved: boolean`, `before`, `after`, `on`, `during`,
+`since`, `until` (original strings or null), and `since_ts`, `until_ts`
+(effective normalized bounds or null).
 The original parser's `before:` day starts at UTC midnight (exclusive upper
 bound); `after:` starts at UTC midnight the following day (inclusive lower
-bound). Invalid calendar dates fail as usage. `--since`/`--until` use the shared
-TIME parser, including local-midnight dates, Slack timestamps, RFC3339 and
-relative durations. For search these bounds are lower-inclusive and
-upper-exclusive, just like the parser's normalized bounds. Flags refine query
-bounds: the later lower bound and earlier upper bound win. Reversed bounds
-are usage errors. Repeated from/in filters retain the parser's OR semantics.
-Unresolved references fail with `not_found`, and tied prefixes with `ambiguous`,
-using the M8.1 resolvers before any credentials are accessed.
+bound); `on:YYYY-MM-DD` spans that UTC day (inclusive start, exclusive next-day
+start); `during:YYYY-MM` and `during:YYYY` span that UTC month or year with the
+same semantics. Combined date filters intersect (later lower bound, earlier
+upper bound). `is:thread` restricts results to thread roots with replies and
+thread replies; `is:saved` matches messages saved by the current user (unknown
+`is:` values fail as usage). `from:me`, `-from:me`, `hasmy::emoji:` and
+`is:saved` resolve against the team's stored `self_user_id` and fail with
+`not_found` if unavailable. `-from:` and `-in:` exclude every listed author or
+conversation (filters-only queries with `-from:`/`-in:` are allowed). `with:`
+matches messages in the 1:1 DM with that person or in threads where that person
+authored at least one non-deleted message (`with:me` fails as usage; repeated
+`with:` uses OR semantics like repeated `from:`). `has:pin` matches pinned
+messages; `has::emoji:` and `hasmy::emoji:` match reactions by exact name or
+`name::skin-tone-*` variants (Slack emoji aliases such as `+1` vs `thumbsup`
+are not resolved). `creator:` fails as usage because Flek has no canvases or
+lists. Only recognized modifier keys are parsed as filters; other `word:value`
+tokens (e.g. `re:meeting`, `TODO:fix`, `foo:bar`), quoted tokens, URLs, times,
+`:emoji:` codes and `::` paths stay free text. Invalid calendar dates or periods
+fail as usage. `--since`/`--until` use the shared TIME parser, including
+local-midnight dates, Slack timestamps, RFC3339 and relative durations. For
+search these bounds are lower-inclusive and upper-exclusive, just like the
+parser's normalized bounds. Flags refine query bounds: the later lower bound and
+earlier upper bound win. Reversed bounds are usage errors. Repeated `from:`/`in:`/`with:`
+filters retain OR semantics. Unresolved references fail with `not_found`, and
+tied prefixes with `ambiguous`, using the M8.1 resolvers before any credentials
+are accessed.
 
 Limit defaults to 20, offset to 0. Cursor and offset conflict. Cursors are bound
 to team, normalized query and sort; garbage/mismatched cursors fail as usage.
@@ -457,14 +479,18 @@ human output warns on stderr. Auth failures retain exit 5. JSON warnings are
 carried only in `remote.error`. A failure after an earlier successful page
 retains that page's stored evidence. Database failures still fail the command.
 
-Remote translation retains phrases, exclusions, from/in ids (`from:<@UFAKE>`,
-`in:<#CFAKE>`), has filters and query dates. Explicit prefixes are omitted and
-listed verbatim in `remote_unsupported_filters`; bare words are sent but their
-local stemming differences are listed as `local_stemming:<word>`. Multiple
-from/in filters are omitted remotely and listed as `from:multiple`/`in:multiple`
-to avoid changing the local OR into remote AND. Exact TIME flag bounds are
-omitted and listed as `--since`/`--until`; SQLite still enforces them precisely.
-These omissions can reduce recall within the bounded remote candidate budget.
+Remote translation retains phrases, exclusions, positive and negated user/channel
+ids (`from:<@UFAKE>`, `-from:<@UFAKE>`, `in:<#CFAKE>`, `-in:<#CFAKE>`,
+`with:<@UFAKE>`), `has:` (`link`, `file`, `pin`, `:emoji:`), `hasmy::emoji:`,
+`is:thread`, `is:saved`, and query dates (`before:`, `after:`, `on:`,
+`during:`). Explicit prefixes are omitted and listed verbatim in
+`remote_unsupported_filters`; bare words are sent but their local stemming
+differences are listed as `local_stemming:<word>`. Multiple `from:`, `in:` or
+`with:` filters are omitted remotely and listed as `from:multiple`,
+`in:multiple` or `with:multiple` to avoid changing the local OR into remote AND.
+Exact TIME flag bounds are omitted and listed as `--since`/`--until`; SQLite
+still enforces them precisely. These omissions can reduce recall within the
+bounded remote candidate budget.
 
 Search payloads can omit full history fields. Ingestion therefore uses the
 existing gap-filling message merge: complete local messages, attached files,

@@ -171,3 +171,115 @@ fn migration_backfills_existing_history() {
         ["https://old.example/a"]
     );
 }
+
+#[test]
+fn materials_support_exclusions_with_pin_reactions_and_saved() {
+    let store = Store::open_in_memory().unwrap();
+    store
+        .with_conn(|c| {
+            c.execute_batch(
+                "INSERT INTO teams (id, name, self_user_id) VALUES ('T1', 'Team', 'U0ME');
+                 INSERT INTO users (id, team_id, name, display_name) VALUES
+                    ('U0ME', 'T1', 'me', 'Me'),
+                    ('U0BOB', 'T1', 'bob', 'Bob'),
+                    ('U0ALICE', 'T1', 'alice', 'Alice');
+                 INSERT INTO conversations (id, team_id, kind, name, label, dm_user_id) VALUES
+                    ('C1', 'T1', 'public_channel', 'general', 'general', NULL),
+                    ('C2', 'T1', 'public_channel', 'random', 'random', NULL),
+                    ('D1', 'T1', 'im', NULL, 'Bob', 'U0BOB');",
+            )?;
+
+            let msg = |ts: &str, user: &str, text: &str| MessageRow {
+                ts: ts.into(),
+                user_id: Some(user.into()),
+                text: text.into(),
+                raw_json: "{}".into(),
+                ..Default::default()
+            };
+
+            let mut m1 = msg("100.000000", "U0BOB", "bob https://bob.example/");
+            m1.reactions.push(("tada".into(), "U0BOB".into()));
+
+            let mut m2 = msg("200.000000", "U0ALICE", "alice https://alice.example/");
+            m2.thread_ts = Some("200.000000".into());
+            m2.reply_count = 1;
+            m2.reactions
+                .push(("tada::skin-tone-2".into(), "U0ME".into()));
+
+            let mut m2_reply = msg("201.000000", "U0BOB", "reply https://reply.example/");
+            m2_reply.thread_ts = Some("200.000000".into());
+
+            messages::upsert_messages(c, "C1", &[m1, m2, m2_reply])?;
+            messages::upsert_messages(
+                c,
+                "C2",
+                &[msg("300.000000", "U0ME", "self https://self.example/")],
+            )?;
+            messages::upsert_messages(
+                c,
+                "D1",
+                &[msg("400.000000", "U0ME", "dm https://dm.example/")],
+            )?;
+
+            c.execute(
+                "INSERT INTO pins (conversation_id, ts, pinned_by, pinned_at)
+                 VALUES ('C1', '200.000000', 'U0ME', 1)",
+                [],
+            )?;
+            c.execute_batch(
+                "INSERT INTO saved_messages (conversation_id, ts, user_id) VALUES
+                    ('C1', '200.000000', 'U0ME'),
+                    ('C2', '300.000000', 'U0BOB');",
+            )?;
+
+            // -from:bob excludes Bob's links, keeps Alice's and Self's.
+            assert_eq!(
+                keys(c, "-from:bob", MaterialSort::Newest),
+                [
+                    "https://dm.example/",
+                    "https://self.example/",
+                    "https://alice.example/",
+                ]
+            );
+            // -in:#general excludes C1, keeps C2 and DM (even with name IS NULL).
+            assert_eq!(
+                keys(c, "-in:#general", MaterialSort::Newest),
+                ["https://dm.example/", "https://self.example/"]
+            );
+            // has:pin matches only pinned message's link.
+            assert_eq!(
+                keys(c, "has:pin", MaterialSort::Newest),
+                ["https://alice.example/"]
+            );
+            // is:saved matches only current user's saved rows (not U0BOB's saved row).
+            assert_eq!(
+                keys(c, "is:saved", MaterialSort::Newest),
+                ["https://alice.example/"]
+            );
+            // has::tada: matches both exact and skin-tone; hasmy::tada: only U0ME's.
+            assert_eq!(
+                keys(c, "has::tada:", MaterialSort::Newest),
+                ["https://alice.example/", "https://bob.example/"]
+            );
+            assert_eq!(
+                keys(c, "hasmy::tada:", MaterialSort::Newest),
+                ["https://alice.example/"]
+            );
+            // with:bob matches DM with bob and thread where bob replied, not bob's plain channel message.
+            assert_eq!(
+                keys(c, "with:bob", MaterialSort::Newest),
+                [
+                    "https://dm.example/",
+                    "https://reply.example/",
+                    "https://alice.example/",
+                ]
+            );
+            // is:thread uses shared SQL predicate.
+            assert_eq!(
+                keys(c, "is:thread", MaterialSort::Newest),
+                ["https://reply.example/", "https://alice.example/"]
+            );
+            Ok(())
+        })
+        .unwrap();
+}

@@ -117,7 +117,7 @@ rewrite was slower for them.
 
 M6.6.3 (2026-11-20): migration 0025 adds the narrow covering index
 `messages_search_cover(id, deleted, ts, conversation_id, user_id)`, and the newest-first page CTE
-selects it with `INDEXED BY` when every filter reads covered columns (no `has:link`/`has:file`, and
+selects it with `INDEXED BY` when every filter reads covered columns (no `has:link`/`has:file`/`is:thread`, and
 `from:` already resolved to user ids, which `search::prepare` always does). SQLite's planner never
 picks it on its own: it prefers the rowid lookup. Quiet machine, 30 samples, p50 / p95 ms:
 

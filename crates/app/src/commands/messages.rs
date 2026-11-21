@@ -128,7 +128,7 @@ const MARK_OPEN: &str = "\u{2}";
 const MARK_CLOSE: &str = "\u{3}";
 
 /// Full-text search over the local archive. `query` takes the same filters
-/// as `flek search` (`in:#channel from:@user has:link before:… after:…`).
+/// as `flek search` (`in:#channel -in:#channel from:@user from:me -from:@user -from:me with:@user has:link has:file has:pin has::emoji: hasmy::emoji: is:thread is:saved before:… after:… on:… during:…`).
 #[tauri::command]
 pub async fn search(
     state: State<'_, AppState>,

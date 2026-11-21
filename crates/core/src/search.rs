@@ -28,12 +28,22 @@ pub struct Query {
     pub fts: String,
     pub terms: Vec<String>,
     pub from: Vec<Filter>,
+    pub exclude_from: Vec<Filter>,
     pub in_conversations: Vec<Filter>,
+    pub exclude_in: Vec<Filter>,
+    pub with: Vec<Filter>,
     pub has_link: bool,
     pub has_file: bool,
+    pub has_pin: bool,
+    pub has_reactions: Vec<String>,
+    pub has_my_reactions: Vec<String>,
+    pub is_thread: bool,
+    pub is_saved: bool,
     /// Query dates are preserved verbatim; normalized bounds are separate.
     pub before: Option<String>,
     pub after: Option<String>,
+    pub on: Option<String>,
+    pub during: Option<String>,
     pub since: Option<String>,
     pub until: Option<String>,
     pub since_ts: Option<String>,
@@ -78,7 +88,10 @@ fn decode(value: &str) -> Result<Cursor> {
 }
 
 pub fn prepare(c: &Connection, team: &str, input: &str, o: &Options) -> Result<Prepared> {
-    let mut parsed = local::parse(input).map_err(|e| Error::Usage(e.to_string()))?;
+    let mut parsed = local::parse(input).map_err(|e| match e {
+        Error::Usage(msg) => Error::Usage(msg),
+        other => Error::Usage(other.to_string()),
+    })?;
     let mut from = Vec::new();
     for (name, reference) in parsed.from.iter_mut().zip(&parsed.from_references) {
         let u = references::resolve_user(c, team, reference, references::Match::AllowPrefix)?;
@@ -87,6 +100,37 @@ pub fn prepare(c: &Connection, team: &str, input: &str, o: &Options) -> Result<P
             id: u.id,
             label: u.display_name.unwrap_or(u.name),
         });
+    }
+    if parsed.from_me {
+        let me = local::resolve_self_user_id_for(c, team, "from:me")?;
+        let label = self_user_label(c, team, &me)?;
+        if !parsed.from.iter().any(|id| id == &me) {
+            parsed.from.push(me.clone());
+            from.push(Filter { id: me, label });
+        }
+        parsed.from_me = false;
+    }
+    let mut exclude_from = Vec::new();
+    for (name, reference) in parsed
+        .exclude_from
+        .iter_mut()
+        .zip(&parsed.exclude_from_references)
+    {
+        let u = references::resolve_user(c, team, reference, references::Match::AllowPrefix)?;
+        *name = u.id.clone();
+        exclude_from.push(Filter {
+            id: u.id,
+            label: u.display_name.unwrap_or(u.name),
+        });
+    }
+    if parsed.exclude_from_me {
+        let me = local::resolve_self_user_id_for(c, team, "-from:me")?;
+        let label = self_user_label(c, team, &me)?;
+        if !parsed.exclude_from.iter().any(|id| id == &me) {
+            parsed.exclude_from.push(me.clone());
+            exclude_from.push(Filter { id: me, label });
+        }
+        parsed.exclude_from_me = false;
     }
     let mut in_conversations = Vec::new();
     for (name, reference) in parsed
@@ -101,6 +145,35 @@ pub fn prepare(c: &Connection, team: &str, input: &str, o: &Options) -> Result<P
             id: conv.id,
             label: conv.label,
         });
+    }
+    let mut exclude_in = Vec::new();
+    for (name, reference) in parsed
+        .exclude_in_conversations
+        .iter_mut()
+        .zip(&parsed.exclude_conversation_references)
+    {
+        let conv = references::resolve(c, team, reference, references::Match::AllowPrefix)?
+            .required(reference)?;
+        *name = conv.id.clone();
+        exclude_in.push(Filter {
+            id: conv.id,
+            label: conv.label,
+        });
+    }
+    let mut with = Vec::new();
+    for (name, reference) in parsed.with.iter_mut().zip(&parsed.with_references) {
+        let u = references::resolve_user(c, team, reference, references::Match::AllowPrefix)?;
+        *name = u.id.clone();
+        with.push(Filter {
+            id: u.id,
+            label: u.display_name.unwrap_or(u.name),
+        });
+    }
+    if !parsed.has_my_reactions.is_empty() {
+        local::resolve_self_user_id_for(c, team, "hasmy:")?;
+    }
+    if parsed.is_saved {
+        local::resolve_self_user_id_for(c, team, "is:saved")?;
     }
     // Flags refine query bounds; neither can silently undo a query filter.
     if let Some(since) = &o.since {
@@ -126,11 +199,21 @@ pub fn prepare(c: &Connection, team: &str, input: &str, o: &Options) -> Result<P
         fts: parsed.fts.clone(),
         terms: parsed.terms.clone(),
         from,
+        exclude_from,
         in_conversations,
+        exclude_in,
+        with,
         has_link: parsed.has_link,
         has_file: parsed.has_file,
+        has_pin: parsed.has_pin,
+        has_reactions: parsed.has_reactions.clone(),
+        has_my_reactions: parsed.has_my_reactions.clone(),
+        is_thread: parsed.is_thread,
+        is_saved: parsed.is_saved,
         before: parsed.before_date.clone(),
         after: parsed.after_date.clone(),
+        on: parsed.on_date.clone(),
+        during: parsed.during_date.clone(),
         since: o.since.clone(),
         until: o.until.clone(),
         since_ts: parsed.after.clone(),
@@ -163,6 +246,16 @@ pub fn prepare(c: &Connection, team: &str, input: &str, o: &Options) -> Result<P
     })
 }
 
+fn self_user_label(c: &Connection, team: &str, user_id: &str) -> Result<String> {
+    Ok(c.query_row(
+        "SELECT COALESCE(NULLIF(display_name, ''), name) FROM users WHERE id = ?1 AND team_id = ?2",
+        params![user_id, team],
+        |r| r.get::<_, String>(0),
+    )
+    .optional()?
+    .unwrap_or_else(|| user_id.to_owned()))
+}
+
 /// Translate syntax, never forwarding local FTS operators to Slack. Prefixes
 /// and automatic stemming have no exact Slack equivalent; omit those terms.
 fn translate(q: &local::Query, o: &Options) -> (String, Vec<String>) {
@@ -176,26 +269,42 @@ fn translate(q: &local::Query, o: &Options) -> (String, Vec<String>) {
             if !term.starts_with(['"', '-']) && term.chars().all(char::is_alphabetic) {
                 unsupported.push(format!("local_stemming:{term}"));
             }
-            // Unknown colon expressions are literal text locally, not Slack filters.
-            if term.contains(':') && !term.starts_with('"') {
+            // Colon-bearing literal terms (URLs, times, emoji codes) stay literal text remotely.
+            if let Some(neg) = term.strip_prefix('-').filter(|t| !t.is_empty()) {
+                if neg.contains(':') && !neg.starts_with('"') {
+                    terms.push(format!("-\"{}\"", neg.replace('"', "")));
+                } else {
+                    terms.push(term.clone());
+                }
+            } else if term.contains(':') && !term.starts_with('"') {
                 terms.push(format!("\"{}\"", term.replace('"', "")));
             } else {
                 terms.push(term.clone());
             }
         }
     }
-    // Repeated local from/in filters are OR; repeated Slack filters are not
+    // Repeated local from/in/with filters are OR; repeated Slack filters are not
     // assumed equivalent. Broaden the remote query and reapply locally.
-    for (key, values) in [("from", &q.from), ("in", &q.in_conversations)] {
-        if values.len() > 1 {
-            unsupported.push(format!("{key}:multiple"));
-        } else if let Some(id) = values.first() {
-            terms.push(if key == "from" {
-                format!("from:<@{id}>")
-            } else {
-                format!("in:<#{id}>")
-            });
-        }
+    if q.from.len() > 1 {
+        unsupported.push("from:multiple".into());
+    } else if let Some(id) = q.from.first() {
+        terms.push(format!("from:<@{id}>"));
+    }
+    for id in &q.exclude_from {
+        terms.push(format!("-from:<@{id}>"));
+    }
+    if q.in_conversations.len() > 1 {
+        unsupported.push("in:multiple".into());
+    } else if let Some(id) = q.in_conversations.first() {
+        terms.push(format!("in:<#{id}>"));
+    }
+    for id in &q.exclude_in_conversations {
+        terms.push(format!("-in:<#{id}>"));
+    }
+    if q.with.len() > 1 {
+        unsupported.push("with:multiple".into());
+    } else if let Some(id) = q.with.first() {
+        terms.push(format!("with:<@{id}>"));
     }
     if q.has_link {
         terms.push("has:link".into());
@@ -203,11 +312,32 @@ fn translate(q: &local::Query, o: &Options) -> (String, Vec<String>) {
     if q.has_file {
         terms.push("has:file".into());
     }
+    if q.has_pin {
+        terms.push("has:pin".into());
+    }
+    for name in &q.has_reactions {
+        terms.push(format!("has::{name}:"));
+    }
+    for name in &q.has_my_reactions {
+        terms.push(format!("hasmy::{name}:"));
+    }
+    if q.is_thread {
+        terms.push("is:thread".into());
+    }
+    if q.is_saved {
+        terms.push("is:saved".into());
+    }
     if let Some(date) = &q.before_date {
         terms.push(format!("before:{date}"));
     }
     if let Some(date) = &q.after_date {
         terms.push(format!("after:{date}"));
+    }
+    if let Some(date) = &q.on_date {
+        terms.push(format!("on:{date}"));
+    }
+    if let Some(period) = &q.during_date {
+        terms.push(format!("during:{period}"));
     }
     // Slack date filters can't represent arbitrary microsecond or local-midnight
     // bounds exactly. Omit flag bounds remotely; SQLite enforces them exactly.
@@ -465,4 +595,179 @@ fn ingest(
         keys.push(((id.clone(), hit.message.ts), exists));
     }
     Ok(keys)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Store;
+
+    fn fixture() -> Store {
+        let store = Store::open_in_memory().unwrap();
+        store
+            .with_conn(|c| {
+                c.execute_batch(
+                    "INSERT INTO teams (id, name, self_user_id) VALUES
+                        ('TFAKE', 'Fake', 'U0SELF'),
+                        ('TNOUSER', 'NoUserRow', 'U0GHOST'),
+                        ('TNOSELF', 'NoSelf', NULL);
+                     INSERT INTO users (id, team_id, name, display_name) VALUES
+                        ('U0SELF', 'TFAKE', 'selfuser', 'Self User'),
+                        ('U0ALICE', 'TFAKE', 'alice', 'Alice'),
+                        ('U0BOB', 'TFAKE', 'bob', 'Bob');
+                     INSERT INTO conversations (id, team_id, kind, name, label) VALUES
+                        ('C0FAKE', 'TFAKE', 'public_channel', 'general', 'general'),
+                        ('C0RND', 'TFAKE', 'public_channel', 'random', 'random');",
+                )?;
+                Ok(())
+            })
+            .unwrap();
+        store
+    }
+
+    #[test]
+    fn prepare_resolves_from_me_and_round_trips_new_filters() {
+        let db = fixture();
+        let o = Options {
+            limit: 10,
+            ..Default::default()
+        };
+        let p = db
+            .with_read(|c| {
+                prepare(
+                    c,
+                    "TFAKE",
+                    r#"from:me is:thread on:2024-03-05 during:2024-03 10:30 :tada: "foo:bar""#,
+                    &o,
+                )
+            })
+            .unwrap();
+        assert_eq!(p.query.from.len(), 1);
+        assert_eq!(p.query.from[0].id, "U0SELF");
+        assert_eq!(p.query.from[0].label, "Self User");
+        assert!(p.query.is_thread);
+        assert_eq!(p.query.on.as_deref(), Some("2024-03-05"));
+        assert_eq!(p.query.during.as_deref(), Some("2024-03"));
+        assert_eq!(p.query.since_ts.as_deref(), Some("1709596800.000000"));
+        assert_eq!(p.query.until_ts.as_deref(), Some("1709683200.000000"));
+        assert_eq!(
+            p.remote_query,
+            r#""10:30" ":tada:" "foo:bar" from:<@U0SELF> is:thread on:2024-03-05 during:2024-03"#
+        );
+
+        // Falls back to user id when self_user_id has no row in users yet.
+        let p = db
+            .with_read(|c| prepare(c, "TNOUSER", "from:me during:2024", &o))
+            .unwrap();
+        assert_eq!(p.query.from[0].id, "U0GHOST");
+        assert_eq!(p.query.from[0].label, "U0GHOST");
+        assert_eq!(p.remote_query, "from:<@U0GHOST> during:2024");
+
+        // Combining from:me with another from: marks from:multiple remotely.
+        let p = db
+            .with_read(|c| prepare(c, "TFAKE", "from:me from:alice", &o))
+            .unwrap();
+        assert_eq!(p.query.from.len(), 2);
+        assert!(p
+            .remote_unsupported_filters
+            .contains(&"from:multiple".into()));
+    }
+
+    #[test]
+    fn prepare_reports_unresolved_self_and_invalid_filters() {
+        let db = fixture();
+        let o = Options::default();
+        for (query, needle) in [
+            ("from:me", "from:me"),
+            ("-from:me", "-from:me"),
+            ("hasmy::tada:", "hasmy:"),
+            ("is:saved", "is:saved"),
+            ("-from:nobody", "nobody"),
+            ("-in:missing", "missing"),
+            ("with:nobody", "nobody"),
+        ] {
+            let team = if query.contains("nobody") || query.contains("missing") {
+                "TFAKE"
+            } else {
+                "TNOSELF"
+            };
+            let err = db
+                .with_read(|c| prepare(c, team, query, &o))
+                .err()
+                .unwrap_or_else(|| panic!("expected NotFound for {query}"));
+            assert_eq!(err.kind().exit_code(), 3, "{query}: {err}");
+            assert!(err.to_string().contains(needle), "{query}: {err}");
+        }
+
+        for bad in [
+            "creator:alice",
+            "with:me",
+            "is:dm",
+            "has:my::tada:",
+            "hasmy:tada",
+            "during:2024-13",
+            "on:2023-02-29",
+            "on:2024-03-05 after:2024-03-06",
+        ] {
+            let err = db
+                .with_read(|c| prepare(c, "TFAKE", bad, &o))
+                .err()
+                .unwrap_or_else(|| panic!("expected error for {bad}"));
+            assert_eq!(err.kind().exit_code(), 2, "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn prepare_resolves_and_translates_remaining_slack_modifiers() {
+        let db = fixture();
+        let o = Options {
+            limit: 10,
+            ..Default::default()
+        };
+        let p = db
+            .with_read(|c| {
+                prepare(
+                    c,
+                    "TFAKE",
+                    "-from:bob -from:me -in:#general -in:#random with:alice has:pin has::tada: hasmy::+1: is:saved foo:bar",
+                    &o,
+                )
+            })
+            .unwrap();
+        assert_eq!(
+            p.query
+                .exclude_from
+                .iter()
+                .map(|f| (f.id.as_str(), f.label.as_str()))
+                .collect::<Vec<_>>(),
+            [("U0BOB", "Bob"), ("U0SELF", "Self User")]
+        );
+        assert_eq!(
+            p.query
+                .exclude_in
+                .iter()
+                .map(|f| (f.id.as_str(), f.label.as_str()))
+                .collect::<Vec<_>>(),
+            [("C0FAKE", "general"), ("C0RND", "random")]
+        );
+        assert_eq!(p.query.with.len(), 1);
+        assert_eq!(p.query.with[0].id, "U0ALICE");
+        assert!(p.query.has_pin);
+        assert_eq!(p.query.has_reactions, ["tada"]);
+        assert_eq!(p.query.has_my_reactions, ["+1"]);
+        assert!(p.query.is_saved);
+        assert_eq!(
+            p.remote_query,
+            r#""foo:bar" -from:<@U0BOB> -from:<@U0SELF> -in:<#C0FAKE> -in:<#C0RND> with:<@U0ALICE> has:pin has::tada: hasmy::+1: is:saved"#
+        );
+        assert!(p.remote_unsupported_filters.is_empty());
+
+        // Multiple with: values are OR locally → omitted remotely as with:multiple.
+        let multi = db
+            .with_read(|c| prepare(c, "TFAKE", "with:alice with:bob", &o))
+            .unwrap();
+        assert_eq!(multi.query.with.len(), 2);
+        assert!(multi.remote_query.is_empty());
+        assert_eq!(multi.remote_unsupported_filters, ["with:multiple"]);
+    }
 }

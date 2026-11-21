@@ -1408,7 +1408,7 @@
         }
       ],
       "guarded_action": null,
-      "long_about": "Search the local archive (works offline, includes messages Slack hides).\n\nFilters: from:<person> in:<channel> has:link has:file before:YYYY-MM-DD after:YYYY-MM-DD. Words: word, prefix*, \"exact phrase\", -excluded.",
+      "long_about": "Search the local archive (works offline, includes messages Slack hides).\n\nFilters: from:<person|me> -from:<person|me> in:<channel> -in:<channel> with:<person> has:link has:file has:pin has::emoji: hasmy::emoji: is:thread is:saved before:YYYY-MM-DD after:YYYY-MM-DD on:YYYY-MM-DD during:YYYY[-MM]. Words: word, prefix*, \"exact phrase\", -excluded.",
       "needs_session": false,
       "output": "object",
       "path": "search"

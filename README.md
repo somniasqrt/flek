@@ -192,9 +192,12 @@ unverified; non-auth remote failures keep local results and report a warning
 start syncing discovered channels. See [the JSON contract](docs/cli-json.md#agent-search-m83-additive-version-1)
 for bounds, cursors and unsupported remote filters.
 
-Search supports `from:<person>`, `in:<channel>`, `has:link`, `has:file`,
-`before:YYYY-MM-DD`, `after:YYYY-MM-DD`, trailing prefix `*` (`release*`),
-`"exact phrase"` and `-excluded`. Quote the whole query for your shell:
+Search supports `from:<person|me>`, `-from:<person|me>`, `in:<channel>`,
+`-in:<channel>`, `with:<person>`, `has:link`, `has:file`, `has:pin`,
+`has::emoji:`, `hasmy::emoji:`, `is:thread`, `is:saved`, `before:YYYY-MM-DD`,
+`after:YYYY-MM-DD`, `on:YYYY-MM-DD`, `during:YYYY-MM`, `during:YYYY`, trailing
+prefix `*` (`release*`), `"exact phrase"` and `-excluded`. Quote the whole
+query for your shell:
 
 ```bash
 flek search '"release notes" from:alex in:#project-demo has:link -draft'

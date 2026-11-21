@@ -56,6 +56,10 @@ pub fn materials(
     cursor: Option<&str>,
 ) -> Result<MaterialPage> {
     let q = search::parse(input)?;
+    let self_id = match search::self_modifier(&q) {
+        Some(modifier) => Some(search::resolve_self_user_id_for(conn, team, modifier)?),
+        None => None,
+    };
     let cursor = cursor
         .map(serde_json::from_str::<Cursor>)
         .transpose()
@@ -105,8 +109,8 @@ pub fn materials(
     }
     if !q.in_conversations.is_empty() {
         let mut ors = Vec::new();
-        for name in q.in_conversations {
-            let p = arg(name.into());
+        for name in &q.in_conversations {
+            let p = arg(name.clone().into());
             ors.push(format!(
                 "lower(label) = {p} OR lower(name) = {p} OR lower(id) = {p}"
             ));
@@ -117,15 +121,94 @@ pub fn materials(
             ors.join(" OR ")
         ));
     }
-    if !q.from.is_empty() {
+    if !q.exclude_in_conversations.is_empty() {
         let mut ors = Vec::new();
-        for name in q.from {
-            let p = arg(name.into());
-            ors.push(format!("a.user_id IN (SELECT id FROM users WHERE team_id = {} AND
-                (lower(name) = {p} OR lower(display_name) = {p} OR lower(real_name) = {p} OR lower(id) = {p}))
-                OR lower(a.author_name) = {p}", arg(team.to_owned().into())));
+        for name in &q.exclude_in_conversations {
+            let p = arg(name.clone().into());
+            ors.push(format!(
+                "lower(label) = {p} OR lower(name) = {p} OR lower(id) = {p}"
+            ));
+        }
+        sql.push_str(&format!(
+            " AND a.conversation_id NOT IN (SELECT id FROM conversations WHERE team_id = {} AND ({}))",
+            arg(team.to_owned().into()),
+            ors.join(" OR ")
+        ));
+    }
+    if !q.from.is_empty() || q.from_me {
+        let mut ors = Vec::new();
+        for name in &q.from {
+            search::push_author_match(&mut ors, "a", team, name, false, &mut arg);
+        }
+        if q.from_me {
+            let p = arg(self_id.as_deref().unwrap().to_owned().into());
+            ors.push(format!("(a.user_id IS NOT NULL AND a.user_id = {p})"));
         }
         sql.push_str(&format!(" AND ({})", ors.join(" OR ")));
+    }
+    if !q.exclude_from.is_empty() || q.exclude_from_me {
+        let mut ors = Vec::new();
+        for name in &q.exclude_from {
+            search::push_author_match(&mut ors, "a", team, name, false, &mut arg);
+        }
+        if q.exclude_from_me {
+            let p = arg(self_id.as_deref().unwrap().to_owned().into());
+            ors.push(format!("(a.user_id IS NOT NULL AND a.user_id = {p})"));
+        }
+        sql.push_str(&format!(" AND NOT COALESCE(({}), 0)", ors.join(" OR ")));
+    }
+    if !q.with.is_empty() {
+        let mut dm_ors = Vec::new();
+        let mut thread_ors = Vec::new();
+        for name in &q.with {
+            search::push_dm_user_match(&mut dm_ors, "c", team, name, false, &mut arg);
+            search::push_author_match(&mut thread_ors, "tm", team, name, false, &mut arg);
+        }
+        sql.push_str(&format!(
+            " AND (a.conversation_id IN (\
+                 SELECT c.id FROM conversations c \
+                 WHERE c.team_id = {} AND c.kind = 'im' AND ({})\
+             ) OR EXISTS (\
+                 SELECT 1 FROM messages m \
+                 WHERE m.id = a.message_id \
+                   AND {}\
+             ))",
+            arg(team.to_owned().into()),
+            dm_ors.join(" OR "),
+            search::thread_participant_sql("m", &thread_ors.join(" OR ")),
+        ));
+    }
+    if q.has_pin {
+        sql.push_str(
+            " AND EXISTS (SELECT 1 FROM pins pin WHERE pin.conversation_id = a.conversation_id AND pin.ts = a.ts)",
+        );
+    }
+    for emoji in &q.has_reactions {
+        sql.push_str(&format!(
+            " AND {}",
+            search::reaction_exists_sql("a", emoji, None, &mut arg)
+        ));
+    }
+    for emoji in &q.has_my_reactions {
+        sql.push_str(&format!(
+            " AND {}",
+            search::reaction_exists_sql("a", emoji, self_id.as_deref(), &mut arg)
+        ));
+    }
+    if q.is_thread {
+        sql.push_str(&format!(
+            " AND EXISTS (SELECT 1 FROM messages m WHERE m.id = a.message_id AND {})",
+            search::in_thread_sql("m")
+        ));
+    }
+    if q.is_saved {
+        let p_me = arg(self_id.as_deref().unwrap().to_owned().into());
+        sql.push_str(&format!(
+            " AND EXISTS (SELECT 1 FROM saved_messages sm \
+              WHERE sm.conversation_id = a.conversation_id \
+                AND sm.ts = a.ts \
+                AND sm.user_id = {p_me})"
+        ));
     }
     if let Some(before) = q.before {
         sql.push_str(&format!(" AND a.ts < {}", arg(before.into())));
